@@ -11,7 +11,7 @@ interface LanguageContextType {
   currency: Currency;
   setCurrency: (c: Currency) => void;
   formatCurrency: (amount: number) => string;
-  t: (key: string) => string;
+  t: (key: string, params?: Record<string, string | number>) => string;
 }
 
 const GLOBAL_CONTEXT_KEY = '__AGRIMAP_LANGUAGE_CONTEXT__';
@@ -62,7 +62,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }).format(amount);
   };
 
-  const t = (key: string): string => {
+  const t = (key: string, params?: Record<string, string | number>): string => {
     if (!key || typeof key !== 'string') return '';
     const keys = key.split('.');
     let current: any = translations[language];
@@ -114,6 +114,12 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return String(key);
       }
       return String(result ?? key);
+    }
+
+    if (params && typeof result === 'string') {
+      Object.entries(params).forEach(([paramKey, paramValue]) => {
+        result = (result as string).replace(new RegExp(`\\{${paramKey}\\}`, 'g'), String(paramValue));
+      });
     }
 
     return result;

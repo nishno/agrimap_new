@@ -160,7 +160,12 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        return systemProps.workAssignments.filter(w => {
+        const seenIds = new Set<string>();
+        return (systemProps.workAssignments || []).filter(w => {
+            if (!w || !w.id) return false;
+            if (seenIds.has(w.id)) return false;
+            seenIds.add(w.id);
+
             const isRelevant = w.source === 'tasks' || w.source === 'planner' || w.source === 'remainder' || !w.source;
             if (!isRelevant) return false;
 
@@ -850,17 +855,36 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
                                     onClick={() => {
                                         if (standingWork) {
                                             setIsVehiclesModalOpen(true);
+                                        } else if (systemProps.workAssignments && systemProps.workAssignments.length > 0) {
+                                            const firstWork = systemProps.workAssignments[0];
+                                            setStandingWorkId(firstWork.id);
+                                            setIsVehiclesModalOpen(true);
                                         } else {
-                                            toast.info(isKa ? "გთხოვთ აირჩიოთ რეესტრი" : "Please select a registry first");
+                                            const newWork: WorkAssignment = {
+                                                id: `work-reg-${Date.now()}`,
+                                                workName: isKa ? 'მიმდინარე საველე ოპერაცია' : 'Active Field Operation',
+                                                date: new Date().toISOString().split('T')[0],
+                                                status: 'in-progress',
+                                                taskType: 'Other',
+                                                employeeHours: [],
+                                                sectorIds: [],
+                                                assignedEmployeeIds: [],
+                                                assignedVehicles: [],
+                                                materialsUsed: []
+                                            };
+                                            systemProps.onSetWorkAssignments([newWork]);
+                                            setStandingWorkId(newWork.id);
+                                            setIsVehiclesModalOpen(true);
+                                            toast.success(isKa ? "ახალი რეესტრი შეიქმნა ავტომობილებისთვის" : "Active registry initialized for vehicles");
                                         }
                                     }}
-                                    className="bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 active:bg-emerald-200 text-emerald-800 py-2 px-2.5 rounded-xl text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-2xs group cursor-pointer active:scale-95"
+                                    className="bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 active:bg-emerald-200 text-emerald-800 py-2.5 px-3 rounded-xl text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-2xs group cursor-pointer active:scale-95"
                                     title={isKa ? "ავტომობილების და ტექნიკის დამატება" : "Add Vehicles & Machinery"}
                                 >
                                     <span className="text-sm group-hover:scale-110 transition-transform">🚜</span>
-                                    <span className="truncate">{isKa ? "ავტომობილები +" : "Vehicles +"}</span>
+                                    <span className="truncate">{isKa ? "ავტომობილების დამატება" : "Add Vehicles"}</span>
                                     {standingWork && (standingWork.assignedVehicles?.length || 0) > 0 && (
-                                        <span className="ml-0.5 px-1.5 py-0.2 bg-emerald-200 text-emerald-900 rounded-md text-[9px] font-mono font-bold">
+                                        <span className="ml-0.5 px-1.5 py-0.5 bg-emerald-200 text-emerald-900 rounded-md text-[9px] font-mono font-bold">
                                             {standingWork.assignedVehicles?.length}
                                         </span>
                                     )}
@@ -871,17 +895,36 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
                                     onClick={() => {
                                         if (standingWork) {
                                             setIsMaterialsModalOpen(true);
+                                        } else if (systemProps.workAssignments && systemProps.workAssignments.length > 0) {
+                                            const firstWork = systemProps.workAssignments[0];
+                                            setStandingWorkId(firstWork.id);
+                                            setIsMaterialsModalOpen(true);
                                         } else {
-                                            toast.info(isKa ? "გთხოვთ აირჩიოთ რეესტრი" : "Please select a registry first");
+                                            const newWork: WorkAssignment = {
+                                                id: `work-reg-${Date.now()}`,
+                                                workName: isKa ? 'მიმდინარე საველე ოპერაცია' : 'Active Field Operation',
+                                                date: new Date().toISOString().split('T')[0],
+                                                status: 'in-progress',
+                                                taskType: 'Other',
+                                                employeeHours: [],
+                                                sectorIds: [],
+                                                assignedEmployeeIds: [],
+                                                assignedVehicles: [],
+                                                materialsUsed: []
+                                            };
+                                            systemProps.onSetWorkAssignments([newWork]);
+                                            setStandingWorkId(newWork.id);
+                                            setIsMaterialsModalOpen(true);
+                                            toast.success(isKa ? "ახალი რეესტრი შეიქმნა მასალებისთვის" : "Active registry initialized for materials");
                                         }
                                     }}
-                                    className="bg-amber-50 border border-amber-200 hover:bg-amber-100 active:bg-amber-200 text-amber-800 py-2 px-2.5 rounded-xl text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-2xs group cursor-pointer active:scale-95"
+                                    className="bg-amber-50 border border-amber-200 hover:bg-amber-100 active:bg-amber-200 text-amber-800 py-2.5 px-3 rounded-xl text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-2xs group cursor-pointer active:scale-95"
                                     title={isKa ? "საწყობიდან მასალების ჩამოწერა / დამატება" : "Add Materials & Stock"}
                                 >
                                     <span className="text-sm group-hover:scale-110 transition-transform">📦</span>
-                                    <span className="truncate">{isKa ? "მასალები +" : "Materials +"}</span>
+                                    <span className="truncate">{isKa ? "მასალების დამატება" : "Add Materials"}</span>
                                     {standingWork && (standingWork.materialsUsed?.length || 0) > 0 && (
-                                        <span className="ml-0.5 px-1.5 py-0.2 bg-amber-200 text-amber-900 rounded-md text-[9px] font-mono font-bold">
+                                        <span className="ml-0.5 px-1.5 py-0.5 bg-amber-200 text-amber-900 rounded-md text-[9px] font-mono font-bold">
                                             {standingWork.materialsUsed?.length}
                                         </span>
                                     )}

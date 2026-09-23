@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { 
     Move, RefreshCw, Trash2, Car, Tractor, 
     Droplets, Square, X, ChevronRight, Compass,
-    FileText, MapPin, Plane, Sparkles 
+    FileText, MapPin, Plane, Sparkles, Leaf, Building2
 } from 'lucide-react';
 import type { PlantationFeature, LinePlantationFeature } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -15,6 +15,8 @@ export interface MapFeatureContextMenuProps {
     onConvert: (feature: PlantationFeature, targetType: 'road' | 'trench' | 'irrigation' | 'area' | 'boundary' | 'note' | 'checkpoint' | 'drone_direction') => void;
     onDelete: (feature: PlantationFeature) => void;
     onOpenPencilOptions?: (feature: PlantationFeature) => void;
+    onOpenCropModal?: () => void;
+    onOpenCompanyRegistration?: () => void;
 }
 
 export const MapFeatureContextMenu: React.FC<MapFeatureContextMenuProps> = ({
@@ -24,7 +26,9 @@ export const MapFeatureContextMenu: React.FC<MapFeatureContextMenuProps> = ({
     onMove,
     onConvert,
     onDelete,
-    onOpenPencilOptions
+    onOpenPencilOptions,
+    onOpenCropModal,
+    onOpenCompanyRegistration
 }) => {
     const { language } = useLanguage();
     const isKa = language === 'ka';
@@ -328,6 +332,56 @@ export const MapFeatureContextMenu: React.FC<MapFeatureContextMenuProps> = ({
                         </div>
                     )}
                 </div>
+
+                <div className="h-px bg-slate-800 my-1" />
+
+                {/* Crop Management Option */}
+                {onOpenCropModal && (
+                    <button
+                        id="ctx-btn-crops"
+                        onClick={() => {
+                            onOpenCropModal();
+                            onClose();
+                        }}
+                        className="w-full px-3 py-2 rounded-xl flex items-center gap-2.5 text-left font-bold text-emerald-400 hover:text-white hover:bg-emerald-600/30 transition-all cursor-pointer group"
+                    >
+                        <div className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center group-hover:scale-110 group-hover:bg-emerald-500 group-hover:text-white transition-all">
+                            <Leaf size={13} />
+                        </div>
+                        <div>
+                            <div className="text-[11px] font-black uppercase tracking-wide">
+                                {isKa ? "კულტურების მართვა" : "Crop Management"}
+                            </div>
+                            <div className="text-[9px] text-emerald-300/80 font-normal">
+                                {isKa ? "პლანტაციის კულტურები და ჯიშები" : "Plantation crops & varieties"}
+                            </div>
+                        </div>
+                    </button>
+                )}
+
+                {/* Company Registration Option */}
+                {onOpenCompanyRegistration && (
+                    <button
+                        id="ctx-btn-company-reg"
+                        onClick={() => {
+                            onOpenCompanyRegistration();
+                            onClose();
+                        }}
+                        className="w-full px-3 py-2 rounded-xl flex items-center gap-2.5 text-left font-bold text-blue-400 hover:text-white hover:bg-blue-600/30 transition-all cursor-pointer group"
+                    >
+                        <div className="w-6 h-6 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white transition-all">
+                            <Building2 size={13} />
+                        </div>
+                        <div>
+                            <div className="text-[11px] font-black uppercase tracking-wide">
+                                {isKa ? "კომპანიის რეგისტრაცია" : "Company Registration"}
+                            </div>
+                            <div className="text-[9px] text-blue-300/80 font-normal">
+                                {isKa ? "საწარმოს პროფილი და რეგისტრაცია" : "Enterprise profile & registration"}
+                            </div>
+                        </div>
+                    </button>
+                )}
 
                 <div className="h-px bg-slate-800 my-1" />
 

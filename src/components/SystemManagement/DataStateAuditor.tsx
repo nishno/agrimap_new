@@ -239,7 +239,52 @@ export function describeFlightRecord(item: SyncLogEntry, isKa: boolean): FlightR
         };
     }
 
-    // 5. Staff & Roles
+    // 5. Staff & Roles / Daily Attendance & Presets
+    if (path.startsWith('dailyLogs/')) {
+        const empName = typeof data.employeeName === 'string' ? data.employeeName : (typeof data.name === 'string' ? data.name : (typeof data.employeeId === 'string' ? data.employeeId : (isKa ? 'თანამშრომელი' : 'Employee')));
+        const logDate = typeof data.date === 'string' ? data.date : (isKa ? 'დღეს' : 'Today');
+        const rawStatus = typeof data.logType === 'string' ? data.logType : 'Present';
+        const statusKa = rawStatus === 'Present' ? 'სამუშაოზეა (Present)' : (rawStatus === 'Absent' ? 'გაცდენა (Absent)' : (rawStatus === 'Late' ? 'დააგვიანა (Late)' : rawStatus));
+        const statusDisplay = isKa ? statusKa : rawStatus;
+
+        return {
+            headline: isKa
+                ? `👥 პერსონალის დასწრება: ${empName} [${statusKa}] - ${logDate}`
+                : `👥 Staff Attendance: ${empName} [${statusDisplay}] - ${logDate}`,
+            story: isKa
+                ? `დაფიქსირდა თანამშრომლის დასწრების სტატუსი: "${empName}" მონიშნულია როგორც "${statusKa}" თარიღით ${logDate}.`
+                : `Recorded daily attendance for team member: "${empName}" marked as "${statusDisplay}" on ${logDate}.`,
+            badge: isKa ? 'დასწრების ლოგი' : 'Daily Attendance',
+            badgeColor: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+            metrics: [
+                { label: isKa ? 'თანამშრომელი' : 'Employee', value: formatSafeValue(empName) },
+                { label: isKa ? 'თარიღი' : 'Date', value: formatSafeValue(logDate) },
+                { label: isKa ? 'სტატუსი' : 'Status', value: formatSafeValue(statusDisplay) }
+            ]
+        };
+    }
+
+    if (path.startsWith('workAssignments/')) {
+        const taskTitle = typeof data.title === 'string' ? data.title : (typeof data.taskType === 'string' ? data.taskType : (isKa ? 'საველე სამუშაო' : 'Field Task'));
+        const worker = typeof data.assigneeName === 'string' ? data.assigneeName : (typeof data.employeeName === 'string' ? data.employeeName : (isKa ? 'დანიშნული მუშა' : 'Assignee'));
+        const plot = typeof data.sectorName === 'string' ? data.sectorName : (typeof data.plotName === 'string' ? data.plotName : (isKa ? 'სექტორი' : 'Sector'));
+
+        return {
+            headline: isKa
+                ? `📋 სამუშაო დავალება: ${taskTitle} (${worker})`
+                : `📋 Work Assignment: ${taskTitle} (${worker})`,
+            story: isKa
+                ? `${author}-მა გასცა საველე დავალება: "${taskTitle}" მკრეფავ/მუშაკ ${worker}-ზე (${plot}).`
+                : `${author} dispatched work task "${taskTitle}" to ${worker} (${plot}).`,
+            badge: isKa ? 'სამუშაო დავალება' : 'Work Assignment',
+            badgeColor: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30',
+            metrics: [
+                { label: isKa ? 'დავალება' : 'Task', value: formatSafeValue(taskTitle) },
+                { label: isKa ? 'მუშაკი' : 'Worker', value: formatSafeValue(worker) }
+            ]
+        };
+    }
+
     if (path.startsWith('employees/') || path.startsWith('roles/')) {
         const name = typeof data.name === 'string' ? data.name : (typeof data.fullName === 'string' ? data.fullName : formatSafeValue(data.name || data.fullName || (isKa ? 'თანამშრომელი' : 'Employee')));
         const role = typeof data.role === 'string' ? data.role : (typeof data.workerType === 'string' ? data.workerType : formatSafeValue(data.role || data.workerType || (isKa ? 'მუშაკი' : 'Worker')));
@@ -258,6 +303,26 @@ export function describeFlightRecord(item: SyncLogEntry, isKa: boolean): FlightR
                 { label: isKa ? 'თანამშრომელი' : 'Name', value: formatSafeValue(name) },
                 { label: isKa ? 'როლი' : 'Role', value: formatSafeValue(role) },
                 { label: isKa ? 'განყოფილება' : 'Dept', value: formatSafeValue(dept) }
+            ]
+        };
+    }
+
+    if (path.startsWith('machinery/')) {
+        const machName = typeof data.name === 'string' ? data.name : (typeof data.model === 'string' ? data.model : (isKa ? 'ტექნიკა' : 'Machinery'));
+        const machType = typeof data.type === 'string' ? data.type : (isKa ? 'ტრაქტორი/აგრეგატი' : 'Equipment');
+
+        return {
+            headline: isKa
+                ? `🚜 ტექნიკა & აგრეგატი: ${machName} [${machType}]`
+                : `🚜 Machinery & Equipment: ${machName} [${machType}]`,
+            story: isKa
+                ? `${author}-მა განაახლა ტექნიკური რეგისტრი: ${machName} (${machType}).`
+                : `${author} updated equipment register: ${machName} (${machType}).`,
+            badge: isKa ? 'ტექნიკა' : 'Equipment',
+            badgeColor: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+            metrics: [
+                { label: isKa ? 'დასახელება' : 'Name', value: formatSafeValue(machName) },
+                { label: isKa ? 'ტიპი' : 'Type', value: formatSafeValue(machType) }
             ]
         };
     }
@@ -304,16 +369,86 @@ export function describeFlightRecord(item: SyncLogEntry, isKa: boolean): FlightR
         };
     }
 
-    // Generic fallback
-    const title = typeof data.name === 'string' ? data.name : (typeof data.title === 'string' ? data.title : formatSafeValue(data.name || data.title || path));
+    // 8. Other known collections (Notes, Alerts, Agronomy)
+    if (path.startsWith('notes/')) {
+        const noteText = typeof data.text === 'string' ? data.text : (typeof data.content === 'string' ? data.content : (isKa ? 'საველე შენიშვნა' : 'Field Note'));
+        return {
+            headline: isKa ? `📝 საველე ჩანაწერი: ${noteText.slice(0, 35)}...` : `📝 Field Note: ${noteText.slice(0, 35)}...`,
+            story: isKa ? `${author}-მა ჩაწერა საველე შენიშვნა.` : `${author} recorded a field note.`,
+            badge: isKa ? 'შენიშვნა' : 'Field Note',
+            badgeColor: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+            metrics: [
+                { label: isKa ? 'შინაარსი' : 'Content', value: formatSafeValue(noteText.slice(0, 25)) },
+                { label: isKa ? 'ავტორი' : 'Author', value: formatSafeValue(author) }
+            ]
+        };
+    }
+
+    if (path.startsWith('alerts/')) {
+        const msg = typeof data.message === 'string' ? data.message : (typeof data.title === 'string' ? data.title : (isKa ? 'შეტყობინება' : 'Notification'));
+        return {
+            headline: isKa ? `🔔 სისტემური შეტყობინება: ${msg.slice(0, 35)}...` : `🔔 System Alert: ${msg.slice(0, 35)}...`,
+            story: isKa ? `${author}-მა გააგზავნა ან განაახლა სისტემური შეტყობინება.` : `${author} posted or updated system alert.`,
+            badge: isKa ? 'შეტყობინება' : 'System Alert',
+            badgeColor: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+            metrics: [
+                { label: isKa ? 'ტექსტი' : 'Alert', value: formatSafeValue(msg.slice(0, 25)) }
+            ]
+        };
+    }
+
+    // Friendly Generic fallback for ordinary users
+    const collection = path.split('/')[0] || 'record';
+    const friendlyCollectionKa: Record<string, string> = {
+        dailyLogs: 'პერსონალის დასწრება',
+        employees: 'თანამშრომლის პროფილი',
+        workAssignments: 'სამუშაო დავალება',
+        harvestEntries: 'მოსავლის აწონვა',
+        harvestEvents: 'კრეფის სესია',
+        inventoryItems: 'სასაწყობო საქონელი',
+        stockTransactions: 'მარაგის ხარჯი',
+        plantationFeatures: 'რუკის ობიექტი',
+        transactions: 'ფინანსური ხარჯი',
+        accounts: 'ანგარიში',
+        machinery: 'ტექნიკა & აგრეგატი',
+        notes: 'საველე შენიშვნა',
+        alerts: 'შეტყობინება'
+    };
+    const friendlyCollectionEn: Record<string, string> = {
+        dailyLogs: 'Staff Attendance',
+        employees: 'Employee Profile',
+        workAssignments: 'Work Assignment',
+        harvestEntries: 'Harvest Weighing',
+        harvestEvents: 'Harvest Session',
+        inventoryItems: 'Inventory Stock',
+        stockTransactions: 'Stock Usage',
+        plantationFeatures: 'Map Object',
+        transactions: 'Financial Entry',
+        accounts: 'Account Record',
+        machinery: 'Machinery Record',
+        notes: 'Field Note',
+        alerts: 'System Alert'
+    };
+
+    const friendlyName = isKa 
+        ? (friendlyCollectionKa[collection] || (data.name || data.title || collection))
+        : (friendlyCollectionEn[collection] || (data.name || data.title || collection));
+
+    const itemTitle = typeof data.name === 'string' ? data.name : (typeof data.title === 'string' ? data.title : (typeof data.workerName === 'string' ? data.workerName : ''));
+    const headline = itemTitle 
+        ? `${friendlyName}: ${itemTitle}` 
+        : `${friendlyName} (${item.type === 'set' ? (isKa ? 'შენახვა' : 'Save') : (item.type === 'delete' ? (isKa ? 'წაშლა' : 'Delete') : item.type)})`;
+
     return {
-        headline: `${formatSafeValue(item.type).toUpperCase()}: ${title}`,
-        story: `${author} executed action on ${path}.`,
-        badge: formatSafeValue(item.category || 'System'),
+        headline,
+        story: isKa 
+            ? `${author}-მა განახორციელა ცვლილება (${friendlyName}).`
+            : `${author} modified ${friendlyName}.`,
+        badge: friendlyName,
         badgeColor: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
         metrics: [
-            { label: 'Action', value: formatSafeValue(item.type) },
-            { label: 'Path', value: formatSafeValue(path) }
+            { label: isKa ? 'მოდული' : 'Module', value: friendlyName },
+            { label: isKa ? 'მოქმედება' : 'Action', value: formatSafeValue(item.type) }
         ]
     };
 }

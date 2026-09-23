@@ -7,7 +7,7 @@ import {
     MicrophoneIcon, AcademicCapIcon, StopIcon, RectangleGroupIcon,
     SearchIcon, RectangleStackIcon, PlayIcon, CircleIcon, MapIcon
 } from './Icons';
-import { MessageSquare, Video, Share2, CheckSquare } from 'lucide-react';
+import { MessageSquare, Video, Share2, CheckSquare, EyeOff } from 'lucide-react';
 import ShareToGoogleChatModal from './ShareToGoogleChatModal';
 import { formatTasksForGoogleChat, formatPlantationFeatureForGoogleChat } from '../services/googleChatService';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -292,6 +292,7 @@ const PlannerAndRemainderView: React.FC<PlannerAndRemainderViewProps> = (props) 
         currentUser
     } = props;
     const { t, language } = useLanguage();
+    const isKa = language === 'ka';
     const { handleSendCommand, isAssistantLoading } = useAiAssistant('en');
     
     // Resizable Edge Handle state
@@ -1067,20 +1068,34 @@ const PlannerAndRemainderView: React.FC<PlannerAndRemainderViewProps> = (props) 
                                                         <MessageSquare size={12} />
                                                     </button>
                                                 )}
-                                                <button onClick={(e) => { e.stopPropagation(); task.sectorIds?.[0] && handleZoomToFeature(task.sectorIds[0]); }} className="p-2 text-slate-300 hover:text-indigo-400" title="Locate on Map"><MapPinIcon size={14}/></button>
+                                                <button onClick={(e) => { e.stopPropagation(); task.sectorIds?.[0] && handleZoomToFeature(task.sectorIds[0]); }} className="p-2 text-slate-300 hover:text-indigo-400" title={isKa ? "რუკაზე ჩვენება" : "Locate on Map"}><MapPinIcon size={14}/></button>
+                                                {task.sectorIds?.[0] && (
+                                                    <button 
+                                                        onClick={(e) => { 
+                                                            e.stopPropagation(); 
+                                                            if (task.sectorIds?.[0] && onDeleteFeature) {
+                                                                onDeleteFeature([task.sectorIds[0]]);
+                                                            }
+                                                            onSetWorkAssignments(workAssignments.map(w => w.id === task.id ? { ...w, sectorIds: [] } : w));
+                                                            toast.success(isKa ? "მარკერი წაიშალა რუკიდან (ჩანაწერი შენარჩუნებულია)" : "Marker removed from map (Task kept).");
+                                                        }} 
+                                                        className="p-1.5 text-slate-400 hover:text-amber-500 rounded-lg hover:bg-amber-50"
+                                                        title={isKa ? "რუკიდან მოხსნა" : "Remove marker from map"}
+                                                    >
+                                                        <EyeOff size={14}/>
+                                                    </button>
+                                                )}
                                                 <button 
                                                     onClick={(e) => { 
                                                         e.stopPropagation(); 
                                                         if (task.sectorIds?.[0] && onDeleteFeature) {
                                                             onDeleteFeature([task.sectorIds[0]]);
-                                                            toast.success("Note removed from map.");
-                                                        } else {
-                                                            onSetWorkAssignments(workAssignments.filter(w => w.id !== task.id));
-                                                            toast.success("Task record removed.");
                                                         }
+                                                        onSetWorkAssignments(workAssignments.filter(w => w.id !== task.id));
+                                                        toast.success(isKa ? "დავალება და რუკის მარკერი წაიშალა." : "Task and map marker deleted.");
                                                     }} 
                                                     className="p-2 text-slate-300 hover:text-red-500"
-                                                    title="Remove Note"
+                                                    title={isKa ? "წაშლა (რუკიდან & სიიდან)" : "Delete Task & Map Marker"}
                                                 >
                                                     <TrashIcon size={14}/>
                                                 </button>

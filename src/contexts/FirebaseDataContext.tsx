@@ -154,7 +154,7 @@ export const sanitizeValue = (val: any): any => {
 // Global Defensive Helper: ensure collection is always a valid list & objects have string fallbacks
 export const sanitizeCollection = <T extends Record<string, any>>(list: T[] | undefined | null): T[] => {
     if (!list || !Array.isArray(list)) return []; // Always return a fresh mutable empty array
-    return list.map(rawItem => {
+    const sanitized = list.map(rawItem => {
         if (!rawItem || typeof rawItem !== 'object') return rawItem;
         const item = sanitizeValue(rawItem);
         const copy = { ...item } as any;
@@ -229,6 +229,19 @@ export const sanitizeCollection = <T extends Record<string, any>>(list: T[] | un
         
         return copy as T;
     });
+
+    // Global ID Deduplication safety: ensure no two items in any collection share the same ID
+    const seenIds = new Set<string>();
+    const uniqueResult: T[] = [];
+    for (const item of sanitized) {
+        if (item && typeof item === 'object' && item.id) {
+            const strId = String(item.id);
+            if (seenIds.has(strId)) continue;
+            seenIds.add(strId);
+        }
+        uniqueResult.push(item);
+    }
+    return uniqueResult;
 };
 
 interface FirebaseDataProviderProps {

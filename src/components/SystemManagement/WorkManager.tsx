@@ -13,6 +13,8 @@ interface ActionButtonsProps {
     onLogMap?: (e: any) => void;
     onFinish?: (e: any) => void;
     onAddRegistry?: (e: any) => void;
+    onRemoveFromMap?: (e: any) => void;
+    hasMapMarker?: boolean;
     isCompleted?: boolean;
     isKa?: boolean;
 }
@@ -25,6 +27,8 @@ const ActionButtons: React.FC<ActionButtonsProps> = ({
     onLogMap, 
     onFinish, 
     onAddRegistry,
+    onRemoveFromMap,
+    hasMapMarker,
     isCompleted,
     isKa
 }) => (
@@ -55,7 +59,12 @@ const ActionButtons: React.FC<ActionButtonsProps> = ({
                 <span>{isCompleted ? (isKa ? 'დასრულდა' : 'Done') : (isKa ? 'შესრულება' : 'Complete')}</span>
             </button>
         )}
-        {onLogMap && !isCompleted && (
+        {hasMapMarker && onRemoveFromMap && (
+            <button onClick={(e) => onRemoveFromMap(e)} className="p-1 text-amber-500 hover:text-amber-700 rounded hover:bg-amber-50" title={isKa ? "რუკიდან მოხსნა" : "Remove from map"}>
+                <MapPinIcon className="h-3.5 w-3.5 text-amber-500" />
+            </button>
+        )}
+        {onLogMap && !isCompleted && !hasMapMarker && (
             <button onClick={(e) => onLogMap(e)} className="p-1 text-slate-400 hover:text-orange-600 rounded hover:bg-slate-100" title={isKa ? "რუკაზე მონიშვნა" : "Log on Map"}>
                 <MapPinIcon className="h-3.5 w-3.5" />
             </button>
@@ -182,7 +191,22 @@ const WorkManager: React.FC<WorkManagerProps> = ({
             });
             if (inventoryChanged) onSetInventoryItems(newInventory);
         }
+        // Remove linked features on the map if any
+        if (work) {
+            const idsToDelete = [work.linkedFeatureId, ...(work.sectorIds || [])].filter(Boolean) as string[];
+            if (idsToDelete.length > 0) {
+                window.dispatchEvent(new CustomEvent('agrimap_delete_features', { detail: { ids: idsToDelete } }));
+            }
+        }
         onSetWorkAssignments(workAssignments.filter(w => w.id !== id));
+    };
+
+    const handleRemoveFromMap = (work: WorkAssignment) => {
+        const idsToDelete = [work.linkedFeatureId, ...(work.sectorIds || [])].filter(Boolean) as string[];
+        if (idsToDelete.length > 0) {
+            window.dispatchEvent(new CustomEvent('agrimap_delete_features', { detail: { ids: idsToDelete } }));
+        }
+        onSetWorkAssignments(workAssignments.map(w => w.id === work.id ? { ...w, linkedFeatureId: undefined, sectorIds: [] } : w));
     };
 
     const handleCopy = (work: WorkAssignment) => {
@@ -205,7 +229,13 @@ const WorkManager: React.FC<WorkManagerProps> = ({
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        return workAssignments.filter(w => {
+        const seenIds = new Set<string>();
+        return (workAssignments || []).filter(w => {
+            if (!w || !w.id) return false;
+            // Prevent duplicate records with identical IDs
+            if (seenIds.has(w.id)) return false;
+            seenIds.add(w.id);
+
             // Include everything that comes from tasks, planner or remainder
             // The user wants all registry items to be visible.
             const isRelevant = w.source === 'tasks' || w.source === 'planner' || w.source === 'remainder' || !w.source;
@@ -262,12 +292,12 @@ const WorkManager: React.FC<WorkManagerProps> = ({
             </div>
 
             <div className="space-y-3">
-                {filteredAssignments.map(work => {
+                {filteredAssignments.map((work, idx) => {
                     const isSelected = selectedWorkIds?.includes(work.id);
                     const isStanding = standingWorkId === work.id;
                     return (
                         <div 
-                            key={work.id} 
+                            key={`${work.id}-${idx}`} 
                             className={`group bg-white p-4 sm:p-5 rounded-2xl border transition-all cursor-pointer ${
                                 isStanding
                                 ? 'border-indigo-600 shadow-md ring-2 ring-indigo-600/30 bg-indigo-50/20'
@@ -334,6 +364,8 @@ const WorkManager: React.FC<WorkManagerProps> = ({
                                         onDelete={canEdit ? (e: any) => { e.stopPropagation(); handleDelete(work.id); } : undefined} 
                                         onCopy={canEdit ? (e: any) => { e.stopPropagation(); handleCopy(work); } : undefined}
                                         onLogMap={canEdit ? (e: any) => { e.stopPropagation(); onLogOnMapRequest(work); } : undefined}
+                                        hasMapMarker={!!(work.linkedFeatureId || (work.sectorIds && work.sectorIds.length > 0))}
+                                        onRemoveFromMap={canEdit ? (e: any) => { e.stopPropagation(); handleRemoveFromMap(work); } : undefined}
                                         isKa={isKa}
                                     />
                                 </div>

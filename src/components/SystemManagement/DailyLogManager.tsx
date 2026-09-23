@@ -15,13 +15,18 @@ const DailyLogManager: React.FC<DailyLogManagerProps> = ({ employees, dailyLogs,
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     
     const handleLog = (employeeId: string, type: DailyLogEntry['logType']) => {
+        const existing = dailyLogs.find(l => l.employeeId === employeeId && l.date.startsWith(date));
+        if (existing && existing.logType === type) {
+            return;
+        }
         const newLog: DailyLogEntry = {
-            id: `dl-${Date.now()}`,
+            id: existing ? existing.id : `dl-${employeeId}-${date}`,
             employeeId,
             date,
             logType: type
         };
-        onSetDailyLogs([...dailyLogs, newLog]);
+        const filtered = dailyLogs.filter(l => !(l.employeeId === employeeId && l.date.startsWith(date)));
+        onSetDailyLogs([...filtered, newLog]);
     };
 
     const getStatus = (empId: string) => {

@@ -60,7 +60,8 @@ export interface Organization {
     isDiscoverable: boolean;
     createdBy: string;
     createdAt: string;
-    status: 'active' | 'archived' | 'suspended' | 'blocked';
+    status: 'active' | 'archived' | 'suspended' | 'blocked' | 'paused';
+    isPaused?: boolean;
     trial_start_date: string;
     trialExpiry: string;
     isPaid: boolean;
@@ -74,6 +75,8 @@ export interface Organization {
     identificationCode?: string;
     phoneNumber?: string;
     email?: string;
+    crops?: string[]; // Multiple crops selected for the plantation e.g. ['Apple', 'Lemons']
+    plantationCrops?: string[]; // Array of selected crops for plantation
 }
 
 export interface Membership {
@@ -252,6 +255,9 @@ export interface BasePlantationFeature {
     parentId?: string;
     isVisible?: boolean;
     color?: string;
+    customColor?: string;
+    priority?: 'low' | 'medium' | 'high' | 'urgent';
+    status?: string;
     organizationId?: string;
     createdBy?: string;
     notes?: string;
@@ -416,9 +422,11 @@ export interface DashboardWidget {
     isVisible: boolean;
     order: number;
     content?: any;
+    colSpan?: 1 | 2 | 3;
+    heightPx?: number;
 }
 
-export type DashboardWidgetType = 'attendance' | 'market_feed' | 'seedling_health' | 'harvest_pulse' | 'daily_news' | 'weather' | 'field_summary' | 'tasks' | 'guest_stats' | 'seedling_stats' | 'seedling_summary' | 'crops_summary';
+export type DashboardWidgetType = 'attendance' | 'market_feed' | 'seedling_health' | 'harvest_pulse' | 'daily_news' | 'weather' | 'field_summary' | 'tasks' | 'planner' | 'hardware_labs' | 'team_hubs' | 'guest_stats' | 'seedling_stats' | 'seedling_summary' | 'crops_summary' | 'choose_goal' | 'agronomy_quick';
 
 export interface GroundingSource {
     web?: { uri: string; title: string };
@@ -635,10 +643,14 @@ export interface WorkAssignment {
     status: TaskStatus;
     taskType: TaskType;
     assignedEmployeeIds: string[];
-    employeeHours: EmployeeWorkLog[];
+    employeeHours?: EmployeeWorkLog[];
     sectorIds: string[];
     complexity?: 'solo' | 'team';
     plannedTime?: number;
+    plannedHours?: number;
+    priority?: 'low' | 'medium' | 'high' | 'urgent';
+    color?: string;
+    createdAt?: string;
     totalLaborCost?: number;
     totalMaterialCost?: number;
     totalCost?: number;
@@ -1306,6 +1318,7 @@ export interface HardwareDevice {
 
 export interface HarvestEntry {
     id: string;
+    organizationId?: string;
     harvestEventId: string;
     employeeId: string;
     scannedAt: string;
@@ -1759,7 +1772,7 @@ export const isValidCoordinate = (p: any): p is [number, number] => {
 // Operational Anomaly & AI Analysis Suite
 // ==========================================
 
-export type AnalysisModuleScope = 'stock' | 'agronomy' | 'tasks' | 'harvest' | 'accounting' | 'machinery';
+export type AnalysisModuleScope = 'stock' | 'agronomy' | 'tasks' | 'harvest' | 'accounting' | 'machinery' | 'plantation';
 export type AnalysisTriggerMode = 'scheduled' | 'interval' | 'on_demand';
 export type AnalysisIntervalCadence = 'weekly' | 'monthly' | 'annual' | 'custom';
 export type AiAnomalySeverity = 'low' | 'medium' | 'high' | 'critical';

@@ -190,14 +190,96 @@ const createSeedlingIcon = (condition: SeedlingCondition, isSelected: boolean) =
     return icon;
 };
 
-const createMonitoringIcon = (feature: NotePlantationFeature) => {
-    const size = feature.iconSize || 28;
+export const getMarkerColorAndPriority = (feature: any) => {
     const isCompleted = (feature as any).status === 'completed';
-    const colors = { camera: '#f43f5e', sensor: '#3b82f6', checkpoint: '#8b5cf6' };
-    const bgColor = isCompleted ? '#cbd5e1' : (colors[feature.monitoringType as keyof typeof colors] || '#a3a3a3');
-    const opacity = isCompleted ? 0.6 : 1;
-    const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 36 36" style="opacity: ${opacity}"><circle cx="18" cy="18" r="16" fill="${bgColor}" stroke="#FFFFFF" stroke-width="2" />${isCompleted ? '<path d="M12 18l4 4 8-8" stroke="white" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' : ''}</svg>`;
-    return L.divIcon({ html: svgIcon, className: '', iconSize: [size, size], iconAnchor: [size / 2, size], popupAnchor: [0, -size] });
+    const rawPriority = String((feature as any).priority || (feature as any).importance || 'medium').toLowerCase();
+
+    // Default color mapping by priority:
+    // urgent -> crimson red (#dc2626)
+    // high -> red (#ef4444)
+    // medium -> amber yellow (#f59e0b)
+    // low -> slate grey (#64748b)
+    let defaultColor = '#f59e0b';
+    if (rawPriority === 'urgent') defaultColor = '#dc2626';
+    else if (rawPriority === 'high') defaultColor = '#ef4444';
+    else if (rawPriority === 'low') defaultColor = '#64748b';
+
+    // If custom color is explicitly set on feature (and not the legacy grey placeholder), honor it
+    let finalColor = defaultColor;
+    if (feature.customColor) {
+        finalColor = feature.customColor;
+    } else if (feature.color && feature.color !== '#a3a3a3' && feature.color !== '#cbd5e1') {
+        finalColor = feature.color;
+    }
+
+    if (isCompleted) {
+        return {
+            color: '#10b981',
+            isCompleted: true,
+            priority: rawPriority,
+            pulse: false
+        };
+    }
+
+    const pulse = rawPriority === 'urgent' || rawPriority === 'high';
+    return {
+        color: finalColor,
+        isCompleted: false,
+        priority: rawPriority,
+        pulse
+    };
+};
+
+const createMonitoringIcon = (feature: NotePlantationFeature | any) => {
+    const size = feature.iconSize || 30;
+    const { color, isCompleted, pulse } = getMarkerColorAndPriority(feature);
+    const opacity = isCompleted ? 0.8 : 1;
+
+    // Pulse wave for High / Urgent importance markers
+    const pulseRing = pulse
+        ? `<div style="position: absolute; inset: -5px; border-radius: 50%; border: 2.5px solid ${color}; opacity: 0.8; animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite; pointer-events: none;"></div>`
+        : '';
+
+    const priorityPip = pulse
+        ? `<div style="position: absolute; top: -3px; right: -3px; width: 10px; height: 10px; border-radius: 50%; background-color: #ef4444; border: 2px solid white; box-shadow: 0 1px 4px rgba(0,0,0,0.35);"></div>`
+        : '';
+
+    const html = `
+        <div style="position: relative; width: ${size}px; height: ${size}px; display: flex; align-items: center; justify-content: center;">
+            ${pulseRing}
+            <div style="
+                width: ${size}px; 
+                height: ${size}px; 
+                border-radius: 50%; 
+                background-color: ${color}; 
+                border: 2.5px solid #ffffff; 
+                box-shadow: 0 3px 8px rgba(0,0,0,0.4), 0 0 0 1px rgba(0,0,0,0.15); 
+                display: flex; 
+                align-items: center; 
+                justify-content: center; 
+                opacity: ${opacity};
+                transition: all 0.2s ease;
+                cursor: pointer;
+            ">
+                ${isCompleted ? `
+                    <svg width="${size * 0.55}" height="${size * 0.55}" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                ` : `
+                    <div style="width: ${size * 0.35}px; height: ${size * 0.35}px; border-radius: 50%; background-color: #ffffff; opacity: 0.95;"></div>
+                `}
+            </div>
+            ${priorityPip}
+        </div>
+    `;
+
+    return L.divIcon({ 
+        html, 
+        className: 'agrimap-point-marker', 
+        iconSize: [size, size], 
+        iconAnchor: [size / 2, size / 2], 
+        popupAnchor: [0, -size / 2 - 4] 
+    });
 };
 
 const createMyLocationIcon = (isGps: boolean) => L.divIcon({
@@ -989,8 +1071,9 @@ const MapEventsHandler: React.FC<{
     onMapClick?: (latlng: L.LatLng) => void;
     onSetCenter?: (center: [number, number]) => void;
     onSetZoom?: (zoom: number) => void;
-    onContextMenu?: (screenPoint: { x: number; y: number }) => void;
-}> = ({ onMapClick, onSetCenter, onSetZoom, onContextMenu }) => {
+    onContextMenu?: (screenPoint: { x: number; y: number }, coordinates?: { lat: number; lng: number }) => void;
+    onMapContextMenu?: (screenPoint: { x: number; y: number }, coordinates?: { lat: number; lng: number }) => void;
+}> = ({ onMapClick, onSetCenter, onSetZoom, onContextMenu, onMapContextMenu }) => {
     const moveTimerRef = useRef<any>(null);
     const zoomTimerRef = useRef<any>(null);
 
@@ -999,7 +1082,11 @@ const MapEventsHandler: React.FC<{
         contextmenu(e) {
             if (e && e.originalEvent) {
                 e.originalEvent.preventDefault();
-                onContextMenu?.({ x: e.originalEvent.clientX, y: e.originalEvent.clientY });
+                const coords = (e.latlng && Number.isFinite(e.latlng.lat) && Number.isFinite(e.latlng.lng))
+                    ? { lat: e.latlng.lat, lng: e.latlng.lng }
+                    : undefined;
+                onContextMenu?.({ x: e.originalEvent.clientX, y: e.originalEvent.clientY }, coords);
+                onMapContextMenu?.({ x: e.originalEvent.clientX, y: e.originalEvent.clientY }, coords);
             }
         },
         moveend(e) { 
@@ -1177,8 +1264,8 @@ export interface MapComponentProps {
     liveShowcases?: LiveMapShowcase[];
     inProgressShowcasePoints?: [number, number][];
     onShowcaseMapClick?: (latlng: [number, number]) => void;
-    onContextMenuFeature?: (feature: PlantationFeature, screenPoint: { x: number; y: number }) => void;
-    onMapContextMenu?: (screenPoint: { x: number; y: number }) => void;
+    onContextMenuFeature?: (feature: PlantationFeature, screenPoint: { x: number; y: number }, coordinates?: { lat: number; lng: number }) => void;
+    onMapContextMenu?: (screenPoint: { x: number; y: number }, coordinates?: { lat: number; lng: number }) => void;
 }
 
 export const MapComponent: React.FC<MapComponentProps> = (props) => {
@@ -1609,35 +1696,249 @@ export const MapComponent: React.FC<MapComponentProps> = (props) => {
                         <div className="font-black text-[10px] uppercase">{feature.name}</div>
                     </Tooltip>
                     <Popup>
-                        <div className="p-2 min-w-[150px]">
-                            <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{feature.type}</div>
-                            <div className="text-sm font-black text-slate-800 mb-2">{feature.name}</div>
-                            <p className="text-[10px] text-slate-500 mb-4">{feature.notes || 'Monitoring Point Active'}</p>
+                        <div className="p-2.5 min-w-[200px] text-slate-800">
+                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                                <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${
+                                    (feature as any).monitoringType === 'work' || (feature as any).source === 'tasks'
+                                        ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                        : (feature as any).monitoringType === 'task' || (feature as any).source === 'planner'
+                                        ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                                        : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                }`}>
+                                    {(feature as any).taskType || (feature as any).monitoringType || feature.type}
+                                </span>
+                                <span className={`text-[9px] font-black uppercase ${isCompleted ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                    {isCompleted ? '✓ Completed' : '● Active'}
+                                </span>
+                            </div>
+
+                            <div className="text-sm font-black text-slate-900 mb-1 leading-snug">{feature.name}</div>
+                            <p className="text-[11px] text-slate-600 mb-2.5 bg-slate-50 p-2 rounded-lg border border-slate-200">
+                                {feature.notes || feature.comment || (isKa ? 'საველე წერტილი' : 'Field location marker')}
+                            </p>
+
+                            {/* Interactive Priority & Color Picker */}
+                            <div className="mb-2.5 p-2 bg-slate-50/95 rounded-xl border border-slate-200">
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
+                                        {isKa ? 'პრიორიტეტი & ფერი' : 'Priority & Color'}
+                                    </span>
+                                    <span className={`text-[8.5px] font-black px-1.5 py-0.5 rounded uppercase ${
+                                        ((feature as any).priority || 'medium') === 'urgent' ? 'bg-red-100 text-red-700' :
+                                        ((feature as any).priority || 'medium') === 'high' ? 'bg-rose-100 text-rose-700' :
+                                        ((feature as any).priority || 'medium') === 'low' ? 'bg-slate-200 text-slate-700' :
+                                        'bg-amber-100 text-amber-700'
+                                    }`}>
+                                        {((feature as any).priority || 'medium').toUpperCase()}
+                                    </span>
+                                </div>
+
+                                {/* Priority level buttons */}
+                                <div className="grid grid-cols-4 gap-1 mb-2">
+                                    <button
+                                        type="button"
+                                        title={isKa ? "სასწრაფო (წითელი)" : "Urgent (Crimson Red)"}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onUpdateFeature?.({
+                                                ...feature,
+                                                priority: 'urgent',
+                                                color: '#dc2626',
+                                                customColor: '#dc2626'
+                                            } as any);
+                                            toast.success(isKa ? "პრიორიტეტი: სასწრაფო (წითელი)" : "Priority: Urgent (Red)");
+                                        }}
+                                        className={`py-1 px-1 rounded-lg text-[8px] font-black uppercase tracking-wider flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                                            (feature as any).priority === 'urgent'
+                                                ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-400'
+                                                : 'bg-white border border-red-200 text-red-700 hover:bg-red-50'
+                                        }`}
+                                    >
+                                        <span className="w-1.5 h-1.5 rounded-full bg-red-400"></span>
+                                        {isKa ? 'სასწრ' : 'Urg'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        title={isKa ? "მაღალი (წითელი)" : "High (Red)"}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onUpdateFeature?.({
+                                                ...feature,
+                                                priority: 'high',
+                                                color: '#ef4444',
+                                                customColor: '#ef4444'
+                                            } as any);
+                                            toast.success(isKa ? "პრიორიტეტი: მაღალი (წითელი)" : "Priority: High (Red)");
+                                        }}
+                                        className={`py-1 px-1 rounded-lg text-[8px] font-black uppercase tracking-wider flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                                            (feature as any).priority === 'high'
+                                                ? 'bg-rose-500 text-white shadow-sm ring-2 ring-rose-300'
+                                                : 'bg-white border border-rose-200 text-rose-700 hover:bg-rose-50'
+                                        }`}
+                                    >
+                                        <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+                                        {isKa ? 'მაღალი' : 'High'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        title={isKa ? "საშუალო (ყვითელი)" : "Medium (Yellow)"}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onUpdateFeature?.({
+                                                ...feature,
+                                                priority: 'medium',
+                                                color: '#f59e0b',
+                                                customColor: '#f59e0b'
+                                            } as any);
+                                            toast.success(isKa ? "პრიორიტეტი: საშუალო (ყვითელი)" : "Priority: Medium (Yellow)");
+                                        }}
+                                        className={`py-1 px-1 rounded-lg text-[8px] font-black uppercase tracking-wider flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                                            !(feature as any).priority || (feature as any).priority === 'medium'
+                                                ? 'bg-amber-500 text-white shadow-sm ring-2 ring-amber-300'
+                                                : 'bg-white border border-amber-200 text-amber-700 hover:bg-amber-50'
+                                        }`}
+                                    >
+                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                                        {isKa ? 'საშ' : 'Med'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        title={isKa ? "დაბალი (რუხი)" : "Low (Grey)"}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onUpdateFeature?.({
+                                                ...feature,
+                                                priority: 'low',
+                                                color: '#64748b',
+                                                customColor: '#64748b'
+                                            } as any);
+                                            toast.success(isKa ? "პრიორიტეტი: დაბალი (რუხი)" : "Priority: Low (Grey)");
+                                        }}
+                                        className={`py-1 px-1 rounded-lg text-[8px] font-black uppercase tracking-wider flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                                            (feature as any).priority === 'low'
+                                                ? 'bg-slate-600 text-white shadow-sm ring-2 ring-slate-400'
+                                                : 'bg-white border border-slate-300 text-slate-600 hover:bg-slate-100'
+                                        }`}
+                                    >
+                                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                        {isKa ? 'დაბალი' : 'Low'}
+                                    </button>
+                                </div>
+
+                                {/* Custom Color palette row */}
+                                <div className="flex items-center justify-between gap-1 pt-1.5 border-t border-slate-200">
+                                    <span className="text-[8px] font-bold text-slate-400 uppercase">
+                                        {isKa ? 'ფერის არჩევა:' : 'Select Color:'}
+                                    </span>
+                                    <div className="flex items-center gap-1">
+                                        {[
+                                            { hex: '#ef4444', label: 'Red (High)' },
+                                            { hex: '#f59e0b', label: 'Yellow (Med)' },
+                                            { hex: '#10b981', label: 'Emerald' },
+                                            { hex: '#3b82f6', label: 'Blue' },
+                                            { hex: '#8b5cf6', label: 'Purple' },
+                                            { hex: '#64748b', label: 'Grey (Low)' },
+                                        ].map(col => {
+                                            const isSelected = (feature as any).color === col.hex || (feature as any).customColor === col.hex;
+                                            return (
+                                                <button
+                                                    key={col.hex}
+                                                    type="button"
+                                                    title={col.label}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onUpdateFeature?.({
+                                                            ...feature,
+                                                            color: col.hex,
+                                                            customColor: col.hex
+                                                        } as any);
+                                                        toast.success(isKa ? "წერტილის ფერი შეიცვალა" : "Marker color updated");
+                                                    }}
+                                                    style={{ backgroundColor: col.hex }}
+                                                    className={`w-4 h-4 rounded-full border border-white shadow-sm transition-transform hover:scale-125 cursor-pointer ${
+                                                        isSelected ? 'ring-2 ring-indigo-500 scale-110' : ''
+                                                    }`}
+                                                />
+                                            );
+                                        })}
+                                        {/* Color Picker input */}
+                                        <label 
+                                            className="relative w-4 h-4 rounded-full overflow-hidden border border-slate-300 cursor-pointer shadow-sm hover:scale-110 transition-transform" 
+                                            title={isKa ? "საკუთარი ფერის არჩევა" : "Choose custom color"}
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <input
+                                                type="color"
+                                                value={(feature as any).color || '#ef4444'}
+                                                onChange={(e) => {
+                                                    const hex = e.target.value;
+                                                    onUpdateFeature?.({
+                                                        ...feature,
+                                                        color: hex,
+                                                        customColor: hex
+                                                    } as any);
+                                                }}
+                                                className="absolute -top-3 -left-3 w-10 h-10 opacity-0 cursor-pointer"
+                                            />
+                                            <span className="w-full h-full block bg-gradient-to-tr from-rose-500 via-amber-400 to-indigo-500"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
                             
+                            {/* Mark Completed Toggle */}
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     const nextStatus = isCompleted ? 'pending' : 'completed';
                                     onUpdateFeature?.({ ...feature, status: nextStatus } as any);
                                 }}
-                                className={`w-full py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all ${isCompleted ? 'bg-slate-100 text-slate-400 border border-slate-200' : 'bg-emerald-600 text-white shadow-lg shadow-emerald-100'}`}
+                                className={`w-full py-2 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all cursor-pointer ${
+                                    isCompleted ? 'bg-slate-100 text-slate-500 border border-slate-300 hover:bg-slate-200' : 'bg-emerald-600 text-white shadow-md shadow-emerald-200 hover:bg-emerald-700'
+                                }`}
                             >
-                                {isCompleted ? 'RESTORE ITEM' : 'MARK COMPLETED'}
+                                {isCompleted ? (isKa ? 'აღდგენა (აქტიური)' : 'RESTORE ITEM') : (isKa ? 'შესრულებულად მონიშვნა' : 'MARK COMPLETED')}
                             </button>
 
+                            {/* Open in Module Button */}
+                            {((feature as any).monitoringType === 'work' || (feature as any).source === 'tasks') && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        window.dispatchEvent(new CustomEvent('agrimap_navigate_module', { detail: { mode: 'tasks', featureId: feature.id } }));
+                                    }}
+                                    className="w-full mt-1.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-xl font-black text-[9px] uppercase tracking-wider border border-amber-200 transition-all cursor-pointer flex items-center justify-center gap-1"
+                                >
+                                    <span>{isKa ? 'სამუშაოების მოდულში გახსნა' : 'Open in Tasks & Works'}</span>
+                                </button>
+                            )}
+
+                            {((feature as any).monitoringType === 'task' || (feature as any).source === 'planner' || feature.type === 'note') && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        window.dispatchEvent(new CustomEvent('agrimap_navigate_module', { detail: { mode: 'planner', featureId: feature.id } }));
+                                    }}
+                                    className="w-full mt-1.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-xl font-black text-[9px] uppercase tracking-wider border border-blue-200 transition-all cursor-pointer flex items-center justify-center gap-1"
+                                >
+                                    <span>{isKa ? 'დამგეგმავში / შენიშვნებში ნახვა' : 'Open in Planner / Notes'}</span>
+                                </button>
+                            )}
+
+                            {/* Remove from Map */}
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     if (props.onDeleteFeature) {
                                         props.onDeleteFeature([feature.id]);
-                                        toast.success("Item removed from map.");
+                                        toast.success(isKa ? "ელემენტი წაიშალა რუკაზე." : "Item removed from map.");
                                     } else {
-                                        toast.error("Deletion not supported in this view.");
+                                        toast.error(isKa ? "წაშლა მიუწვდომელია." : "Deletion not supported in this view.");
                                     }
                                 }}
-                                className="w-full mt-2 py-2 bg-red-50 hover:bg-red-100/80 text-red-600 rounded-xl font-black text-[8px] uppercase tracking-widest border border-red-100 transition-all"
+                                className="w-full mt-1.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl font-black text-[8.5px] uppercase tracking-wider border border-red-200 transition-all cursor-pointer"
                             >
-                                REMOVE FROM MAP
+                                {isKa ? 'რუკიდან წაშლა / მოცილება' : 'REMOVE FROM MAP'}
                             </button>
                         </div>
                     </Popup>
@@ -2058,6 +2359,7 @@ export const MapComponent: React.FC<MapComponentProps> = (props) => {
                     onSetCenter={props.onSetMapCenter} 
                     onSetZoom={props.onSetMapZoom} 
                     onContextMenu={onMapContextMenu}
+                    onMapContextMenu={onMapContextMenu}
                 />
                 {activeDrawingTool?.tool && (
                     <DrawingHandler 

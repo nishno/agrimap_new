@@ -1,11 +1,13 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import type { InventoryItem, HarvestEvent, Transaction, Account, Employee, Machinery, YieldByVariety, Organization, Membership, User, OrganizationType, AgricultureType, UserRole, Crop } from '../types';
+import type { InventoryItem, HarvestEvent, Transaction, Account, Employee, Machinery, YieldByVariety, Organization, Membership, User, OrganizationType, AgricultureType, UserRole, Crop, SubscriptionTier, SubscriptionStatus } from '../types';
 import { 
     ShieldCheckIcon, BanknotesIcon, ArrowTrendingUpIcon, 
     LeafIcon, InfoIcon, ChartBarIcon, TractorIcon, SparklesIcon,
     UsersIcon, ArchiveBoxIcon, CheckIcon, XIcon, EyeIcon, 
     BuildingStorefrontIcon, ShoppingBagIcon, RectangleStackIcon,
-    PlusIcon, SearchIcon, MapIcon, ChevronRightIcon, GlobeIcon, PencilIcon
+    PlusIcon, SearchIcon, MapIcon, ChevronRightIcon, GlobeIcon, PencilIcon,
+    TrashIcon, RefreshCwIcon, PlayIcon, PauseIcon, StarIcon, AlertTriangleIcon,
+    CreditCardIcon, PaperAirplaneIcon, ShareIcon
 } from './Icons';
 import { toast } from 'sonner';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -32,6 +34,22 @@ const transliterateEngToGeo = (str: string): string => {
   return str.split('').map(char => engToGeoMap[char.toLowerCase()] || char).join('');
 };
 
+export interface DeletionApprovalRequest {
+    id: string;
+    organizationId: string;
+    organizationName: string;
+    requestedBy: {
+        id: string;
+        name: string;
+        email?: string;
+    };
+    requestedAt: string;
+    coFounderIds: string[];
+    approvals: string[];
+    rejections: string[];
+    status: 'pending' | 'approved' | 'rejected';
+}
+
 interface FoundersViewProps {
     inventoryItems: InventoryItem[];
     onSetInventoryItems: (items: InventoryItem[]) => void;
@@ -47,10 +65,16 @@ interface FoundersViewProps {
     memberships: Membership[];
     onAddOrg: (org: Organization, mem: Membership, selectedCrops?: any[]) => void;
     onUpdateOrg?: (org: Organization) => void;
+    onDeleteOrganization?: (id: string, name: string, skipConfirm?: boolean) => Promise<void> | void;
+    onDeleteAccount?: () => Promise<void> | void;
+    onPauseOrg?: (orgId: string, isPaused: boolean) => void;
+    onResetPlantation?: (orgId: string) => void;
+    onUpdateMemberships?: (memberships: Membership[]) => void;
     onSwitchOrg: (orgId: string) => void;
     onStartMapRegistration?: (regData: any) => void;
     activeOrgId: string | null;
     currentUser: User;
+    allUsers?: User[];
     crops: Crop[];
     onAddPost?: (post: any) => void;
 }
@@ -246,10 +270,52 @@ const FoundersView: React.FC<FoundersViewProps> = (props) => {
     const { 
         inventoryItems, onSetInventoryItems, harvestEvents, accounts, 
         onSetAccounts, employees, machinery, transactions, onSetTransactions, 
-        organizations, discoverableOrganizations = [], memberships, onAddOrg, onUpdateOrg, onSwitchOrg, onStartMapRegistration, activeOrgId, currentUser, crops, onAddPost 
+        organizations, discoverableOrganizations = [], memberships, onAddOrg, onUpdateOrg, 
+        onDeleteOrganization, onDeleteAccount, onPauseOrg, onResetPlantation, onUpdateMemberships,
+        onSwitchOrg, onStartMapRegistration, activeOrgId, currentUser, allUsers = [], crops, onAddPost 
     } = props;
 
-    const { t, formatCurrency } = useLanguage();
+    const { t, formatCurrency, language } = useLanguage();
+    const isKa = language === 'ka';
+
+    // Root / Super Admin Check
+    const isRootOrSuperAdmin = useMemo(() => {
+        return currentUser?.roles?.includes('ROOT_SUPER_ADMIN') || 
+            (currentUser as any)?.role === 'ROOT_SUPER_ADMIN' ||
+            currentUser?.roles?.some(r => ['root', 'superadmin', 'super_admin', 'root_super_admin'].includes(String(r).toLowerCase())) ||
+            currentUser?.email?.toLowerCase() === 'giorgi.nishno@gmail.com' ||
+            currentUser?.id === 'root-system' ||
+            currentUser?.id === 'mock-1';
+    }, [currentUser]);
+
+    // Deletion Approval Requests state (persisted in safe storage)
+    const [deletionRequests, setDeletionRequests] = useState<DeletionApprovalRequest[]>(() => {
+        try {
+            return safeStorage.safeParse(localStorage.getItem('agrimap_deletion_requests'), []);
+        } catch {
+            return [];
+        }
+    });
+
+    const updateDeletionRequests = (newList: DeletionApprovalRequest[]) => {
+        setDeletionRequests(newList);
+        try {
+            localStorage.setItem('agrimap_deletion_requests', JSON.stringify(newList));
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    // Modal states
+    const [showDeleteProfileModal, setShowDeleteProfileModal] = useState(false);
+    const [isDeletingProfile, setIsDeletingProfile] = useState(false);
+    const [deleteOrgModal, setDeleteOrgModal] = useState<{ org: Organization; coFounders: any[]; isSoleFounder: boolean; isRootSuperAdmin: boolean } | null>(null);
+    const [resetPlantationOrg, setResetPlantationOrg] = useState<Organization | null>(null);
+    const [managingSubscriptionOrg, setManagingSubscriptionOrg] = useState<Organization | null>(null);
+    const [changingFounderOrg, setChangingFounderOrg] = useState<Organization | null>(null);
+    const [managingOrg, setManagingOrg] = useState<Organization | null>(null);
+    const [messageModal, setMessageModal] = useState<{ org: Organization; mode: 'coFounders' | 'broadcast' } | null>(null);
+
     const [view, setView] = useState<'organizations' | 'control'>('organizations');
     const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
     const [orgSearchQuery, setOrgSearchQuery] = useState('');
@@ -258,6 +324,301 @@ const FoundersView: React.FC<FoundersViewProps> = (props) => {
     const [discoveryOrg, setDiscoveryOrg] = useState<Organization | null>(null);
     const [isEditOrgModalOpen, setIsEditOrgModalOpen] = useState(false);
     const [editOrgData, setEditOrgData] = useState<Partial<Organization>>({});
+
+    const getOrgFounders = (org: Organization) => {
+        const founderMemberships = memberships.filter(
+            m => m.organizationId === org.id && (m.role === 'Founder' || m.role === 'Co-Founder')
+        );
+        const founderUserIds = new Set<string>();
+        if (org.createdBy) founderUserIds.add(org.createdBy);
+        founderMemberships.forEach(m => founderUserIds.add(m.userId));
+        
+        return Array.from(founderUserIds).map(uid => {
+            const user = allUsers?.find(u => u.id === uid);
+            const mem = founderMemberships.find(m => m.userId === uid);
+            const isCreator = org.createdBy === uid;
+            const isMe = currentUser?.id === uid;
+            return {
+                userId: uid,
+                name: user?.name || (isMe ? currentUser.name : (isCreator ? (isKa ? 'დამფუძნებელი' : 'Founder') : (isKa ? 'თანადამფუძნებელი' : 'Co-Founder'))),
+                email: user?.email || (isMe ? currentUser.email : ''),
+                role: mem?.role || (isCreator ? 'Founder' : 'Co-Founder'),
+                isCreator,
+                isMe
+            };
+        });
+    };
+
+    const userOrgs = useMemo(() => {
+        if (isRootOrSuperAdmin) {
+            // Root / Super Admin has access to all registered organizations
+            return organizations;
+        }
+        return organizations.filter(org => 
+            org.createdBy === currentUser.id || memberships.some(m => m.organizationId === org.id)
+        );
+    }, [organizations, memberships, isRootOrSuperAdmin, currentUser.id]);
+
+    const handleTogglePause = (org: Organization) => {
+        const currentlyPaused = org.isPaused || org.status === 'paused';
+        const newPaused = !currentlyPaused;
+        if (onPauseOrg) {
+            onPauseOrg(org.id, newPaused);
+        } else if (onUpdateOrg) {
+            onUpdateOrg({
+                ...org,
+                status: newPaused ? 'paused' : 'active',
+                isPaused: newPaused
+            });
+        }
+        toast.success(newPaused 
+            ? (isKa ? `პლანტაცია "${org.name}" შეჩერებულია` : `Plantation "${org.name}" paused`)
+            : (isKa ? `პლანტაცია "${org.name}" გააქტიურდა` : `Plantation "${org.name}" resumed`)
+        );
+    };
+
+    const handleConfirmReset = () => {
+        if (!resetPlantationOrg) return;
+        if (onResetPlantation) {
+            onResetPlantation(resetPlantationOrg.id);
+        }
+        toast.success(isKa ? `პლანტაციის მონაცემები "${resetPlantationOrg.name}" განულდა` : `Plantation features reset for "${resetPlantationOrg.name}".`);
+        setResetPlantationOrg(null);
+    };
+
+    const handleInitiateDeleteOrg = (org: Organization) => {
+        if (isRootOrSuperAdmin) {
+            setDeleteOrgModal({
+                org,
+                coFounders: [],
+                isSoleFounder: true,
+                isRootSuperAdmin: true
+            });
+            return;
+        }
+
+        const founders = getOrgFounders(org);
+        const otherCoFounders = founders.filter(f => f.userId !== currentUser.id);
+
+        if (otherCoFounders.length === 0) {
+            setDeleteOrgModal({
+                org,
+                coFounders: [],
+                isSoleFounder: true,
+                isRootSuperAdmin: false
+            });
+        } else {
+            setDeleteOrgModal({
+                org,
+                coFounders: otherCoFounders,
+                isSoleFounder: false,
+                isRootSuperAdmin: false
+            });
+        }
+    };
+
+    const handleConfirmDeleteOrg = async () => {
+        if (!deleteOrgModal) return;
+        const { org, isSoleFounder, isRootSuperAdmin, coFounders } = deleteOrgModal;
+
+        if (isRootSuperAdmin || isSoleFounder) {
+            try {
+                if (onDeleteOrganization) {
+                    await onDeleteOrganization(org.id, org.name, true);
+                }
+                const updatedRequests = deletionRequests.filter(r => r.organizationId !== org.id);
+                updateDeletionRequests(updatedRequests);
+                toast.success(isKa ? `ორგანიზაცია "${org.name}" წაიშალა.` : `Organization "${org.name}" has been permanently deleted.`);
+                setDeleteOrgModal(null);
+            } catch (err: any) {
+                console.error("Delete org error:", err);
+                toast.error(err?.message || "Failed to delete organization");
+            }
+        } else {
+            const newReq: DeletionApprovalRequest = {
+                id: `del-req-${Date.now()}-${org.id}`,
+                organizationId: org.id,
+                organizationName: org.name,
+                requestedBy: {
+                    id: currentUser.id,
+                    name: currentUser.name || "Founder",
+                    email: currentUser.email || ""
+                },
+                requestedAt: new Date().toISOString(),
+                coFounderIds: coFounders.map(f => f.userId),
+                approvals: [currentUser.id],
+                rejections: [],
+                status: 'pending'
+            };
+
+            const updated = [...deletionRequests.filter(r => r.organizationId !== org.id), newReq];
+            updateDeletionRequests(updated);
+
+            if (onAddPost) {
+                onAddPost({
+                    content: `⚠️ [Deletion Approval Request] Founder ${currentUser.name || 'Admin'} requested to delete organization "${org.name}". Co-founder approval required.`,
+                    channelId: 'internal',
+                    hubType: 'internal',
+                    isDirectMessage: true,
+                    recipientId: coFounders.map(f => f.userId).join(','),
+                    authorId: currentUser.id,
+                    authorName: currentUser.name,
+                    timestamp: new Date().toISOString(),
+                    replies: []
+                });
+            }
+
+            toast.info(isKa 
+                ? "წაშლის მოთხოვნა გაეგზავნა თანადამფუძნებლებს დასადასტურებლად." 
+                : "Deletion approval request sent to co-founders.");
+            setDeleteOrgModal(null);
+        }
+    };
+
+    const handleVoteDeletion = async (requestId: string, approve: boolean) => {
+        const req = deletionRequests.find(r => r.id === requestId);
+        if (!req) return;
+
+        if (!approve) {
+            const updated = deletionRequests.map(r => {
+                if (r.id !== requestId) return r;
+                return {
+                    ...r,
+                    rejections: Array.from(new Set([...r.rejections, currentUser.id])),
+                    status: 'rejected' as const
+                };
+            });
+            updateDeletionRequests(updated);
+            toast.error(isKa ? "წაშლის მოთხოვნა უარყოფილია." : "Deletion request rejected.");
+            return;
+        }
+
+        const newApprovals = Array.from(new Set([...req.approvals, currentUser.id]));
+        const allApproved = req.coFounderIds.every(id => newApprovals.includes(id));
+
+        if (allApproved) {
+            if (onDeleteOrganization) {
+                await onDeleteOrganization(req.organizationId, req.organizationName, true);
+            }
+            const updated = deletionRequests.filter(r => r.id !== requestId);
+            updateDeletionRequests(updated);
+            toast.success(isKa 
+                ? `ყველა თანადამფუძნებლის დასტურით კომპანია "${req.organizationName}" წაიშალა.` 
+                : `All co-founders approved! Organization "${req.organizationName}" has been deleted.`);
+        } else {
+            const updated = deletionRequests.map(r => {
+                if (r.id !== requestId) return r;
+                return {
+                    ...r,
+                    approvals: newApprovals
+                };
+            });
+            updateDeletionRequests(updated);
+            toast.success(isKa ? "თქვენი თანხმობა დაფიქსირდა." : "Your approval has been recorded.");
+        }
+    };
+
+    const handleCancelDeletionRequest = (requestId: string) => {
+        const updated = deletionRequests.filter(r => r.id !== requestId);
+        updateDeletionRequests(updated);
+        toast.info(isKa ? "წაშლის მოთხოვნა გაუქმებულია." : "Deletion request cancelled.");
+    };
+
+    const handleDeleteAccountInternal = async () => {
+        setIsDeletingProfile(true);
+        try {
+            if (onDeleteAccount) {
+                await onDeleteAccount();
+            } else {
+                toast.success(isKa ? "პროფილი წაიშალა" : "Profile deleted successfully.");
+            }
+            setShowDeleteProfileModal(false);
+        } catch (err: any) {
+            console.error("Error deleting profile:", err);
+            toast.error(err?.message || "Failed to delete account");
+        } finally {
+            setIsDeletingProfile(false);
+        }
+    };
+
+    const handleChangeFounder = (org: Organization, targetUserId: string) => {
+        if (!targetUserId) return;
+        const targetUser = allUsers?.find(u => u.id === targetUserId);
+
+        if (onUpdateMemberships) {
+            const updated = memberships.map(m => {
+                if (m.organizationId !== org.id) return m;
+                if (m.userId === targetUserId) {
+                    return { ...m, role: 'Founder' as UserRole };
+                }
+                if (m.role === 'Founder') {
+                    return { ...m, role: 'Co-Founder' as UserRole };
+                }
+                return m;
+            });
+            onUpdateMemberships(updated);
+        }
+
+        if (onUpdateOrg) {
+            onUpdateOrg({ ...org, createdBy: targetUserId });
+        }
+
+        toast.success(isKa 
+            ? `დამფუძნებლის სტატუსი წარმატებით გადაეცა ${targetUser?.name || targetUserId}-ს` 
+            : `Founder role transferred to ${targetUser?.name || targetUserId}`);
+        setChangingFounderOrg(null);
+    };
+
+    const handleSaveSubscription = (org: Organization, tier: SubscriptionTier, status?: SubscriptionStatus) => {
+        if (onUpdateOrg) {
+            onUpdateOrg({
+                ...org,
+                tier,
+                subscriptionStatus: status || org.subscriptionStatus || 'Trial'
+            });
+        }
+        toast.success(isKa ? `გამოწერის გეგმა განახლდა: ${tier}` : `Subscription updated to ${tier}`);
+        setManagingSubscriptionOrg(null);
+    };
+
+    const handleSendMessageOrAd = (org: Organization, mode: 'coFounders' | 'broadcast', messageContent: string, adTitle?: string) => {
+        if (!messageContent.trim()) {
+            toast.error(isKa ? "გთხოვთ შეიყვანოთ ტექსტი" : "Please enter message content");
+            return;
+        }
+
+        if (onAddPost) {
+            if (mode === 'coFounders') {
+                const founders = getOrgFounders(org);
+                const recipientIds = founders.filter(f => f.userId !== currentUser.id).map(f => f.userId);
+                onAddPost({
+                    content: `[Founders Channel - ${org.name}] ${messageContent}`,
+                    channelId: 'internal',
+                    hubType: 'internal',
+                    isDirectMessage: true,
+                    recipientId: recipientIds.join(','),
+                    authorId: currentUser.id,
+                    authorName: currentUser.name,
+                    timestamp: new Date().toISOString(),
+                    replies: []
+                });
+                toast.success(isKa ? "შეტყობინება გაეგზავნა დამფუძნებლებს" : "Message sent to co-founders");
+            } else {
+                onAddPost({
+                    content: `📢 [${adTitle || (isKa ? 'კომერციული განცხადება' : 'Company Broadcast')} - ${org.name}]: ${messageContent}`,
+                    channelId: 'general',
+                    hubType: 'global',
+                    isDirectMessage: false,
+                    authorId: currentUser.id,
+                    authorName: `${org.name} (${currentUser.name})`,
+                    timestamp: new Date().toISOString(),
+                    replies: []
+                });
+                toast.success(isKa ? "განცხადება / რეკლამა გამოქვეყნდა ქსელში!" : "Ad / Broadcast published to company network!");
+            }
+        }
+        setMessageModal(null);
+    };
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -425,19 +786,31 @@ const FoundersView: React.FC<FoundersViewProps> = (props) => {
                                 : "High-level oversight and forensic auditing of your agricultural operations."}
                         </p>
                     </div>
-                    <div className="flex items-center gap-2 bg-white p-1 rounded-2xl border border-slate-200 shadow-sm">
-                        <button 
-                            onClick={() => setView('organizations')}
-                            className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${view === 'organizations' ? 'bg-slate-900 text-white shadow-lg shadow-slate-200' : 'text-slate-500 hover:bg-slate-50'}`}
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {/* Delete User Account Profile Button */}
+                        <button
+                            onClick={() => setShowDeleteProfileModal(true)}
+                            className="px-4 py-2.5 bg-red-50 hover:bg-red-600 hover:text-white text-red-600 border border-red-200 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm active:scale-95"
+                            title={isKa ? "საკუთარი მომხმარებლის პროფილის წაშლა" : "Delete your user account profile"}
                         >
-                            Organizations
+                            <TrashIcon className="w-3.5 h-3.5" />
+                            {isKa ? 'პროფილის წაშლა' : 'Delete User Profile'}
                         </button>
-                        <button 
-                            onClick={() => setView('control')}
-                            className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${view === 'control' ? 'bg-slate-900 text-white shadow-lg shadow-slate-200' : 'text-slate-500 hover:bg-slate-50'}`}
-                        >
-                            Audit & Control
-                        </button>
+
+                        <div className="flex items-center gap-2 bg-white p-1 rounded-2xl border border-slate-200 shadow-sm">
+                            <button 
+                                onClick={() => setView('organizations')}
+                                className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${view === 'organizations' ? 'bg-slate-900 text-white shadow-lg shadow-slate-200' : 'text-slate-500 hover:bg-slate-50'}`}
+                            >
+                                Organizations
+                            </button>
+                            <button 
+                                onClick={() => setView('control')}
+                                className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${view === 'control' ? 'bg-slate-900 text-white shadow-lg shadow-slate-200' : 'text-slate-500 hover:bg-slate-50'}`}
+                            >
+                                Audit & Control
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -451,77 +824,269 @@ const FoundersView: React.FC<FoundersViewProps> = (props) => {
                                 </h3>
                                 
                                 <div className="space-y-4">
-                                    {memberships.length > 0 ? (
-                                        memberships.map(m => {
-                                            const org = organizations.find(o => o.id === m.organizationId);
-                                            if (!org) return null;
+                                    {userOrgs.length > 0 ? (
+                                        userOrgs.map(org => {
                                             const isActive = org.id === activeOrgId;
+                                            const orgMem = memberships.find(m => m.organizationId === org.id && m.userId === currentUser.id);
+                                            const userRole = isRootOrSuperAdmin 
+                                                ? (orgMem?.role || 'ROOT_SUPER_ADMIN') 
+                                                : (orgMem?.role || (org.createdBy === currentUser.id ? 'Founder' : 'Member'));
+                                            
+                                            const isPaused = org.isPaused || org.status === 'paused';
+                                            const pendingDelReq = deletionRequests.find(r => r.organizationId === org.id && r.status === 'pending');
+                                            const foundersList = getOrgFounders(org);
+                                            const isFounderOrAdmin = userRole === 'Founder' || userRole === 'Admin' || isRootOrSuperAdmin;
 
                                             return (
                                                 <div 
-                                                    key={m.id} 
-                                                    className={`group p-6 rounded-3xl border-2 transition-all duration-300 flex items-center gap-6 ${
+                                                    key={org.id} 
+                                                    className={`group p-6 rounded-3xl border-2 transition-all duration-300 flex flex-col gap-4 ${
                                                         isActive 
-                                                            ? 'border-indigo-600 bg-indigo-50/30 shadow-xl shadow-indigo-100/50' 
-                                                            : 'border-slate-50 bg-slate-50/50 hover:border-slate-200 hover:bg-white hover:shadow-xl hover:shadow-slate-100'
+                                                            ? 'border-indigo-600 bg-indigo-50/20 shadow-xl shadow-indigo-100/50' 
+                                                            : isPaused
+                                                                ? 'border-amber-200 bg-amber-50/20 hover:border-amber-300 hover:bg-amber-50/30'
+                                                                : 'border-slate-100 bg-white hover:border-slate-200 hover:shadow-xl hover:shadow-slate-100'
                                                     }`}
                                                 >
-                                                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center flex-shrink-0 transition-transform group-hover:scale-110 ${
-                                                        isActive ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'bg-white text-slate-400 shadow-sm'
-                                                    }`}>
-                                                        <BuildingStorefrontIcon className="w-8 h-8" />
+                                                    {/* Top Row: Icon, Title, Badges, and Top-Right Action Buttons */}
+                                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                                        <div className="flex items-center gap-4 min-w-0">
+                                                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 transition-transform group-hover:scale-105 ${
+                                                                isActive 
+                                                                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' 
+                                                                    : isPaused
+                                                                        ? 'bg-amber-500 text-white shadow-lg shadow-amber-200'
+                                                                        : 'bg-slate-100 text-slate-500'
+                                                            }`}>
+                                                                <BuildingStorefrontIcon className="w-7 h-7" />
+                                                            </div>
+
+                                                            <div className="min-w-0">
+                                                                <div className="flex items-center gap-2 flex-wrap mb-1">
+                                                                    <h4 className={`text-lg font-black uppercase tracking-tight truncate ${isActive ? 'text-indigo-900' : 'text-slate-800'}`}>
+                                                                        {org.name}
+                                                                    </h4>
+                                                                    {isActive && (
+                                                                        <span className="bg-indigo-600 text-white text-[8px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest">
+                                                                            Active
+                                                                        </span>
+                                                                    )}
+                                                                    {isPaused && (
+                                                                        <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[8px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest flex items-center gap-1">
+                                                                            <PauseIcon className="w-2.5 h-2.5" />
+                                                                            {isKa ? 'შეჩერებულია' : 'Paused'}
+                                                                        </span>
+                                                                    )}
+                                                                    {pendingDelReq && (
+                                                                        <span className="bg-red-100 text-red-800 border border-red-300 text-[8px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest flex items-center gap-1 animate-pulse">
+                                                                            <AlertTriangleIcon className="w-2.5 h-2.5" />
+                                                                            {isKa ? 'წაშლა მოთხოვნილია' : 'Deletion Pending'}
+                                                                        </span>
+                                                                    )}
+                                                                    {isFounderOrAdmin && (
+                                                                        <button 
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                setEditingOrg(org);
+                                                                                setEditOrgData(org);
+                                                                                setIsEditOrgModalOpen(true);
+                                                                            }}
+                                                                            className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-all"
+                                                                            title={isKa ? "რედაქტირება" : "Edit Name"}
+                                                                        >
+                                                                            <PencilIcon size={13} />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+
+                                                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                                                    <div className="flex items-center gap-1">
+                                                                        <ShieldCheckIcon className={`w-3.5 h-3.5 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`} />
+                                                                        <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">{userRole}</span>
+                                                                        {(userRole === 'Founder' || isRootOrSuperAdmin) && (
+                                                                            <button
+                                                                                onClick={() => setChangingFounderOrg(org)}
+                                                                                className="ml-1 text-[9px] font-black text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.5 rounded border border-indigo-200 uppercase tracking-wider transition-all"
+                                                                                title={isKa ? "დამფუძნებლის შეცვლა" : "Change Founder"}
+                                                                            >
+                                                                                {isKa ? 'შეცვლა' : 'Change'}
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1">
+                                                                        <GlobeIcon className={`w-3.5 h-3.5 ${org.isDiscoverable ? 'text-emerald-500' : 'text-slate-300'}`} />
+                                                                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                                                            {org.isDiscoverable ? (isKa ? 'საჯარო' : 'Public') : (isKa ? 'პირადი' : 'Private')}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1">
+                                                                        <RectangleStackIcon className="w-3.5 h-3.5 text-slate-400" />
+                                                                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{org.type || 'LTD'}</span>
+                                                                    </div>
+                                                                    {org.region && (
+                                                                        <div className="flex items-center gap-1">
+                                                                            <MapIcon className="w-3.5 h-3.5 text-slate-400" />
+                                                                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{org.region}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {org.areaHa ? (
+                                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{org.areaHa} HA</span>
+                                                                    ) : null}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* The 4 Action Buttons requested in screenshot_1.png */}
+                                                        <div className="flex items-center gap-1.5 flex-wrap self-start sm:self-center">
+                                                            {/* 1. Subscription Button */}
+                                                            <button
+                                                                onClick={() => setManagingSubscriptionOrg(org)}
+                                                                className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1 shadow-sm active:scale-95"
+                                                                title={isKa ? "გამოწერის მართვა" : "Manage Subscription"}
+                                                            >
+                                                                <StarIcon className="w-3 h-3 text-amber-500 fill-amber-500" />
+                                                                <span>{org.tier || 'Trial'}</span>
+                                                            </button>
+
+                                                            {/* 2. Reset Plantation Button */}
+                                                            <button
+                                                                onClick={() => setResetPlantationOrg(org)}
+                                                                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1 shadow-sm active:scale-95"
+                                                                title={isKa ? "პლანტაციის განულება" : "Reset Plantation"}
+                                                            >
+                                                                <RefreshCwIcon className="w-3 h-3 text-slate-500" />
+                                                                <span>{isKa ? 'განულება' : 'Reset'}</span>
+                                                            </button>
+
+                                                            {/* 3. Pause / Resume Button */}
+                                                            <button
+                                                                onClick={() => handleTogglePause(org)}
+                                                                className={`px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1 shadow-sm active:scale-95 border ${
+                                                                    isPaused
+                                                                        ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
+                                                                        : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-200'
+                                                                }`}
+                                                                title={isPaused ? (isKa ? "გაგრძელება" : "Resume") : (isKa ? "შეჩერება" : "Pause")}
+                                                            >
+                                                                {isPaused ? <PlayIcon className="w-3 h-3 text-emerald-600" /> : <PauseIcon className="w-3 h-3 text-amber-600" />}
+                                                                <span>{isPaused ? (isKa ? 'გაგრძელება' : 'Resume') : (isKa ? 'შეჩერება' : 'Pause')}</span>
+                                                            </button>
+
+                                                            {/* 4. Delete Organization Button */}
+                                                            <button
+                                                                onClick={() => handleInitiateDeleteOrg(org)}
+                                                                className="px-2.5 py-1.5 bg-red-50 hover:bg-red-600 hover:text-white text-red-600 border border-red-200 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1 shadow-sm active:scale-95"
+                                                                title={isKa ? "კომპანიის წაშლა" : "Delete Organization"}
+                                                            >
+                                                                <TrashIcon className="w-3 h-3" />
+                                                                <span>{isKa ? 'წაშლა' : 'Delete'}</span>
+                                                            </button>
+                                                        </div>
                                                     </div>
 
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="flex items-center gap-3 mb-1">
-                                                            <h4 className={`text-lg font-black uppercase tracking-tight truncate ${isActive ? 'text-indigo-900' : 'text-slate-800'}`}>
-                                                                {org.name}
-                                                            </h4>
-                                                            {m.role === 'Founder' && (
-                                                                <button 
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setEditingOrg(org);
-                                                                        setEditOrgData(org);
-                                                                        setIsEditOrgModalOpen(true);
-                                                                    }}
-                                                                    className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-all"
+                                                    {/* Pending Deletion Request Approval Banner (if applicable) */}
+                                                    {pendingDelReq && (
+                                                        <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+                                                            <div className="space-y-1">
+                                                                <div className="flex items-center gap-2 text-amber-900 font-black uppercase tracking-wider text-[10px]">
+                                                                    <AlertTriangleIcon className="w-3.5 h-3.5 text-amber-600" />
+                                                                    <span>{isKa ? 'წაშლის მოთხოვნა ელოდება თანადამფუძნებლების დასტურს' : 'Deletion Approval Pending Co-Founder Votes'}</span>
+                                                                </div>
+                                                                <p className="text-slate-600 text-[11px]">
+                                                                    {isKa ? 'ინიციატორი:' : 'Requested by:'} <strong>{pendingDelReq.requestedBy.name}</strong> • {new Date(pendingDelReq.requestedAt).toLocaleDateString()}
+                                                                    {' | '}{isKa ? 'თანხმობა:' : 'Approvals:'} <strong>{pendingDelReq.approvals.length} / {pendingDelReq.coFounderIds.length + 1}</strong>
+                                                                </p>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                {pendingDelReq.coFounderIds.includes(currentUser.id) && !pendingDelReq.approvals.includes(currentUser.id) && (
+                                                                    <>
+                                                                        <button
+                                                                            onClick={() => handleVoteDeletion(pendingDelReq.id, true)}
+                                                                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[9px] font-black uppercase tracking-wider transition-all shadow-sm"
+                                                                        >
+                                                                            {isKa ? 'თანხმობა (წაშლა)' : 'Approve Deletion'}
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => handleVoteDeletion(pendingDelReq.id, false)}
+                                                                            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-[9px] font-black uppercase tracking-wider transition-all shadow-sm"
+                                                                        >
+                                                                            {isKa ? 'უარყოფა' : 'Reject'}
+                                                                        </button>
+                                                                    </>
+                                                                )}
+                                                                {(pendingDelReq.requestedBy.id === currentUser.id || isRootOrSuperAdmin) && (
+                                                                    <button
+                                                                        onClick={() => handleCancelDeletionRequest(pendingDelReq.id)}
+                                                                        className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all"
+                                                                    >
+                                                                        {isKa ? 'მოთხოვნის გაუქმება' : 'Cancel Request'}
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Bottom Row: Founders list + Message Co-Founders / Run Ads + Manage + Switch */}
+                                                    <div className="pt-3 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+                                                                {isKa ? 'დამფუძნებლები:' : 'Founders:'}
+                                                            </span>
+                                                            {foundersList.map(f => (
+                                                                <span 
+                                                                    key={f.userId} 
+                                                                    className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider flex items-center gap-1 border ${
+                                                                        f.isMe 
+                                                                            ? 'bg-indigo-50 text-indigo-700 border-indigo-200' 
+                                                                            : 'bg-slate-50 text-slate-600 border-slate-200'
+                                                                    }`}
                                                                 >
-                                                                    <PencilIcon size={14} />
+                                                                    {f.name} {f.isCreator ? '⭐' : ''}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            {/* Message Co-Founders */}
+                                                            <button
+                                                                onClick={() => setMessageModal({ org, mode: 'coFounders' })}
+                                                                className="px-2.5 py-1.5 bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 text-slate-700 hover:text-indigo-600 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1 shadow-sm"
+                                                                title={isKa ? "შეტყობინება დამფუძნებლებს" : "Message Co-Founders"}
+                                                            >
+                                                                <UsersIcon className="w-3 h-3 text-indigo-500" />
+                                                                <span>{isKa ? 'დამფუძნებლებთან ჩათი' : 'Message Founders'}</span>
+                                                            </button>
+
+                                                            {/* Broadcast / Run Ads */}
+                                                            <button
+                                                                onClick={() => setMessageModal({ org, mode: 'broadcast' })}
+                                                                className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1 shadow-sm"
+                                                                title={isKa ? "კომპანიებს შეტყობინება / რეკლამა" : "Broadcast / Run Ads to Companies"}
+                                                            >
+                                                                <PaperAirplaneIcon className="w-3 h-3 text-indigo-600" />
+                                                                <span>{isKa ? 'რეკლამა / ქსელი' : 'Run Ads / Network'}</span>
+                                                            </button>
+
+                                                            {/* Manage Modal Button */}
+                                                            <button
+                                                                onClick={() => setManagingOrg(org)}
+                                                                className="px-3 py-1.5 bg-slate-900 hover:bg-indigo-600 text-white rounded-xl text-[9px] font-black uppercase tracking-wider transition-all shadow-sm flex items-center gap-1.5"
+                                                            >
+                                                                <span>{isKa ? 'მართვა' : 'Manage'}</span>
+                                                                <ChevronRightIcon className="w-3 h-3" />
+                                                            </button>
+
+                                                            {/* Switch Org button (if not active) */}
+                                                            {!isActive && (
+                                                                <button 
+                                                                    onClick={() => onSwitchOrg(org.id)}
+                                                                    className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-600 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all shadow-sm"
+                                                                >
+                                                                    {isKa ? 'გააქტიურება' : 'Switch Workspace'}
                                                                 </button>
                                                             )}
-                                                            {isActive && (
-                                                                <span className="bg-indigo-600 text-white text-[8px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest">
-                                                                    Active
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                                                            <div className="flex items-center gap-1.5">
-                                                                <ShieldCheckIcon className={`w-3.5 h-3.5 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`} />
-                                                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{m.role}</span>
-                                                            </div>
-                                                            <div className="flex items-center gap-1.5">
-                                                                <GlobeIcon className={`w-3.5 h-3.5 ${org.isDiscoverable ? 'text-emerald-500' : 'text-slate-300'}`} />
-                                                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                                                                    {org.isDiscoverable ? 'Discoverable' : 'Private'}
-                                                                </span>
-                                                            </div>
-                                                            <div className="flex items-center gap-1.5">
-                                                                <RectangleStackIcon className="w-3.5 h-3.5 text-slate-400" />
-                                                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{org.type}</span>
-                                                            </div>
                                                         </div>
                                                     </div>
-
-                                                    {!isActive && (
-                                                        <button 
-                                                            onClick={() => onSwitchOrg(org.id)}
-                                                            className="p-3 bg-white border border-slate-200 text-slate-400 rounded-2xl hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-all shadow-sm group-hover:translate-x-1"
-                                                        >
-                                                            <ChevronRightIcon className="w-5 h-5" />
-                                                        </button>
-                                                    )}
                                                 </div>
                                             );
                                         })
@@ -1309,6 +1874,551 @@ const FoundersView: React.FC<FoundersViewProps> = (props) => {
                                 Send Join Request
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete User Account / Profile Modal */}
+            {showDeleteProfileModal && (
+                <div className="fixed inset-0 bg-black/60 z-[7000] flex items-center justify-center p-4 backdrop-blur-md">
+                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden animate-slide-up">
+                        <div className="p-8 border-b bg-red-50/50 flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center text-red-600">
+                                    <TrashIcon size={24} />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-black text-red-950 uppercase tracking-tight">
+                                        {isKa ? 'პროფილის წაშლა' : 'Delete Account Profile'}
+                                    </h2>
+                                    <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mt-0.5">
+                                        {currentUser.name} ({currentUser.email || currentUser.phone || currentUser.id})
+                                    </p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowDeleteProfileModal(false)} className="p-2 hover:bg-red-100 rounded-full transition-colors text-slate-400">
+                                <XIcon size={20} />
+                            </button>
+                        </div>
+                        <div className="p-8 space-y-5">
+                            <div className="p-4 bg-red-50 rounded-2xl border border-red-200">
+                                <p className="text-xs text-red-900 leading-relaxed font-medium">
+                                    {isKa 
+                                        ? "ყურადღება: თქვენი მომხმარებლის პროფილის, ავტორიზაციის და წვდომების წაშლა შეუქცევადია. თქვენ გამოხვალთ სისტემიდან."
+                                        : "Warning: Deleting your user account profile and credentials is permanent and irreversible. You will be signed out immediately."
+                                    }
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-3 pt-2">
+                                <button
+                                    onClick={() => setShowDeleteProfileModal(false)}
+                                    disabled={isDeletingProfile}
+                                    className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-black text-xs uppercase tracking-widest transition-all"
+                                >
+                                    {isKa ? 'გაუქმება' : 'Cancel'}
+                                </button>
+                                <button
+                                    onClick={handleDeleteAccountInternal}
+                                    disabled={isDeletingProfile}
+                                    className="flex-1 py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-red-200 flex items-center justify-center gap-2"
+                                >
+                                    {isDeletingProfile ? (
+                                        <RefreshCwIcon className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                        <TrashIcon className="w-4 h-4" />
+                                    )}
+                                    <span>{isKa ? 'დიახ, წაშალე' : 'Delete Account'}</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Organization Modal (Sole Founder vs. Co-Founder Approval vs. Root Super Admin) */}
+            {deleteOrgModal && (
+                <div className="fixed inset-0 bg-black/60 z-[7000] flex items-center justify-center p-4 backdrop-blur-md">
+                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden animate-slide-up">
+                        <div className="p-8 border-b bg-red-50/50 flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center text-red-600">
+                                    <TrashIcon size={24} />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">
+                                        {deleteOrgModal.org.name}
+                                    </h2>
+                                    <p className="text-[10px] font-black uppercase tracking-widest mt-0.5 text-slate-400">
+                                        {isKa ? 'კომპანიის წაშლის პროცესი' : 'Company Deletion Workflow'}
+                                    </p>
+                                </div>
+                            </div>
+                            <button onClick={() => setDeleteOrgModal(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
+                                <XIcon size={20} />
+                            </button>
+                        </div>
+                        <div className="p-8 space-y-5">
+                            {deleteOrgModal.isRootSuperAdmin ? (
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 border border-indigo-200 rounded-xl text-indigo-700 text-xs font-black uppercase tracking-wider w-fit">
+                                        <ShieldCheckIcon className="w-4 h-4" />
+                                        <span>Root / Super Admin Authority</span>
+                                    </div>
+                                    <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                                        {isKa
+                                            ? "როგორც Root / Super Admin, თქვენ გაქვთ უფლებამოსილება წაშალოთ პლანტაცია და კომპანია თანადამფუძნებლების თანხმობის გარეშე."
+                                            : "As a Root / Super Admin, you have direct authorization to delete this plantation and workspace without requiring co-founder approval."
+                                        }
+                                    </p>
+                                </div>
+                            ) : deleteOrgModal.isSoleFounder ? (
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-black uppercase tracking-wider w-fit">
+                                        <CheckIcon className="w-4 h-4" />
+                                        <span>{isKa ? 'ერთპიროვნული დამფუძნებელი' : 'Sole Registered Founder'}</span>
+                                    </div>
+                                    <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                                        {isKa
+                                            ? "ეს კომპანია დარეგისტრირებულია თქვენ მიერ და არ ჰყავს სხვა თანადამფუძნებლები. შეგიძლიათ წაშალოთ ის პირდაპირ."
+                                            : "This organization was registered by you and has no other registered co-founders. You can delete it directly without requiring other approvals."
+                                        }
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs font-black uppercase tracking-wider w-fit">
+                                        <AlertTriangleIcon className="w-4 h-4" />
+                                        <span>{isKa ? 'თანადამფუძნებლების თანხმობა აუცილებელია' : 'Co-Founder Approval Required'}</span>
+                                    </div>
+                                    <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                                        {isKa
+                                            ? "კომპანიას ჰყავს რამდენიმე დამფუძნებელი. წასაშლელად საჭიროა ყველა თანადამფუძნებლის დასტური. დასტურის მოთხოვნა გაეგზავნება მათ:"
+                                            : "This company has registered co-founders. To delete it, approval from all co-founders is mandatory. An approval request will be dispatched to:"
+                                        }
+                                    </p>
+                                    <div className="space-y-2 max-h-36 overflow-y-auto p-2 bg-slate-50 rounded-2xl border border-slate-100">
+                                        {deleteOrgModal.coFounders.map(f => (
+                                            <div key={f.userId} className="flex items-center justify-between text-xs p-2 bg-white rounded-xl border border-slate-200">
+                                                <span className="font-bold text-slate-800">{f.name}</span>
+                                                <span className="text-[10px] text-slate-400 font-mono">{f.email || f.userId}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="flex items-center gap-3 pt-3">
+                                <button
+                                    onClick={() => setDeleteOrgModal(null)}
+                                    className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-black text-xs uppercase tracking-widest transition-all"
+                                >
+                                    {isKa ? 'გაუქმება' : 'Cancel'}
+                                </button>
+                                <button
+                                    onClick={handleConfirmDeleteOrg}
+                                    className="flex-1 py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-red-200 flex items-center justify-center gap-2"
+                                >
+                                    <TrashIcon className="w-4 h-4" />
+                                    <span>
+                                        {deleteOrgModal.isRootSuperAdmin || deleteOrgModal.isSoleFounder
+                                            ? (isKa ? 'წაშლა დაუყოვნებლივ' : 'Delete Permanently')
+                                            : (isKa ? 'მოთხოვნის გაგზავნა' : 'Send Approval Request')
+                                        }
+                                    </span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Reset Plantation Modal */}
+            {resetPlantationOrg && (
+                <div className="fixed inset-0 bg-black/60 z-[7000] flex items-center justify-center p-4 backdrop-blur-md">
+                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden animate-slide-up">
+                        <div className="p-8 border-b bg-amber-50/50 flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center text-amber-600">
+                                    <RefreshCwIcon size={24} />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">
+                                        {resetPlantationOrg.name}
+                                    </h2>
+                                    <p className="text-[10px] font-black uppercase tracking-widest mt-0.5 text-amber-600">
+                                        {isKa ? 'პლანტაციის განულება' : 'Reset Plantation Data'}
+                                    </p>
+                                </div>
+                            </div>
+                            <button onClick={() => setResetPlantationOrg(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
+                                <XIcon size={20} />
+                            </button>
+                        </div>
+                        <div className="p-8 space-y-5">
+                            <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                                {isKa
+                                    ? "პლანტაციის განულება გაასუფთავებს რუკაზე მონიშნულ საზღვრებს, ნაკვეთებს, კულტურების მონაცემებსა და მოსავლის ისტორიას, ხოლო კომპანიის იურიდიული პროფილი შენარჩუნდება."
+                                    : "Resetting will clear all map boundaries, plot markers, crop assignments, and harvest telemetry for this organization while preserving company registration."
+                                }
+                            </p>
+                            <div className="flex items-center gap-3 pt-2">
+                                <button
+                                    onClick={() => setResetPlantationOrg(null)}
+                                    className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-black text-xs uppercase tracking-widest transition-all"
+                                >
+                                    {isKa ? 'გაუქმება' : 'Cancel'}
+                                </button>
+                                <button
+                                    onClick={handleConfirmReset}
+                                    className="flex-1 py-3.5 bg-amber-600 hover:bg-amber-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-amber-200 flex items-center justify-center gap-2"
+                                >
+                                    <RefreshCwIcon className="w-4 h-4" />
+                                    <span>{isKa ? 'დიახ, გაანულე' : 'Confirm Reset'}</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Manage Subscription Modal */}
+            {managingSubscriptionOrg && (
+                <div className="fixed inset-0 bg-black/60 z-[7000] flex items-center justify-center p-4 backdrop-blur-md">
+                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden animate-slide-up">
+                        <div className="p-8 border-b bg-slate-50 flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center text-amber-600">
+                                    <StarIcon size={24} className="fill-amber-500" />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">
+                                        {managingSubscriptionOrg.name}
+                                    </h2>
+                                    <p className="text-[10px] font-black uppercase tracking-widest mt-0.5 text-slate-400">
+                                        {isKa ? 'გამოწერის გეგმის მართვა' : 'Subscription Plan Management'}
+                                    </p>
+                                </div>
+                            </div>
+                            <button onClick={() => setManagingSubscriptionOrg(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
+                                <XIcon size={20} />
+                            </button>
+                        </div>
+                        <div className="p-8 space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                    {isKa ? 'გამოწერის ტარიფი' : 'Subscription Tier'}
+                                </label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {(['Free', 'Pro', 'Enterprise'] as SubscriptionTier[]).map(tier => (
+                                        <button
+                                            key={tier}
+                                            onClick={() => handleSaveSubscription(managingSubscriptionOrg, tier)}
+                                            className={`p-3 rounded-2xl text-xs font-black uppercase tracking-wider border-2 transition-all ${
+                                                managingSubscriptionOrg.tier === tier
+                                                    ? 'border-amber-500 bg-amber-50 text-amber-900 shadow-md shadow-amber-100'
+                                                    : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300'
+                                            }`}
+                                        >
+                                            {tier}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="space-y-2 pt-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                    {isKa ? 'სტატუსი' : 'Status'}
+                                </label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {(['Trial', 'Paid', 'Unpaid'] as SubscriptionStatus[]).map(st => (
+                                        <button
+                                            key={st}
+                                            onClick={() => handleSaveSubscription(managingSubscriptionOrg, managingSubscriptionOrg.tier || 'Free', st)}
+                                            className={`p-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all ${
+                                                managingSubscriptionOrg.subscriptionStatus === st
+                                                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                                                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            {st}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Change Founder Modal */}
+            {changingFounderOrg && (
+                <div className="fixed inset-0 bg-black/60 z-[7000] flex items-center justify-center p-4 backdrop-blur-md">
+                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden animate-slide-up">
+                        <div className="p-8 border-b bg-indigo-50/50 flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600">
+                                    <ShieldCheckIcon size={24} />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">
+                                        {changingFounderOrg.name}
+                                    </h2>
+                                    <p className="text-[10px] font-black uppercase tracking-widest mt-0.5 text-indigo-600">
+                                        {isKa ? 'დამფუძნებლის შეცვლა / გადაცემა' : 'Transfer Founder Role'}
+                                    </p>
+                                </div>
+                            </div>
+                            <button onClick={() => setChangingFounderOrg(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
+                                <XIcon size={20} />
+                            </button>
+                        </div>
+                        <div className="p-8 space-y-4">
+                            <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                                {isKa 
+                                    ? "აირჩიეთ გუნდის წევრი, რომელსაც გადასცემთ მთავარი დამფუძნებლის (Founder) როლს:" 
+                                    : "Select a team member to transfer the primary Founder role to:"}
+                            </p>
+                            <div className="space-y-2 max-h-52 overflow-y-auto">
+                                {(allUsers && allUsers.length > 0 ? allUsers : [currentUser]).map(u => {
+                                    const isCurrentFounder = changingFounderOrg.createdBy === u.id;
+                                    return (
+                                        <button
+                                            key={u.id}
+                                            onClick={() => handleChangeFounder(changingFounderOrg, u.id)}
+                                            className={`w-full p-3 rounded-2xl border text-left flex items-center justify-between transition-all ${
+                                                isCurrentFounder
+                                                    ? 'border-indigo-500 bg-indigo-50/50 cursor-default'
+                                                    : 'border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/20'
+                                            }`}
+                                        >
+                                            <div>
+                                                <p className="text-xs font-black text-slate-900">{u.name}</p>
+                                                <p className="text-[10px] text-slate-400 font-mono">{u.email || u.id}</p>
+                                            </div>
+                                            {isCurrentFounder ? (
+                                                <span className="text-[9px] font-black text-indigo-600 uppercase tracking-widest">
+                                                    Current
+                                                </span>
+                                            ) : (
+                                                <span className="text-[9px] font-black text-indigo-600 hover:underline uppercase tracking-widest">
+                                                    Assign
+                                                </span>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Manage Organization Modal (Public/Private, Region, Area, Quick Actions) */}
+            {managingOrg && (
+                <div className="fixed inset-0 bg-black/60 z-[7000] flex items-center justify-center p-4 backdrop-blur-md">
+                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden animate-slide-up">
+                        <div className="p-8 border-b bg-slate-50 flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center">
+                                    <BuildingStorefrontIcon size={24} />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">
+                                        {managingOrg.name}
+                                    </h2>
+                                    <p className="text-[10px] font-black uppercase tracking-widest mt-0.5 text-slate-400">
+                                        {isKa ? 'კომპანიის პარამეტრების მართვა' : 'Company Settings & Controls'}
+                                    </p>
+                                </div>
+                            </div>
+                            <button onClick={() => setManagingOrg(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
+                                <XIcon size={20} />
+                            </button>
+                        </div>
+                        <div className="p-8 space-y-5">
+                            {/* Region and Area */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                        {isKa ? 'რეგიონი' : 'Region'}
+                                    </label>
+                                    <select
+                                        value={managingOrg.region || 'Kakheti'}
+                                        onChange={(e) => {
+                                            const updated = { ...managingOrg, region: e.target.value };
+                                            setManagingOrg(updated);
+                                            if (onUpdateOrg) onUpdateOrg(updated);
+                                        }}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
+                                    >
+                                        <option value="Kakheti">Kakheti</option>
+                                        <option value="Kartli">Kartli</option>
+                                        <option value="Imereti">Imereti</option>
+                                        <option value="Samegrelo">Samegrelo</option>
+                                        <option value="Guria">Guria</option>
+                                        <option value="Adjara">Adjara</option>
+                                        <option value="Racha">Racha</option>
+                                        <option value="Samtskhe-Javakheti">Samtskhe-Javakheti</option>
+                                    </select>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                        {isKa ? 'ფართობი (ჰა)' : 'Area (HA)'}
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={managingOrg.areaHa || ''}
+                                        onChange={(e) => {
+                                            const updated = { ...managingOrg, areaHa: Number(e.target.value) };
+                                            setManagingOrg(updated);
+                                            if (onUpdateOrg) onUpdateOrg(updated);
+                                        }}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
+                                        placeholder="e.g. 50"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Public Visibility Toggle */}
+                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
+                                <div>
+                                    <p className="text-xs font-black text-slate-900 uppercase tracking-tight">
+                                        {isKa ? 'საჯარო ხილვადობა (Public)' : 'Public Visibility'}
+                                    </p>
+                                    <p className="text-[10px] text-slate-500 font-medium">
+                                        {isKa ? 'ჩანდეს თუ არა კომპანია საჯარო რეესტრში სხვა ფერმერებისთვის' : 'Make discoverable to other agricultural companies'}
+                                    </p>
+                                </div>
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={managingOrg.isDiscoverable || false}
+                                        onChange={(e) => {
+                                            const updated = { ...managingOrg, isDiscoverable: e.target.checked };
+                                            setManagingOrg(updated);
+                                            if (onUpdateOrg) onUpdateOrg(updated);
+                                            toast.success(e.target.checked ? "Company is now discoverable" : "Company is now private");
+                                        }}
+                                        className="sr-only peer"
+                                    />
+                                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                                </label>
+                            </div>
+
+                            {/* Quick Action Buttons inside modal */}
+                            <div className="grid grid-cols-2 gap-3 pt-2">
+                                <button
+                                    onClick={() => {
+                                        const org = managingOrg;
+                                        setManagingOrg(null);
+                                        setManagingSubscriptionOrg(org);
+                                    }}
+                                    className="p-3 bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 border border-amber-200 transition-all"
+                                >
+                                    <StarIcon className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                                    <span>{isKa ? 'გამოწერა' : 'Subscription'}</span>
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        const org = managingOrg;
+                                        setManagingOrg(null);
+                                        setResetPlantationOrg(org);
+                                    }}
+                                    className="p-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 border border-slate-200 transition-all"
+                                >
+                                    <RefreshCwIcon className="w-3.5 h-3.5 text-slate-500" />
+                                    <span>{isKa ? 'განულება' : 'Reset Plantation'}</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Message Co-Founders / Run Ads Modal */}
+            {messageModal && (
+                <div className="fixed inset-0 bg-black/60 z-[7000] flex items-center justify-center p-4 backdrop-blur-md">
+                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden animate-slide-up">
+                        <div className="p-8 border-b bg-indigo-50/50 flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600">
+                                    {messageModal.mode === 'coFounders' ? <UsersIcon size={24} /> : <PaperAirplaneIcon size={24} />}
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">
+                                        {messageModal.mode === 'coFounders' 
+                                            ? (isKa ? 'დამფუძნებლებთან ჩათი' : 'Message Co-Founders') 
+                                            : (isKa ? 'რეკლამა / განცხადება' : 'Broadcast / Run Ads')}
+                                    </h2>
+                                    <p className="text-[10px] font-black uppercase tracking-widest mt-0.5 text-indigo-600">
+                                        {messageModal.org.name}
+                                    </p>
+                                </div>
+                            </div>
+                            <button onClick={() => setMessageModal(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
+                                <XIcon size={20} />
+                            </button>
+                        </div>
+                        <form
+                            onSubmit={(e) => {
+                                e.preventDefault();
+                                const form = e.target as HTMLFormElement;
+                                const content = (form.elements.namedItem('msgContent') as HTMLTextAreaElement).value;
+                                const title = messageModal.mode === 'broadcast' 
+                                    ? (form.elements.namedItem('adTitle') as HTMLInputElement)?.value 
+                                    : undefined;
+                                handleSendMessageOrAd(messageModal.org, messageModal.mode, content, title);
+                            }}
+                            className="p-8 space-y-4"
+                        >
+                            {messageModal.mode === 'broadcast' && (
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                        {isKa ? 'სარეკლამო სათაური' : 'Ad Title'}
+                                    </label>
+                                    <input
+                                        name="adTitle"
+                                        type="text"
+                                        required
+                                        placeholder={isKa ? "მაგ. ახალი მოსავალი, ტექნიკის გაქირავება" : "e.g. Fresh Harvest Ready, Machinery Rental"}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
+                                    />
+                                </div>
+                            )}
+
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                    {isKa ? 'შეტყობინების ტექსტი' : 'Message Content'}
+                                </label>
+                                <textarea
+                                    name="msgContent"
+                                    rows={4}
+                                    required
+                                    placeholder={
+                                        messageModal.mode === 'coFounders'
+                                            ? (isKa ? "შეიყვანეთ ტექსტი თანადამფუძნებლებისთვის..." : "Type a message to your co-founders...")
+                                            : (isKa ? "შეიყვანეთ განცხადების ან რეკლამის ტექსტი..." : "Describe your advertisement or announcement to partner companies...")
+                                    }
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                />
+                            </div>
+
+                            <div className="flex items-center gap-3 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setMessageModal(null)}
+                                    className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-black text-xs uppercase tracking-widest transition-all"
+                                >
+                                    {isKa ? 'გაუქმება' : 'Cancel'}
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-md shadow-indigo-200 flex items-center justify-center gap-2"
+                                >
+                                    <PaperAirplaneIcon className="w-4 h-4" />
+                                    <span>{messageModal.mode === 'coFounders' ? (isKa ? 'გაგზავნა' : 'Send') : (isKa ? 'გამოქვეყნება' : 'Publish Ad')}</span>
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

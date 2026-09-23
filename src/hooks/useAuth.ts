@@ -4,6 +4,7 @@ import { onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectRes
 import { onSnapshot } from '../firebase';
 import { User } from '../types';
 import { handleFirestoreError, sanitizeObject } from '../lib/firebaseUtils';
+import { safeStorage } from '../services/storageService';
 import { toast } from 'sonner';
 import { USE_FIREBASE } from '../config';
 
@@ -765,27 +766,44 @@ export const useAuth = () => {
     };
 
     const handleDeleteAccount = async () => {
-        if (!currentUser || currentUser.isGuest || !auth.currentUser) return;
+        if (!currentUser) return;
         
         const confirmDelete = window.confirm("Are you SURE you want to delete your profile? This will permanently remove your global identity and all associated private data. This action CANNOT be undone.");
         if (!confirmDelete) return;
 
         try {
-            // 1. Delete Firestore record
-            await deleteDoc(doc(db, 'users', currentUser.id));
-            
-            // 2. Delete Auth record (requires recent login)
-            await auth.currentUser.delete();
+            if (USE_FIREBASE && auth.currentUser) {
+                // 1. Delete Firestore record
+                try {
+                    await deleteDoc(doc(db, 'users', currentUser.id));
+                } catch (e) {
+                    console.warn("Could not delete user firestore doc:", e);
+                }
+                
+                // 2. Delete Auth record (requires recent login)
+                try {
+                    await auth.currentUser.delete();
+                } catch (error: any) {
+                    console.error("Auth delete error:", error);
+                    if (error.code === 'auth/requires-recent-login') {
+                        toast.error("Security alert: Deletion requires a fresh login. Please logout and login again before deleting your account.");
+                        return;
+                    }
+                }
+            }
+
+            // Also clear from mock_users and local storage
+            const savedUsers = safeStorage.safeParse(localStorage.getItem('mock_users'), []);
+            if (Array.isArray(savedUsers)) {
+                localStorage.setItem('mock_users', JSON.stringify(savedUsers.filter((u: any) => u.id !== currentUser.id)));
+            }
+            localStorage.removeItem('agrimap-current-user');
             
             toast.success("Profile deleted successfully.");
             handleLogout();
         } catch (error: any) {
             console.error("Delete Account Error:", error);
-            if (error.code === 'auth/requires-recent-login') {
-                toast.error("Security alert: Deletion requires a fresh login. Please logout and login again before deleting your account.");
-            } else {
-                toast.error(`Deletion failed: ${error.message}`);
-            }
+            toast.error(`Deletion failed: ${error.message || 'Unknown error'}`);
         }
     };
 

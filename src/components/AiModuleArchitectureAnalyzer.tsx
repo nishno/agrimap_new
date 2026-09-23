@@ -80,12 +80,15 @@ import {
     CheckCircle2,
     Eye,
     EyeOff,
-    Play
+    Play,
+    Lock
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { User } from '../types';
 
 interface Props {
     onNavigateMode?: (mode: string) => void;
+    currentUser?: User | null;
 }
 
 const downloadBlobFile = (content: string, filename: string, mimeType: string) => {
@@ -100,9 +103,25 @@ const downloadBlobFile = (content: string, filename: string, mimeType: string) =
     URL.revokeObjectURL(url);
 };
 
-export const AiModuleArchitectureAnalyzer: React.FC<Props> = ({ onNavigateMode }) => {
+export const AiModuleArchitectureAnalyzer: React.FC<Props> = ({ onNavigateMode, currentUser }) => {
     const { language } = useLanguage();
     const isKa = language === 'ka';
+
+    // Verify if active user is Root or Super Admin
+    const isRootOrSuperAdmin = useMemo(() => {
+        if (!currentUser) return false;
+        return Boolean(
+            currentUser.roles?.includes('ROOT_SUPER_ADMIN') ||
+            currentUser.roles?.some(r => ['root', 'superadmin', 'super_admin', 'ROOT_SUPER_ADMIN'].includes(String(r).toLowerCase())) ||
+            (currentUser as any)?.role === 'ROOT_SUPER_ADMIN' ||
+            (currentUser as any)?.role === 'root' ||
+            (currentUser as any)?.role === 'superadmin' ||
+            currentUser.id === 'root-system' ||
+            currentUser.email?.toLowerCase() === 'nishno@agrimap.pro' ||
+            currentUser.email?.toLowerCase() === 'giorgi.nishno@gmail.com' ||
+            currentUser.email?.toLowerCase() === 'admin@agrimap.io'
+        );
+    }, [currentUser]);
 
     // Master module data
     const [allModules, setAllModules] = useState<PlatformModuleDefinition[]>(() => getMergedPlatformModules());
@@ -393,6 +412,15 @@ export const AiModuleArchitectureAnalyzer: React.FC<Props> = ({ onNavigateMode }
 
     // Export presentation in specified format: pptx, pdf, or html
     const handleExportDeck = async (format: 'pptx' | 'pdf' | 'html') => {
+        if (!isRootOrSuperAdmin) {
+            toast.error(
+                isKa 
+                    ? 'ჩამოტვირთვა შეზღუდულია: არქიტექტურული პრეზენტაციებისა და ფაილების ექსპორტი დაშვებულია მხოლოდ Super Admin და Root მომხმარებლებისთვის.' 
+                    : 'Downloads Restricted: Exporting system architecture slide decks is limited exclusively to Super Admin and Root users.'
+            );
+            return;
+        }
+
         try {
             setIsDownloadingFormat(format);
             let deckToExport = customDeck;
@@ -431,6 +459,15 @@ export const AiModuleArchitectureAnalyzer: React.FC<Props> = ({ onNavigateMode }
 
     // Download guide markdown
     const handleDownloadGuideMarkdown = async () => {
+        if (!isRootOrSuperAdmin) {
+            toast.error(
+                isKa 
+                    ? 'ჩამოტვირთვა შეზღუდულია: სისტემური სახელმძღვანელოს (.md) ექსპორტი დაშვებულია მხოლოდ Super Admin და Root მომხმარებლებისთვის.' 
+                    : 'Downloads Restricted: Exporting system operational manuals (.md) is limited exclusively to Super Admin and Root users.'
+            );
+            return;
+        }
+
         let currentReport = aiReport;
         if (!currentReport) {
             currentReport = await generateAiArchitectureAnalysis(selectedModuleIds, isKa ? 'ka' : 'en', { modulesList: allModules });
@@ -528,32 +565,56 @@ export const AiModuleArchitectureAnalyzer: React.FC<Props> = ({ onNavigateMode }
                         </button>
 
                         {/* Make Presentation - Grouped PPTX, PDF, HTML */}
-                        <div className="inline-flex items-center rounded-lg bg-slate-800 border border-slate-700 p-0.5 shadow-md shadow-blue-950/40">
+                        <div className="inline-flex items-center rounded-lg bg-slate-800 border border-slate-700 p-0.5 shadow-md shadow-blue-950/40 relative">
+                            {!isRootOrSuperAdmin && (
+                                <div className="absolute -top-2.5 -right-2 z-10">
+                                    <span className="px-1.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider bg-amber-500 text-slate-950 flex items-center gap-0.5 shadow-xs">
+                                        <Lock className="w-2 h-2" />
+                                        <span>SuperAdmin</span>
+                                    </span>
+                                </div>
+                            )}
                             <button
                                 onClick={() => handleExportDeck('pptx')}
                                 disabled={isDownloadingFormat !== null}
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition-all disabled:opacity-50"
-                                title={isKa ? 'PowerPoint პრეზენტაციის (.pptx) ჩამოტვირთვა' : 'Download PowerPoint Presentation (.pptx)'}
+                                className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md font-semibold text-xs transition-all disabled:opacity-50 ${
+                                    isRootOrSuperAdmin 
+                                        ? 'bg-blue-600 hover:bg-blue-500 text-white cursor-pointer' 
+                                        : 'bg-slate-700 hover:bg-slate-600 text-slate-300 cursor-pointer'
+                                }`}
+                                title={
+                                    !isRootOrSuperAdmin 
+                                        ? (isKa ? 'შეზღუდულია: მხოლოდ Root და Super Admin მომხმარებლებისთვის' : 'Restricted: Super Admin & Root Users Only')
+                                        : (isKa ? 'PowerPoint პრეზენტაციის (.pptx) ჩამოტვირთვა' : 'Download PowerPoint Presentation (.pptx)')
+                                }
                             >
-                                <Presentation className="w-3.5 h-3.5" />
+                                {!isRootOrSuperAdmin ? <Lock className="w-3 h-3 text-amber-400" /> : <Presentation className="w-3.5 h-3.5" />}
                                 <span>{isDownloadingFormat === 'pptx' ? 'PPTX...' : 'PPTX'}</span>
                             </button>
                             <button
                                 onClick={() => handleExportDeck('pdf')}
                                 disabled={isDownloadingFormat !== null}
-                                className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md hover:bg-slate-700 text-slate-200 font-medium text-xs transition-all disabled:opacity-50"
-                                title={isKa ? 'PDF პრეზენტაციის (.pdf) ჩამოტვირთვა' : 'Download PDF Slide Deck (.pdf)'}
+                                className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md hover:bg-slate-700 text-slate-200 font-medium text-xs transition-all disabled:opacity-50 cursor-pointer"
+                                title={
+                                    !isRootOrSuperAdmin 
+                                        ? (isKa ? 'შეზღუდულია: მხოლოდ Root და Super Admin მომხმარებლებისთვის' : 'Restricted: Super Admin & Root Users Only')
+                                        : (isKa ? 'PDF პრეზენტაციის (.pdf) ჩამოტვირთვა' : 'Download PDF Slide Deck (.pdf)')
+                                }
                             >
-                                <FileDown className="w-3.5 h-3.5 text-rose-400" />
+                                {!isRootOrSuperAdmin ? <Lock className="w-3 h-3 text-amber-400" /> : <FileDown className="w-3.5 h-3.5 text-rose-400" />}
                                 <span>{isDownloadingFormat === 'pdf' ? 'PDF...' : 'PDF'}</span>
                             </button>
                             <button
                                 onClick={() => handleExportDeck('html')}
                                 disabled={isDownloadingFormat !== null}
-                                className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md hover:bg-slate-700 text-slate-200 font-medium text-xs transition-all disabled:opacity-50"
-                                title={isKa ? 'ინტერაქტიული HTML პრეზენტაციის (.html) ჩამოტვირთვა' : 'Download Interactive Presentation (.html)'}
+                                className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md hover:bg-slate-700 text-slate-200 font-medium text-xs transition-all disabled:opacity-50 cursor-pointer"
+                                title={
+                                    !isRootOrSuperAdmin 
+                                        ? (isKa ? 'შეზღუდულია: მხოლოდ Root და Super Admin მომხმარებლებისთვის' : 'Restricted: Super Admin & Root Users Only')
+                                        : (isKa ? 'ინტერაქტიული HTML პრეზენტაციის (.html) ჩამოტვირთვა' : 'Download Interactive Presentation (.html)')
+                                }
                             >
-                                <FileType className="w-3.5 h-3.5 text-cyan-400" />
+                                {!isRootOrSuperAdmin ? <Lock className="w-3 h-3 text-amber-400" /> : <FileType className="w-3.5 h-3.5 text-cyan-400" />}
                                 <span>{isDownloadingFormat === 'html' ? 'HTML...' : 'HTML'}</span>
                             </button>
                         </div>
@@ -561,10 +622,18 @@ export const AiModuleArchitectureAnalyzer: React.FC<Props> = ({ onNavigateMode }
                         {/* Create Guide */}
                         <button
                             onClick={handleDownloadGuideMarkdown}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white font-medium text-xs shadow-md shadow-teal-900/30 transition-all"
-                            title={isKa ? 'სრული მომხმარებლის გზამკვლევის (.md) ჩამოტვირთვა' : 'Download master operational manual (.md)'}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium text-xs shadow-md transition-all cursor-pointer ${
+                                isRootOrSuperAdmin 
+                                    ? 'bg-teal-600 hover:bg-teal-500 text-white shadow-teal-900/30' 
+                                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                            }`}
+                            title={
+                                !isRootOrSuperAdmin 
+                                    ? (isKa ? 'შეზღუდულია: მხოლოდ Root და Super Admin მომხმარებლებისთვის' : 'Restricted: Super Admin & Root Users Only')
+                                    : (isKa ? 'სრული მომხმარებლის გზამკვლევის (.md) ჩამოტვირთვა' : 'Download master operational manual (.md)')
+                            }
                         >
-                            <BookOpen className="w-3.5 h-3.5" />
+                            {!isRootOrSuperAdmin ? <Lock className="w-3 h-3 text-amber-400" /> : <BookOpen className="w-3.5 h-3.5" />}
                             <span>{isKa ? 'გზამკვლევი (.md)' : 'Create Guide'}</span>
                         </button>
 
@@ -886,34 +955,35 @@ export const AiModuleArchitectureAnalyzer: React.FC<Props> = ({ onNavigateMode }
 
                                     {/* Export Buttons directly inside the panel when custom deck or standard is active */}
                                     <div className="flex items-center gap-1.5">
-                                        <span className="text-[11px] font-semibold text-slate-400 mr-1">
-                                            {isKa ? 'ჩამოტვირთვა:' : 'Download:'}
+                                        <span className="text-[11px] font-semibold text-slate-400 mr-1 flex items-center gap-1">
+                                            {!isRootOrSuperAdmin && <Lock className="w-3 h-3 text-amber-400" />}
+                                            <span>{isKa ? 'ჩამოტვირთვა:' : 'Download:'}</span>
                                         </span>
                                         <button
                                             onClick={() => handleExportDeck('pptx')}
                                             disabled={isDownloadingFormat !== null}
-                                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-blue-600/90 hover:bg-blue-600 text-white text-xs font-semibold shadow-sm transition-all disabled:opacity-50"
-                                            title="Download as PowerPoint (.pptx)"
+                                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-blue-600/90 hover:bg-blue-600 text-white text-xs font-semibold shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+                                            title={!isRootOrSuperAdmin ? (isKa ? 'შეზღუდულია: Root/SuperAdmin მხოლოდ' : 'Restricted: Root/SuperAdmin only') : "Download as PowerPoint (.pptx)"}
                                         >
-                                            <Presentation className="w-3 h-3" />
+                                            {!isRootOrSuperAdmin ? <Lock className="w-2.5 h-2.5 text-amber-300" /> : <Presentation className="w-3 h-3" />}
                                             <span>PPTX</span>
                                         </button>
                                         <button
                                             onClick={() => handleExportDeck('pdf')}
                                             disabled={isDownloadingFormat !== null}
-                                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-rose-700/80 hover:bg-rose-700 text-white text-xs font-semibold shadow-sm transition-all disabled:opacity-50"
-                                            title="Download as PDF Document (.pdf)"
+                                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-rose-700/80 hover:bg-rose-700 text-white text-xs font-semibold shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+                                            title={!isRootOrSuperAdmin ? (isKa ? 'შეზღუდულია: Root/SuperAdmin მხოლოდ' : 'Restricted: Root/SuperAdmin only') : "Download as PDF Document (.pdf)"}
                                         >
-                                            <FileDown className="w-3 h-3" />
+                                            {!isRootOrSuperAdmin ? <Lock className="w-2.5 h-2.5 text-amber-300" /> : <FileDown className="w-3 h-3" />}
                                             <span>PDF</span>
                                         </button>
                                         <button
                                             onClick={() => handleExportDeck('html')}
                                             disabled={isDownloadingFormat !== null}
-                                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-cyan-700/80 hover:bg-cyan-700 text-white text-xs font-semibold shadow-sm transition-all disabled:opacity-50"
-                                            title="Download as Interactive HTML (.html)"
+                                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-cyan-700/80 hover:bg-cyan-700 text-white text-xs font-semibold shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+                                            title={!isRootOrSuperAdmin ? (isKa ? 'შეზღუდულია: Root/SuperAdmin მხოლოდ' : 'Restricted: Root/SuperAdmin only') : "Download as Interactive HTML (.html)"}
                                         >
-                                            <FileType className="w-3 h-3" />
+                                            {!isRootOrSuperAdmin ? <Lock className="w-2.5 h-2.5 text-amber-300" /> : <FileType className="w-3 h-3" />}
                                             <span>HTML</span>
                                         </button>
                                     </div>

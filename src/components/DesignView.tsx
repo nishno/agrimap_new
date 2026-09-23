@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import L from 'leaflet';
-import type { PlantationFeature, ActiveDrawingTool, DrawingTool, Layer, AreaPlantationFeature, FeatureType, LinePlantationFeature, SeedlingPlantationFeature, SeedlingCondition, VarietyRule, Template, AppMode, Crop } from '../types';
+import type { PlantationFeature, ActiveDrawingTool, DrawingTool, Layer, AreaPlantationFeature, FeatureType, LinePlantationFeature, SeedlingPlantationFeature, SeedlingCondition, VarietyRule, Template, AppMode, Crop, Organization, User, Membership } from '../types';
 import { MapComponent, type MapComponentProps, FloatingSearch } from './MapComponent';
 import { Polygon, Polyline, Marker } from 'react-leaflet';
 import { WalkTrackingPanel, type WalkPath } from './WalkTrackingPanel';
@@ -8,15 +8,18 @@ import { toast } from 'sonner';
 import InfoPanel from './InfoPanel';
 import TrenchGenerationModal from './TrenchGenerationModal';
 import IrrigationGenerationModal from './IrrigationGenerationModal';
+import CropManagementModal, { formatPlantationCrops } from './CropManagementModal';
+import CreateOrganizationModal from './CreateOrganizationModal';
+import MapCanvasContextMenu from './MapCanvasContextMenu';
 import { 
     FolderIcon, PlusIcon, RectangleGroupIcon, ArrowLongRightIcon, MapPinIcon, BellIcon, LeafIcon, ChevronDownIcon, ChevronUpIcon, ChevronRightIcon,
     EllipsisVerticalIcon, XIcon, XCircleIcon, WaterDropIcon, RectangleStackIcon, MinusIcon, TractorIcon,
     EyeIcon, EyeSlashIcon, GripVerticalIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon, InfoIcon, SearchIcon,
     ArrowUturnLeftIcon, RulerIcon, TrashIcon, CheckIcon, RefreshCwIcon, ShieldCheckIcon,
     AlertTriangleIcon, PencilSquareIcon, MapIcon, PlayIcon, StopIcon, PauseIcon, FastForwardIcon, CompassIcon,
-    CrosshairIcon, ActivityIcon, RotateCwIcon, SparklesIcon, CloudUploadIcon, MicrophoneIcon
+    CrosshairIcon, ActivityIcon, RotateCwIcon, SparklesIcon, CloudUploadIcon, MicrophoneIcon, BuildingStorefrontIcon
 } from './Icons';
-import { PenTool, Plane, GripHorizontal, Video, MessageSquare } from 'lucide-react';
+import { PenTool, Plane, GripHorizontal, Video, MessageSquare, Building2, Briefcase } from 'lucide-react';
 import { offsetFeatures, calculateLineLength, generateTrenches, generateSeedlingCoordinates } from '../services/geospatialService';
 import { toGeoJSON, toKML } from '../services/fileService';
 import { safeStorage } from '../services/storageService';
@@ -73,10 +76,27 @@ interface DesignViewProps {
   onOpenChat?: () => void;
   onOpenNotes?: () => void;
   onOpenAssistant?: () => void;
+  currentUser?: User | null;
+  activeOrg?: Organization | null;
+  organizations?: Organization[];
+  onUpdateOrganization?: (org: Organization) => void;
+  onAddOrg?: (org: Organization, mem: Membership, selectedCrops?: any[]) => void;
+  onSwitchOrg?: (orgId: string) => void;
+  onUpdateUser?: (user: User) => void;
+  onStartMapRegistration?: (data: { name: string; crops?: string[]; area?: number }) => void;
 }
 
-const MapComponents: React.FC<Pick<DesignViewProps, 'layers' | 'plantationFeatures' | 'selectedFeatureIds' | 'onSelectFeature' | 'onAddLayer' | 'onDeleteItems' | 'onUpdateLayer' | 'onUpdateFeature' | 'onReparentFeature' | 'onSetActiveDrawingTool' | 'activeDrawingTool' | 'onSendToBack' | 'onBringToFront' | 'onGenerateTrenches' | 'onGenerateIrrigation' | 'onGenerateSeedlings' | 'harvestLogs'>> = (props) => {
-    const { layers, plantationFeatures, selectedFeatureIds, onSelectFeature, onAddLayer, onDeleteItems, onUpdateLayer, onUpdateFeature, onReparentFeature, onSetActiveDrawingTool, activeDrawingTool, onSendToBack, onBringToFront, onGenerateTrenches, onGenerateIrrigation, onGenerateSeedlings, harvestLogs } = props;
+interface MapComponentsProps extends Pick<DesignViewProps, 'layers' | 'plantationFeatures' | 'selectedFeatureIds' | 'onSelectFeature' | 'onAddLayer' | 'onDeleteItems' | 'onUpdateLayer' | 'onUpdateFeature' | 'onReparentFeature' | 'onSetActiveDrawingTool' | 'activeDrawingTool' | 'onSendToBack' | 'onBringToFront' | 'onGenerateTrenches' | 'onGenerateIrrigation' | 'onGenerateSeedlings' | 'harvestLogs'> {
+    activeOrg?: Organization | null;
+    organizations?: Organization[];
+    crops?: Crop[];
+    onOpenCropModal?: (tab: 'crops' | 'plantation') => void;
+    onOpenCompanyRegistration?: () => void;
+    onStartMapRegistration?: (data: { name: string; crops?: string[]; area?: number }) => void;
+}
+
+const MapComponents: React.FC<MapComponentsProps> = (props) => {
+    const { layers, plantationFeatures, selectedFeatureIds, onSelectFeature, onAddLayer, onDeleteItems, onUpdateLayer, onUpdateFeature, onReparentFeature, onSetActiveDrawingTool, activeDrawingTool, onSendToBack, onBringToFront, onGenerateTrenches, onGenerateIrrigation, onGenerateSeedlings, harvestLogs, activeOrg, organizations, onOpenCropModal, onOpenCompanyRegistration, onStartMapRegistration } = props;
     const { language } = useLanguage();
     const isKa = language === 'ka';
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, item: TreeItem } | null>(null);
@@ -253,6 +273,106 @@ const MapComponents: React.FC<Pick<DesignViewProps, 'layers' | 'plantationFeatur
                     </div>
             </div>
 
+            {/* Active Company & Plantation Crops Section */}
+            <div className="mx-4 mb-3 p-3 bg-gradient-to-r from-emerald-950/70 via-[#102035]/80 to-[#0c1828] border border-emerald-500/25 rounded-2xl transition-all shadow-md">
+                <div className="flex items-center justify-between gap-1 mb-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                        <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
+                        <span className="text-[10px] font-black text-slate-200 uppercase tracking-tight truncate">
+                            {activeOrg?.name || (isKa ? 'აქტიური კომპანია' : 'Company')}
+                        </span>
+                    </div>
+                    <button 
+                        onClick={() => onOpenCropModal?.('plantation')}
+                        className="px-2 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-lg text-[8px] font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-transform active:scale-95 flex-shrink-0"
+                        title={isKa ? "პლანტაციის კულტურების არჩევა / შეცვლა" : "Choose / Change Plantation Crops"}
+                    >
+                        <LeafIcon className="w-2.5 h-2.5 text-emerald-400" />
+                        <span>{isKa ? 'არჩევა' : 'Choose'}</span>
+                    </button>
+                </div>
+                <div 
+                    onClick={() => onOpenCropModal?.('plantation')}
+                    className="flex items-center gap-1.5 text-[9px] font-bold text-emerald-300 bg-black/30 hover:bg-black/45 px-2.5 py-1.5 rounded-xl border border-emerald-500/15 cursor-pointer transition-colors group"
+                    title={isKa ? "დააჭირეთ კულტურების ასარჩევად ან სამართავად" : "Click to select or manage plantation crops"}
+                >
+                    <span className="truncate flex-1">
+                        {formatPlantationCrops(activeOrg?.plantationCrops || activeOrg?.crops, isKa)}
+                    </span>
+                    <PencilSquareIcon className="w-3 h-3 text-emerald-400 opacity-60 group-hover:opacity-100 flex-shrink-0" />
+                </div>
+            </div>
+
+            {/* Company Registration Tools Section (Below Crop Management) */}
+            <div className="mx-4 mb-3 p-3 bg-gradient-to-r from-blue-950/70 via-[#102035]/80 to-[#0c1828] border border-blue-500/25 rounded-2xl transition-all shadow-md">
+                <div className="flex items-center justify-between gap-1 mb-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                        <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse flex-shrink-0" />
+                        <span className="text-[10px] font-black text-slate-200 uppercase tracking-tight truncate">
+                            {isKa ? 'კომპანიის რეგისტრაცია' : 'Company Registration'}
+                        </span>
+                    </div>
+                    <button 
+                        onClick={() => onOpenCompanyRegistration?.()}
+                        className="px-2 py-1 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 rounded-lg text-[8px] font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-transform active:scale-95 flex-shrink-0"
+                        title={isKa ? "კომპანიის რეგისტრაცია / პროფილი" : "Register / Manage Enterprise"}
+                    >
+                        <BuildingStorefrontIcon className="w-2.5 h-2.5 text-blue-400" />
+                        <span>{isKa ? 'რეგისტრაცია' : 'Register'}</span>
+                    </button>
+                </div>
+                {activeOrg ? (
+                    <div className="space-y-1.5">
+                        <div 
+                            onClick={() => onOpenCompanyRegistration?.()}
+                            className="flex items-center justify-between gap-1.5 text-[9px] font-bold text-blue-200 bg-black/30 hover:bg-black/45 px-2.5 py-1.5 rounded-xl border border-blue-500/15 cursor-pointer transition-colors group"
+                            title={isKa ? "დააჭირეთ კომპანიის სამართავად ან ახლის დასარეგისტრირებლად" : "Click to manage or register companies"}
+                        >
+                            <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
+                                <span className="font-black text-white truncate">{activeOrg.name}</span>
+                                {activeOrg.type && (
+                                    <span className="px-1 py-0.2 bg-blue-500/20 text-blue-300 text-[7.5px] rounded border border-blue-500/30">
+                                        {activeOrg.type}
+                                    </span>
+                                )}
+                            </div>
+                            <span className="text-[8px] text-blue-400 font-normal shrink-0">
+                                {activeOrg.region || (activeOrg.areaHa ? `${activeOrg.areaHa} ha` : '')}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                            <button
+                                type="button"
+                                onClick={() => onOpenCompanyRegistration?.()}
+                                className="flex-1 px-2 py-1 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-300 rounded-lg text-[8px] font-black uppercase tracking-wider flex items-center justify-center gap-1 transition-all cursor-pointer"
+                            >
+                                <BuildingStorefrontIcon className="w-2.5 h-2.5 text-blue-400" />
+                                <span>{isKa ? '+ ახალი კომპანია' : '+ New Enterprise'}</span>
+                            </button>
+                            {onStartMapRegistration && (
+                                <button
+                                    type="button"
+                                    onClick={() => onStartMapRegistration({ name: activeOrg.name })}
+                                    className="px-2 py-1 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 rounded-lg text-[8px] font-black uppercase tracking-wider flex items-center justify-center gap-1 transition-all cursor-pointer"
+                                    title={isKa ? "კომპანიის საზღვრის მოხაზვა რუკაზე" : "Draw Company Boundary on Map"}
+                                >
+                                    <CompassIcon className="w-2.5 h-2.5 text-emerald-400" />
+                                    <span>{isKa ? 'საზღვარი' : 'Boundary'}</span>
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                ) : (
+                    <button
+                        onClick={() => onOpenCompanyRegistration?.()}
+                        className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[9px] font-black uppercase tracking-wider shadow-sm transition-all active:scale-95 cursor-pointer"
+                    >
+                        <BuildingStorefrontIcon className="w-3 h-3" />
+                        <span>{isKa ? '+ კომპანიის რეგისტრაცია' : '+ Register Company'}</span>
+                    </button>
+                )}
+            </div>
+
             <div className="flex-1 overflow-y-auto px-4 custom-scrollbar mb-4">
                 <div className="space-y-1">
                     {treeData.map(node => (
@@ -276,12 +396,32 @@ const MapComponents: React.FC<Pick<DesignViewProps, 'layers' | 'plantationFeatur
             </div>
 
             {isAddMenuOpen && (
-                <div className="absolute top-20 right-8 bg-[#1a2b4b] border border-white/10 rounded-2xl shadow-2xl p-2 z-10 w-48 text-[10px] font-black uppercase tracking-widest animate-slide-up">
-                    <button onClick={() => { onAddLayer(isKa ? "ახალი ფენა" : "New Layer", false); setIsAddMenuOpen(false); }} className="w-full text-left px-4 py-3 hover:bg-white/5 rounded-xl cursor-pointer">
+                <div className="absolute top-20 right-8 bg-[#1a2b4b] border border-white/10 rounded-2xl shadow-2xl p-2 z-10 w-56 text-[10px] font-black uppercase tracking-widest animate-slide-up">
+                    <button onClick={() => { onAddLayer(isKa ? "ახალი ფენა" : "New Layer", false); setIsAddMenuOpen(false); }} className="w-full text-left px-4 py-2.5 hover:bg-white/5 rounded-xl cursor-pointer">
                         {isKa ? 'მონაცემთა ფენის დამატება' : 'Add Data Layer'}
                     </button>
-                    <button onClick={() => { onAddLayer(isKa ? "ახალი საქაღალდე" : "New Folder", true); setIsAddMenuOpen(false); }} className="w-full text-left px-4 py-3 hover:bg-white/5 rounded-xl border-t border-white/5 cursor-pointer">
+                    <button onClick={() => { onAddLayer(isKa ? "ახალი საქაღალდე" : "New Folder", true); setIsAddMenuOpen(false); }} className="w-full text-left px-4 py-2.5 hover:bg-white/5 rounded-xl border-t border-white/5 cursor-pointer">
                         {isKa ? 'საქაღალდის შექმნა' : 'Create Folder'}
+                    </button>
+                    <button 
+                        onClick={() => { 
+                            onOpenCropModal?.('crops');
+                            setIsAddMenuOpen(false); 
+                        }} 
+                        className="w-full text-left px-4 py-2.5 hover:bg-emerald-500/20 text-emerald-300 rounded-xl border-t border-white/10 flex items-center justify-between cursor-pointer group"
+                    >
+                        <span>{isKa ? 'კულტურები & ჯიშები' : 'Add & Manage Crops & Varieties'}</span>
+                        <LeafIcon className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition-transform" />
+                    </button>
+                    <button 
+                        onClick={() => { 
+                            onOpenCropModal?.('plantation');
+                            setIsAddMenuOpen(false); 
+                        }} 
+                        className="w-full text-left px-4 py-2.5 hover:bg-blue-500/20 text-blue-300 rounded-xl border-t border-white/5 flex items-center justify-between cursor-pointer group"
+                    >
+                        <span>{isKa ? 'პლანტაციის კულტურები' : 'Choose Plantation Crops'}</span>
+                        <span className="text-[9px] bg-blue-500/30 px-1.5 py-0.5 rounded text-blue-200">Multi</span>
                     </button>
                 </div>
             )}
@@ -417,6 +557,30 @@ const MapComponents: React.FC<Pick<DesignViewProps, 'layers' | 'plantationFeatur
                             </div>
                         </div>
                     )}
+                    {/* Crop Management */}
+                    <button 
+                        onClick={() => {
+                            onOpenCropModal?.('plantation');
+                            setContextMenu(null);
+                        }}
+                        className="w-full text-left px-5 py-2.5 hover:bg-emerald-50 text-emerald-600 flex items-center gap-3 border-t border-slate-100 text-xs font-bold cursor-pointer"
+                    >
+                        <LeafIcon size={14} />
+                        <span>{isKa ? 'კულტურების მართვა' : 'Crop Management'}</span>
+                    </button>
+
+                    {/* Company Registration */}
+                    <button 
+                        onClick={() => {
+                            onOpenCompanyRegistration?.();
+                            setContextMenu(null);
+                        }}
+                        className="w-full text-left px-5 py-2.5 hover:bg-blue-50 text-blue-600 flex items-center gap-3 border-t border-slate-100 text-xs font-bold cursor-pointer"
+                    >
+                        <BuildingStorefrontIcon size={14} />
+                        <span>{isKa ? 'კომპანიის რეგისტრაცია' : 'Company Registration'}</span>
+                    </button>
+
                     <button onClick={() => { onDeleteItems([contextMenu.item.id]); setContextMenu(null); }} className="w-full text-left px-5 py-3 hover:bg-red-50 text-red-600 flex items-center gap-3 border-t border-slate-100 font-bold cursor-pointer">
                         <TrashIcon size={14} />
                         {isKa ? 'აქტივის წაშლა' : 'Delete Asset'}
@@ -849,6 +1013,7 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
 
     // Map & GPS Tools Dropdown State (Collapsed option)
     const [isMapToolsMenuOpen, setIsMapToolsMenuOpen] = useState<boolean>(false);
+    const [isTopBadgesCollapsed, setIsTopBadgesCollapsed] = useState<boolean>(false);
     const mapToolsMenuRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
@@ -1065,6 +1230,10 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
     const [isDroneSimOpen, setIsDroneSimOpen] = useState(false);
     // AI Spatial Analysis Modal State (Decoupled Worker Engine)
     const [isSpatialAnalysisOpen, setIsSpatialAnalysisOpen] = useState(false);
+
+    // Crops & Varieties and Plantation Crops Modal State
+    const [isCropModalOpen, setIsCropModalOpen] = useState(false);
+    const [cropModalTab, setCropModalTab] = useState<'crops' | 'plantation'>('plantation');
 
     // Floating windows transparency settings (% opacity, e.g. 95)
     const [toolbarTransparency, setToolbarTransparency] = useState<number>(() => {
@@ -1471,7 +1640,14 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
         position: { x: 0, y: 0 }
     });
 
+    // Map Canvas / Background Context Menu State (Right-click on map background)
+    const [canvasContextMenu, setCanvasContextMenu] = useState<{ x: number; y: number } | null>(null);
+
+    // Company Registration Modal State
+    const [isCreateOrgModalOpen, setIsCreateOrgModalOpen] = useState(false);
+
     const handleOpenMapContextMenu = (feature: PlantationFeature, screenPoint: { x: number; y: number }) => {
+        setCanvasContextMenu(null);
         setMapContextMenu({
             isOpen: true,
             feature,
@@ -1483,13 +1659,18 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
         if (selectedFeatureIds.length > 0) {
             const selected = allFeatures.find(f => f.id === selectedFeatureIds[0]);
             if (selected) {
+                setCanvasContextMenu(null);
                 setMapContextMenu({
                     isOpen: true,
                     feature: selected,
                     position: screenPoint
                 });
+                return;
             }
         }
+        // Right clicked on background map canvas:
+        setMapContextMenu(prev => ({ ...prev, isOpen: false, feature: null }));
+        setCanvasContextMenu(screenPoint);
     };
 
     const handleMoveFromContextMenu = (feature: PlantationFeature) => {
@@ -2410,6 +2591,77 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                     </button>
                 </div>
 
+                {/* Top Plantation Crops & Enterprise Registration Badges */}
+                <div className={`absolute top-4 z-[2120] pointer-events-auto transition-all duration-300 hidden sm:flex flex-col gap-2 ${
+                    isHubOpen ? 'left-4 sm:left-[380px]' : 'left-4 sm:left-6'
+                }`}>
+                    {isTopBadgesCollapsed ? (
+                        <button
+                            onClick={() => setIsTopBadgesCollapsed(false)}
+                            className="p-2 bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl border border-slate-700/80 shadow-lg backdrop-blur-md transition-all cursor-pointer flex items-center gap-1.5 text-[10px] font-bold"
+                            title={isKa ? "პლანტაციისა და კომპანიის ბეიჯების გახსნა" : "Expand Plantation & Company Badges"}
+                        >
+                            <LeafIcon className="w-3.5 h-3.5 text-emerald-400" />
+                            <BuildingStorefrontIcon className="w-3.5 h-3.5 text-blue-400" />
+                            <ChevronDownIcon size={12} className="text-slate-400" />
+                        </button>
+                    ) : (
+                        <div className="flex flex-col gap-2 relative group/badges">
+                            {/* Plantation Crops Badge */}
+                            <div className="flex items-center gap-1">
+                                <button
+                                    onClick={() => {
+                                        setCropModalTab('plantation');
+                                        setIsCropModalOpen(true);
+                                    }}
+                                    className="flex items-center gap-2 px-3 py-2 bg-slate-900/90 hover:bg-slate-900 backdrop-blur-xl border border-emerald-500/30 text-white rounded-2xl shadow-xl hover:border-emerald-500/60 transition-all hover:scale-105 active:scale-95 cursor-pointer group"
+                                    title={isKa ? "პლანტაციის კულტურების არჩევა / შეცვლა" : "Choose / Change Plantation Crops"}
+                                >
+                                    <div className="w-5 h-5 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30 group-hover:scale-110 transition-transform">
+                                        <LeafIcon className="w-3 h-3" />
+                                    </div>
+                                    <div className="flex flex-col items-start text-left">
+                                        <span className="text-[7.5px] font-black text-emerald-400 uppercase tracking-widest leading-none">
+                                            {isKa ? 'კულტურების მართვა' : 'Crops Management'}
+                                        </span>
+                                        <span className="text-[9.5px] font-black text-slate-100 uppercase tracking-tight truncate max-w-[200px] sm:max-w-[280px]">
+                                            {formatPlantationCrops(props.activeOrg?.plantationCrops || props.activeOrg?.crops, isKa)}
+                                        </span>
+                                    </div>
+                                    <PencilSquareIcon className="w-3 h-3 text-emerald-400 opacity-60 group-hover:opacity-100 ml-0.5" />
+                                </button>
+                                <button
+                                    onClick={() => setIsTopBadgesCollapsed(true)}
+                                    className="p-1 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800 transition-colors opacity-0 group-hover/badges:opacity-100 cursor-pointer"
+                                    title={isKa ? "ჩაკეცვა" : "Collapse"}
+                                >
+                                    <ChevronUpIcon size={12} />
+                                </button>
+                            </div>
+
+                            {/* Company Registration Badge */}
+                            <button
+                                onClick={() => setIsCreateOrgModalOpen(true)}
+                                className="flex items-center gap-2 px-3 py-2 bg-slate-900/90 hover:bg-slate-900 backdrop-blur-xl border border-blue-500/30 text-white rounded-2xl shadow-xl hover:border-blue-500/60 transition-all hover:scale-105 active:scale-95 cursor-pointer group"
+                                title={isKa ? "კომპანიის რეგისტრაცია / პროფილი" : "Company Registration / Profile"}
+                            >
+                                <div className="w-5 h-5 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center border border-blue-500/30 group-hover:scale-110 transition-transform">
+                                    <BuildingStorefrontIcon className="w-3 h-3" />
+                                </div>
+                                <div className="flex flex-col items-start text-left">
+                                    <span className="text-[7.5px] font-black text-blue-400 uppercase tracking-widest leading-none">
+                                        {isKa ? 'კომპანიის რეგისტრაცია' : 'Company Registration'}
+                                    </span>
+                                    <span className="text-[9.5px] font-black text-slate-100 uppercase tracking-tight truncate max-w-[200px] sm:max-w-[280px]">
+                                        {props.activeOrg?.name || (isKa ? '+ კომპანიის რეგისტრაცია' : '+ Register Company')}
+                                    </span>
+                                </div>
+                                <PlusIcon size={12} className="text-blue-400 opacity-60 group-hover:opacity-100 ml-0.5" />
+                            </button>
+                        </div>
+                    )}
+                </div>
+
                 {/* Top-Right Unified Tools & Layers Visibility Control Dropdown */}
                 <div className={`absolute top-4 z-[2150] pointer-events-auto transition-all duration-300 ${
                     isInfoOpen ? 'right-4 sm:right-[380px]' : 'right-4 sm:right-6'
@@ -3001,6 +3253,15 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                             onDeleteItems={handleUnifiedDelete}
                             onGenerateTrenches={handleGenerateTrenchesLocal}
                             onGenerateSeedlings={handleGenerateSeedlingsLocal}
+                            activeOrg={props.activeOrg}
+                            organizations={props.organizations}
+                            crops={props.crops}
+                            onOpenCropModal={(tab) => {
+                                setCropModalTab(tab);
+                                setIsCropModalOpen(true);
+                            }}
+                            onOpenCompanyRegistration={() => setIsCreateOrgModalOpen(true)}
+                            onStartMapRegistration={props.onStartMapRegistration}
                         />
                     </div>
                 )}
@@ -3034,11 +3295,54 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
 
                         {/* Dropdown Menu Popup */}
                         {isMapToolsMenuOpen && (
-                            <div className="absolute bottom-full left-0 mb-2 w-56 bg-slate-950/95 backdrop-blur-xl border border-slate-700/80 shadow-2xl rounded-2xl p-1.5 flex flex-col gap-1 z-50 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                            <div className="absolute bottom-full left-0 mb-2 w-64 bg-slate-950/95 backdrop-blur-xl border border-slate-700/80 shadow-2xl rounded-2xl p-2 flex flex-col gap-1.5 z-50 animate-in fade-in slide-in-from-bottom-2 duration-150">
                                 <div className="px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-slate-400 flex items-center justify-between border-b border-slate-800/80 mb-0.5">
                                     <span>{isKa ? "რუკა და GPS ხელსაწყოები" : "Map & GPS Tools"}</span>
                                     <span className="text-[8px] font-mono text-slate-500">{isKa ? "სწრაფი მენიუ" : "Quick Menu"}</span>
                                 </div>
+
+                                {/* Plantation Crops Management - Added to Widget as Requested */}
+                                <button
+                                    onClick={() => {
+                                        setCropModalTab('plantation');
+                                        setIsCropModalOpen(true);
+                                        setIsMapToolsMenuOpen(false);
+                                    }}
+                                    className="flex items-center justify-between w-full px-3 py-2 rounded-xl text-xs font-bold hover:bg-slate-800/80 text-slate-200 transition-all text-left group cursor-pointer border border-emerald-500/20 bg-emerald-950/20"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <LeafIcon size={15} className="text-emerald-400 group-hover:scale-110 transition-transform shrink-0" />
+                                        <div className="flex flex-col min-w-0">
+                                            <span className="leading-tight text-[11px] font-bold text-slate-100">{isKa ? 'კულტურების მართვა' : 'Crops Management'}</span>
+                                            <span className="text-[9px] text-emerald-400 font-semibold truncate max-w-[140px]">
+                                                {formatPlantationCrops(props.activeOrg?.plantationCrops || props.activeOrg?.crops, isKa)}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <PencilSquareIcon className="w-3.5 h-3.5 text-emerald-400 opacity-60 group-hover:opacity-100 shrink-0" />
+                                </button>
+
+                                {/* Company Registration - Added to Widget as Requested */}
+                                <button
+                                    onClick={() => {
+                                        setIsCreateOrgModalOpen(true);
+                                        setIsMapToolsMenuOpen(false);
+                                    }}
+                                    className="flex items-center justify-between w-full px-3 py-2 rounded-xl text-xs font-bold hover:bg-slate-800/80 text-slate-200 transition-all text-left group cursor-pointer border border-blue-500/20 bg-blue-950/20"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <BuildingStorefrontIcon className="w-3.5 h-3.5 text-blue-400 group-hover:scale-110 transition-transform shrink-0" />
+                                        <div className="flex flex-col min-w-0">
+                                            <span className="leading-tight text-[11px] font-bold text-slate-100">{isKa ? 'კომპანიის რეგისტრაცია' : 'Company Registration'}</span>
+                                            <span className="text-[9px] text-blue-400 font-semibold truncate max-w-[140px]">
+                                                {props.activeOrg?.name || (isKa ? '+ რეგისტრაცია' : '+ Register')}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <PlusIcon size={13} className="text-blue-400 opacity-60 group-hover:opacity-100 shrink-0" />
+                                </button>
+
+                                <div className="w-full h-[1px] bg-slate-800/80 my-0.5" />
 
                                 {/* Satellite Toggle */}
                                 <button
@@ -3586,8 +3890,56 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                     onConvert={handleConvertFeature}
                     onDelete={handleDeleteFromContextMenu}
                     onOpenPencilOptions={(feat) => setSelectedPencilSketch(feat)}
+                    onOpenCropModal={() => {
+                        setCropModalTab('plantation');
+                        setIsCropModalOpen(true);
+                    }}
+                    onOpenCompanyRegistration={() => setIsCreateOrgModalOpen(true)}
                 />
             )}
+
+            {/* Map Canvas Background Context Menu (Right-click on map background) */}
+            {canvasContextMenu && (
+                <MapCanvasContextMenu
+                    position={canvasContextMenu}
+                    onClose={() => setCanvasContextMenu(null)}
+                    onOpenCropModal={() => {
+                        setCropModalTab('plantation');
+                        setIsCropModalOpen(true);
+                    }}
+                    onOpenCompanyRegistration={() => setIsCreateOrgModalOpen(true)}
+                    onSelectDrawingTool={(tool) => {
+                        if (tool === 'sector') props.onSetActiveDrawingTool({ tool: 'sector', color: '#10b981' });
+                        else if (tool === 'trench') props.onSetActiveDrawingTool({ tool: 'trench', color: '#f59e0b' });
+                        else if (tool === 'irrigation') props.onSetActiveDrawingTool({ tool: 'irrigation_line', color: '#06b6d4' });
+                        else if (tool === 'note') props.onSetActiveDrawingTool({ tool: 'note', color: '#f59e0b' });
+                    }}
+                    activeOrgName={props.activeOrg?.name}
+                />
+            )}
+
+            {/* Crops & Varieties and Plantation Crops Modal */}
+            <CropManagementModal 
+                isOpen={isCropModalOpen}
+                onClose={() => setIsCropModalOpen(false)}
+                crops={props.crops || []}
+                organizationId={props.activeOrg?.id || (props.mapProps as any)?.activeOrgId || ''}
+                organization={props.activeOrg}
+                onUpdateOrganization={props.onUpdateOrganization}
+                initialTab={cropModalTab}
+                isKa={isKa}
+            />
+
+            {/* Company Registration Modal */}
+            <CreateOrganizationModal
+                isOpen={isCreateOrgModalOpen}
+                onClose={() => setIsCreateOrgModalOpen(false)}
+                user={props.currentUser || (props.mapProps as any)?.currentUser}
+                onAddOrg={props.onAddOrg}
+                onSwitchOrg={props.onSwitchOrg}
+                onUpdateUser={props.onUpdateUser}
+                onStartMapRegistration={props.onStartMapRegistration}
+            />
 
             <style>{`
                 .custom-scrollbar::-webkit-scrollbar { width: 4px; }

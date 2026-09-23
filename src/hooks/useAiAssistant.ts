@@ -82,94 +82,271 @@ const generateAutonomousAssistantResponse = (
     const lower = (command || '').toLowerCase().trim();
     const isCreditDepleted = (errReason || '').includes('429') || (errReason || '').includes('RESOURCE_EXHAUSTED') || (errReason || '').includes('prepayment credits');
     const noticeFooter = isCreditDepleted 
-        ? '\n\n*(⚡ Generated via Autonomous Local Agronomy Engine. Cloud prepayment credits depleted; update your key in ⚙️ AI Settings to restore live cloud model querying).*'
-        : '\n\n*(⚡ Generated via Autonomous Local Agronomy Engine).*';
+        ? '\n\n*(⚡ Generated via Gemini 2.5 Knowledge Engine Local Core. Cloud credits depleted; update key in ⚙️ AI Settings to restore live cloud model querying).*'
+        : '\n\n*(⚡ Generated via Gemini 2.5 Knowledge Engine Local Core).*';
 
-    // 1. Presentation request (especially focused on harvest module and weigh station)
-    if (lower.includes('presentation') || (lower.includes('harvest') && (lower.includes('weigh') || lower.includes('weight'))) || lower.includes('slide') || lower.includes('guide')) {
+    const orgName = context?.activeOrgName || context?.activeOrgId || 'Attached Enterprise';
+    const isSysAdmin = Boolean(
+        context?.isSystemAdmin || 
+        context?.currentUser?.isSystemAdmin || 
+        context?.currentUser?.role === 'system_admin' ||
+        (context?.currentUser?.roles as any)?.includes?.('system_admin')
+    );
+
+    // 0. Cross-Company Details & Tenant Radius Restriction
+    const isCrossCompanyQuery = lower.includes('other compan') || lower.includes('competitor') || 
+        lower.includes('all compan') || lower.includes('all other') || lower.includes('other farm') ||
+        lower.includes('all farms') || lower.includes('across compan') || lower.includes('სხვა კომპანი');
+
+    if (isCrossCompanyQuery) {
+        if (effectiveMode === 'god_ai' && isSysAdmin) {
+            const orgs = context?.organizations || [];
+            const matrix = godAIKnowledgeEngine.synthesizeOmniscientGodAIMatrix(
+                true,
+                orgs,
+                context?.workAssignments || [],
+                context?.harvestEntries || [],
+                context?.plantationFeatures || [],
+                []
+            );
+            const laborSample = Array.isArray(matrix.crossCompanyLaborBenchmarks) && matrix.crossCompanyLaborBenchmarks.length > 0
+                ? matrix.crossCompanyLaborBenchmarks.map(b => `${b.taskType}: median ${b.medianHoursPerHa}h/ha (${b.industryBenchmarkComparison})`).slice(0, 3).join('; ')
+                : 'Pruning & Spraying operations median 14.5 hrs/ha';
+
+            const yieldSample = Array.isArray(matrix.crossCompanyCropYieldAverages) && matrix.crossCompanyCropYieldAverages.length > 0
+                ? matrix.crossCompanyCropYieldAverages.map(y => `${y.cropOrVariety}: avg ${y.averageKgPerHectare} kg/ha (${y.topPerformingPractice})`).slice(0, 3).join('; ')
+                : 'Duke Blueberries ~7,850 kg/ha; Hazelnut ~2,400 kg/ha';
+
+            return {
+                text: `👑 **Root AI Assistant: Cross-Enterprise Global Intelligence & Multi-Company Synthesis**
+
+*Authorized Access: System Root Administrator*
+
+- **Registered Enterprises Monitored**: ${matrix.totalOrganizationsMonitored} Companies (${orgs.map((o: any) => o.name || o.id).join(', ') || 'All System Tenants'})
+- **Total Ecosystem Work Tasks**: ${matrix.totalTasksAnalyzed}
+- **Total Harvest Monitored Across All Companies**: ${matrix.totalHarvestKgAnalyzed} kg
+- **Clinical Cases Evaluated**: ${matrix.totalClinicalCasesAnalyzed}
+
+### Cross-Company Comparative Benchmarks:
+1. **Labor Productivity Distribution**: Cross-enterprise operations: ${laborSample}.
+2. **Crop Yield Benchmarks**: Cultivars across monitored companies: ${yieldSample}.
+3. **Macro Pathogen Vulnerability**: Regional humidity has triggered early Anthracnose alerts in 2 companies in the western cluster. Recommended universal preventive copper spray.
+4. **Supply Chain Synergy**: Bulk procurement of packaging crates across enterprises offers estimated 14% bulk discount.${noticeFooter}`,
+                action: { type: 'none' }
+            };
+        } else {
+            return {
+                text: `🔒 **Tenant Radius & Scope Boundary Notice**
+
+I am currently operating as the **AI System Navigator & Copilot** strictly within the operational radius of your attached company: **"${orgName}"**.
+
+- **Scope Perimeter**: Attached Company Only (**${orgName}**)
+- **Data Protection**: Multi-tenant isolation is strictly enforced. In this mode, I cannot disclose, compare, or analyze data from other registered companies.
+- **Root AI Assistant Requirement**: Only the **Root AI Assistant** (Omniscient God AI Mode, restricted to Root / System Administrators) possesses permission to analyze cross-enterprise metrics and comparative details across all registered companies.
+
+If you require macro ecosystem benchmarks, please switch to the **Root AI Assistant** using an authorized Root Administrator account.${noticeFooter}`,
+                action: { type: 'none' }
+            };
+        }
+    }
+
+    // 1. Profile Creation & KYC Verification
+    if (lower.includes('profile') || lower.includes('kyc') || lower.includes('პროფილ') || lower.includes('ვერიფიკაც') || lower.includes('identity') || lower.includes('passport')) {
         return {
-            text: `📊 **AgriMap Enterprise Architecture Presentation: Harvest Operations & Weigh Station Logistics**
+            text: `📋 **Directives for Profile Creation & KYC Verification (Attached Company: ${orgName})**:
 
-### 1. Harvest Operations Pipeline
-- **Field & Parcel Selection**: Geo-referenced plantation plots loaded directly from GIS vectors, matching active cultivar and maturity stages.
-- **Team & Picker Assignment**: Field supervisors register pickers and assign individual QR badges for strict traceability from branch to pallet.
-- **Real-Time Monitoring**: Live tracking of crate collection rates, picker speeds, and hourly harvest velocity.
-
-### 2. Weigh Station Field Precision Logistics
-- **Sub-Second Picker Identification**: Immediate QR badge scan on field scales to attribute crates directly to individual workers.
-- **Dynamic Tare Deduction**: Precision tare calibration (subtracting standard empty crate weight, baseline 0.35 kg) ensures 100% net fruit yield accuracy.
-- **Real-Time Quality Grading**: Produce is triaged directly on the platform (Export Grade A, Domestic Grade B, Industrial / Processing).
-- **Cold Chain Buffer Integration**: Automated generation of cold storage pallet tickets; timestamps enforce the 45-minute maximum field-to-chiller window to preserve fruit firmness, bloom, and Brix.
-- **Offline Reliability**: All scale weights and ticket logs persist locally in offline storage and sync automatically once GSM/Wi-Fi is re-established.
-
-### 3. Presentation & Architecture Exports
-You can generate and download this full presentation directly from the **"Manual Architecture & AI Guide"** module in:
-- **PDF format** (clean vector document)
-- **PowerPoint PPTX format** (fully editable slides)
-- **Interactive HTML format** (live browser presentation)${noticeFooter}`,
+1. **Access Profile Module**:
+   - Open your user profile via the avatar in the top bar or from the Dashboard profile status card.
+2. **Enter Credentials & Agronomic Role**:
+   - Fill in your First Name, Last Name, Phone Number, and verified Email Address.
+   - Designate your operational authority: *Founder/Co-Founder*, *Senior Agronomist*, *Field Manager / Admin*, *Daily Worker*, or *Commercial Buyer*.
+3. **KYC Verification & Document Upload**:
+   - Upload clear images of your National ID Card or Passport (front & back).
+   - Click **Save Changes**. The Dashboard profile completeness indicator will update to **100% Verified**.
+4. **Next Recommended Step**:
+   - Proceed to **Founders Hub** to configure tax registration, bank details, and partner equity percentages.${noticeFooter}`,
             action: { type: 'none' }
         };
     }
 
-    // 2. Excel export / harvest sales
+    // 2. GIS Satellite Mapping, Cadastral Search & Boundary Polygon
+    if (lower.includes('map') || lower.includes('რუკა') || lower.includes('boundary') || lower.includes('cadastr') || lower.includes('საკადასტრო') || lower.includes('polygon') || lower.includes('satellite') || lower.includes('სატელიტ') || lower.includes('gps') || lower.includes('ფართობ')) {
+        return {
+            text: `🗺️ **GIS Satellite Mapping & Boundary Polygon Directives (Attached Company: ${orgName})**:
+
+1. **Open Map & Precision Design**:
+   - Navigate to the **Design / Map** module from the navigation bar.
+2. **Locate Your Parcel**:
+   - In the map search bar, enter your **GPS Coordinates** (e.g. \`41.8752, 44.5123\`), **Cadastral Code** (e.g. \`05.24.03.112\`), or locality name.
+   - In the layer switcher, toggle to **Satellite View** (Google Satellite or ESRI World Imagery) to view real terrain and crop canopies.
+3. **Trace Parcel Perimeter**:
+   - Select the **Boundary / Polygon Tool** from the left drawing toolbar.
+   - Click each parcel vertex. Double-click or click the first point to seal the boundary.
+4. **Automatic Geodesic Calculations**:
+   - The engine automatically calculates the exact **Surface Area in Hectares (ha)**, square meters, perimeter, and centroid.
+5. **Internal Infrastructure Layering**:
+   - Add seedling rows (planting trenches), drip fertigation pipes, and harvest collection points within the boundary.${noticeFooter}`,
+            action: { type: 'none' }
+        };
+    }
+
+    // 3. Active Standing Register: Adding Vehicles & Materials to Tasks
+    if (lower.includes('vehicle') || lower.includes('material') || lower.includes('standing register') || lower.includes('მანქან') || lower.includes('ავტომობილ') || lower.includes('მასალ') || lower.includes('რეესტრ') || lower.includes('ტრანსპორტ')) {
+        return {
+            text: `🚜 **Active Standing Register: Vehicles & Materials Protocols (Attached Company: ${orgName})**:
+
+1. **Access Active Standing Register**:
+   - Go to **Tasks & Works** and locate the **Active Standing Register** header.
+2. **"Add Vehicles" (🚜)**:
+   - Click the **"Add Vehicles"** button in the register header.
+   - Enter Vehicle Model / Machinery Type (e.g. *John Deere 5075E*, *Refrigerated Sprinter Truck*).
+   - Enter License Plate, Driver Name, Payload Capacity (e.g. 3,500 kg), and Assigned Route (e.g. Field Sector A $\\rightarrow$ Central Cold Storage).
+3. **"Add Materials" (📦)**:
+   - Click the **"Add Materials"** button in the register header.
+   - Allocate packaging crates (e.g. 500 vented fruit crates @ 0.35kg tare), clamshell punnets, pallet wraps, or fertilizer bags.
+4. **Automatic Association**:
+   - The register links vehicles and materials directly to the active task or initializes a new operational assignment automatically.
+   - Real-time inventory deduction triggers as materials are deployed in the field.${noticeFooter}`,
+            action: { type: 'none' }
+        };
+    }
+
+    // 4. Harvest Monitoring, Scales & 6 Protocols
+    if (lower.includes('scale') || lower.includes('protocol') || lower.includes('weigh') || lower.includes('harvest') || lower.includes('სასწორ') || lower.includes('პროტოკოლ') || lower.includes('რთველ') || lower.includes('მოსავალ') || lower.includes('tare') || lower.includes('ტარა')) {
+        return {
+            text: `⚖️ **Harvest Live Monitoring & 6 Electronic Scale Protocols (Attached Company: ${orgName})**:
+
+The platform features 6 industrial digital scale protocols for field weigh stations:
+- **Protocol 1: Continuous Broadcast Stream** — Direct serial/Bluetooth real-time streaming of weight updates.
+- **Protocol 2: On-Demand Query Poll** — Active polling command sent to the scale upon trigger.
+- **Protocol 3: Auto-Tare Deduction (0.35kg Baseline)** — Automatically zeroes out crate tare weight, ensuring 100% net fruit yield accuracy.
+- **Protocol 4: Dual Weighmaster Verification** — Two-step verification for certified export batches.
+- **Protocol 5: High-Speed Batch Palletizing** — Aggregates multi-crate batches with automated QR pallet batch stamping.
+- **Protocol 6: Offline Resilient Local Cache** — Weighments persist in encrypted browser storage during field signal dropouts and synchronize seamlessly upon GSM/Wi-Fi re-establishment.
+
+**Weigh Station Operational Workflow**:
+1. Scan picker QR badge on field tablet.
+2. Place crate on scale (Protocol 3 auto-deducts tare; net weight is logged in <0.5s).
+3. Net kg credits instantly to the worker's piece-rate earnings sheet.
+4. 45-minute cold chain timer starts to ensure fruit enters chillers before temperature degradation.${noticeFooter}`,
+            action: { type: 'none' }
+        };
+    }
+
+    // 5. Stock & Automated Inventory FIFO Deduction
+    if (lower.includes('stock') || lower.includes('warehouse') || lower.includes('საწყობ') || lower.includes('მარაგ') || lower.includes('deduct') || lower.includes('ჩამოწერ')) {
+        return {
+            text: `📦 **Stock & Automated FIFO Inventory Deduction (Attached Company: ${orgName})**:
+
+1. **Inventory Classification**:
+   - Stock categories: *Packaging (Crates, Punnets)*, *Fertilizers (N-P-K, Chelates)*, *Agrochemicals (Bt, Fungicides)*, *Irrigation Spares*, *Field Tools*.
+2. **Automated Depletion Engine**:
+   - **Harvest Weighing**: Each crate recorded at the weigh station triggers immediate FIFO deduction of 1 crate and packaging unit from stock.
+   - **Fertigation / Spray Acts**: Completing an agronomic spray task automatically subtracts planned chemical dosages per hectare.
+3. **Safety Thresholds & Reorder Triggers**:
+   - Configure minimum safety stock levels. Real-time alerts warn operations prior to stockouts during peak harvest.${noticeFooter}`,
+            action: { type: 'none' }
+        };
+    }
+
+    // 6. HR, Worker Onboarding & Piece-Rate Tariffs
+    if (lower.includes('hr') || lower.includes('worker') || lower.includes('მუშ') || lower.includes('მკრეფავ') || lower.includes('ხელფას') || lower.includes('ტარიფ') || lower.includes('attendance') || lower.includes('payroll')) {
+        return {
+            text: `👷 **HR Workforce Management & Piece-Rate Accruals (Attached Company: ${orgName})**:
+
+1. **Worker Onboarding**:
+   - In **Tools & HR**, register personnel with full name, national ID, phone, and role (*Seasonal Picker*, *Tractor Operator*, *Brigade Leader*).
+   - Generate laminated QR badges for sub-second field identification.
+2. **Compensation Models**:
+   - **Piece-Rate Tariffs**: Assign $/kg or $/crate rates (e.g. 0.80 ₾/kg for Blueberries).
+   - **Fixed Daily Wages**: For irrigation operators and supervisors.
+3. **Automated Payroll Sync**:
+   - Scale weighments link directly to picker rosters, calculating accrued gross earnings in real time with zero manual spreadsheet entry.${noticeFooter}`,
+            action: { type: 'none' }
+        };
+    }
+
+    // 7. Presentation request
+    if (lower.includes('presentation') || lower.includes('slide')) {
+        return {
+            text: `📊 **AgriMap Enterprise Architecture Presentation: Harvest Operations & Weigh Station Logistics**
+
+### 1. Harvest Operations Pipeline (Attached Company: ${orgName})
+- **Field & Parcel Selection**: Geo-referenced plantation plots loaded directly from GIS vectors.
+- **Team & Picker Assignment**: Field supervisors register pickers and assign QR badges.
+- **Real-Time Monitoring**: Live tracking of crate collection rates, picker speeds, and hourly harvest velocity.
+
+### 2. Weigh Station Field Precision Logistics
+- **Sub-Second Picker Identification**: Immediate QR badge scan on field scales.
+- **Dynamic Tare Deduction**: Precision tare calibration (subtracting standard empty crate weight, baseline 0.35 kg).
+- **Cold Chain Buffer Integration**: Pallet tickets enforce the 45-minute maximum field-to-chiller window.
+- **Offline Reliability**: Scale weights persist locally and auto-sync when online.
+
+### 3. Export Presentation
+Download full slide presentations in **PDF**, **PowerPoint PPTX**, or **Interactive HTML** from the Manual Architecture module.${noticeFooter}`,
+            action: { type: 'none' }
+        };
+    }
+
+    // 8. Excel export / harvest sales
     if (lower.includes('excel') || (lower.includes('harvest') && (lower.includes('sale') || lower.includes('sales'))) || lower.includes('export')) {
         const produceItems = (context?.inventoryItems || []).filter((i: any) => 
             i.category === 'Produce' && !i.isPrivate && i.status !== 'COLD_STORAGE_RETURNED'
         );
         if (produceItems.length > 0) {
             return {
-                text: `📊 **Harvest Sales Excel Generated**\n\nI have compiled ${produceItems.length} active produce batch record(s) into an Excel spreadsheet with net weights, unit prices, cash/LLC revenues, and varieties. The download has been triggered automatically.${noticeFooter}`,
+                text: `📊 **Harvest Sales Excel Generated (Attached Company: ${orgName})**\n\nCompiled ${produceItems.length} active produce batch record(s) into an Excel spreadsheet with net weights, unit prices, revenues, and varieties. Download triggered automatically.${noticeFooter}`,
                 action: { type: 'excel_export', title: 'Harvest Sales' }
             };
         } else {
             return {
-                text: `📊 **Harvest Sales Interface**\n\nThere are currently 0 active produce batches in this session. I am redirecting you directly to the Stock module's Harvest Sale interface where you can view inventory records and use the Excel export tools.${noticeFooter}`,
+                text: `📊 **Harvest Sales Interface (Attached Company: ${orgName})**\n\nThere are currently 0 active produce batches in this session. Redirecting to Stock module's Harvest Sale interface for records management and Excel exports.${noticeFooter}`,
                 action: { type: 'excel_export', title: 'Harvest Sales' }
             };
         }
     }
 
-    // 3. Task Creation
+    // 9. Task Creation
     if (lower.startsWith('add task') || lower.startsWith('create task') || lower.startsWith('task:') || lower.includes('new task') || lower.includes('schedule task')) {
         let taskTitle = command.replace(/^(add task|create task|task:|new task|schedule task)\s*/i, '').trim();
         if (!taskTitle) taskTitle = 'Agricultural Field Task';
         return {
-            text: `✅ **Task Scheduled**\n\nCreated new work assignment: **"${taskTitle}"**. It has been recorded in your project planner and dashboard.${noticeFooter}`,
+            text: `✅ **Task Scheduled (Attached Company: ${orgName})**\n\nCreated new work assignment: **"${taskTitle}"**. It has been recorded in your project planner and dashboard.${noticeFooter}`,
             action: { type: 'task', title: taskTitle }
         };
     }
 
-    // 4. Reminder Creation
+    // 10. Reminder Creation
     if (lower.startsWith('remind') || lower.includes('add reminder') || lower.includes('set reminder')) {
         let reminderTitle = command.replace(/^(remind me to|remind me|add reminder|set reminder)\s*/i, '').trim();
         if (!reminderTitle) reminderTitle = 'Agri-Reminder';
         return {
-            text: `⏰ **Reminder Set**\n\nAdded reminder: **"${reminderTitle}"** to your schedule and alerts list.${noticeFooter}`,
+            text: `⏰ **Reminder Set (Attached Company: ${orgName})**\n\nAdded reminder: **"${reminderTitle}"** to your schedule and alerts list.${noticeFooter}`,
             action: { type: 'reminder', title: reminderTitle }
         };
     }
 
-    // 5. Note Creation
+    // 11. Note Creation
     if (lower.startsWith('note') || lower.startsWith('add note') || lower.includes('take note') || lower.includes('record note')) {
         let noteText = command.replace(/^(note:|add note|take note|record note)\s*/i, '').trim();
         if (!noteText) noteText = command;
         return {
-            text: `📝 **Field Note Saved**\n\nLogged note: **"${noteText}"** to your field notebook.${noticeFooter}`,
+            text: `📝 **Field Note Saved (Attached Company: ${orgName})**\n\nLogged note: **"${noteText}"** to your field notebook.${noticeFooter}`,
             action: { type: 'note', title: noteText }
         };
     }
 
-    // 6. Agronomic / Pest / Spraying / Pruning / Irrigation
+    // 12. Agronomic / Pest / Spraying / Pruning / Irrigation
     if (lower.includes('bt') || lower.includes('spray') || lower.includes('pesticide') || lower.includes('fungicide') || lower.includes('copper') || lower.includes('prun') || lower.includes('irrigat') || lower.includes('fertil') || lower.includes('pest') || lower.includes('disease')) {
         const heuristics = godAIKnowledgeEngine.getHeuristics();
-        const adviceList = heuristics.slice(0, 3).map(h => `• **${h.title}**: ${h.description} *(Recommendation: ${h.recommendationAction})*`).join('\n\n');
+        const adviceList = heuristics.slice(0, 3).map(h => `• **${h.title}**: ${h.description} *(Action: ${h.recommendationAction})*`).join('\n\n');
         return {
-            text: `🌿 **Agronomic Intelligence & Treatment Protocols**\n\nBased on regional berry and orchard field benchmarks:\n\n${adviceList}\n\n**Operational Best Practices**:\n1. Calibrate drip fertigation line pressures and verify soil moisture tension (target 15-25 kPa for blueberries).\n2. Schedule biological sprays (*Bacillus thuringiensis*) in late afternoon or overcast skies to minimize UV photodegradation.\n3. Verify copper fungicide intervals and observe strict post-spray withholding periods before harvest.${noticeFooter}`,
+            text: `🌿 **Agronomic Intelligence & Treatment Protocols (Attached Company: ${orgName})**\n\n${adviceList}\n\n**Operational Best Practices**:\n1. Calibrate drip fertigation line pressures; maintain soil moisture tension between 15-25 kPa for blueberries.\n2. Schedule biological sprays (*Bacillus thuringiensis*) in late afternoon or overcast skies to prevent UV photodegradation.\n3. Verify copper fungicide intervals and observe strict pre-harvest withholding intervals.${noticeFooter}`,
             action: { type: 'none' }
         };
     }
 
-    // 7. Bottlenecks & PM Analysis
+    // 13. Bottlenecks & PM Analysis
     if (lower.includes('bottleneck') || lower.includes('velocity') || lower.includes('productivity') || lower.includes('labor') || lower.includes('worker') || lower.includes('analy')) {
         const analysis = godAIKnowledgeEngine.analyzeWorksAndTasks({
             organizationId: context?.activeOrgId || '',
@@ -182,34 +359,54 @@ You can generate and download this full presentation directly from the **"Manual
             notes: context?.notes || []
         });
         return {
-            text: `📈 **Operational Performance & Bottleneck Analysis**\n\n- **Total Registered Tasks**: ${analysis.totalTasks}\n- **Overall Completion Rate**: ${analysis.overallCompletionRate}%\n- **Labor Productivity Index**: ${analysis.laborProductivityIndex}/100\n- **Active Machinery**: ${analysis.machineryUtilizationSummary.activeUnits} units (${analysis.machineryUtilizationSummary.utilizationScore}% utilization)\n- **Critical Bottlenecks Detected**: ${analysis.criticalBottlenecks.length > 0 ? analysis.criticalBottlenecks.map((b: any) => typeof b === 'string' ? b : (b?.name || b?.title || 'Bottleneck')).join(', ') : 'None detected. Work velocity is optimal.'}\n\n**Recommendation**: Align worker crew assignments with planned task durations to prevent field labor slippage.${noticeFooter}`,
+            text: `📈 **Operational Performance & Bottleneck Analysis (Attached Company: ${orgName})**\n\n- **Total Registered Tasks**: ${analysis.totalTasks}\n- **Overall Completion Rate**: ${analysis.overallCompletionRate}%\n- **Labor Productivity Index**: ${analysis.laborProductivityIndex}/100\n- **Active Machinery**: ${analysis.machineryUtilizationSummary.activeUnits} units (${analysis.machineryUtilizationSummary.utilizationScore}% utilization)\n- **Critical Bottlenecks Detected**: ${analysis.criticalBottlenecks.length > 0 ? analysis.criticalBottlenecks.map((b: any) => typeof b === 'string' ? b : (b?.name || b?.title || 'Bottleneck')).join(', ') : 'None detected. Work velocity is optimal.'}\n\n**Recommendation**: Align worker crew assignments with planned task durations to prevent field labor slippage.${noticeFooter}`,
             action: { type: 'none' }
         };
     }
 
-    // 8. SOP Guide
+    // 14. SOP Guide
     if (lower.includes('sop') || lower.includes('guide') || lower.includes('how to') || lower.includes('help') || lower.includes('start') || lower.includes('steps')) {
         return {
-            text: `📋 **AgriMap Pro Standard Operating Procedure (SOP) Guide**\n\n1. **Profile Verification**: Open *My Profile* and verify user credentials.\n2. **Company Registration**: Navigate to *Company Enterprise*, configure target crops and custom varieties.\n3. **Map Planner**: Go to *Map / Dashboard* to draw plot boundaries, trenches, and sector blocks.\n4. **Register Workers & Teams**: Under *Individual Tools*, register pickers, generate QR badges, and assign work crews.\n5. **Manage Stock**: Under *Stock*, manage fertilizers, packaging containers, and cost rates.\n6. **Start Harvest Session**: Launch *Harvesting Module*, select target sectors and active picking teams.\n7. **Live Monitoring**: Monitor pickers and crate throughput in real-time.\n8. **Weigh Station**: Scan picker QR badges on field scales, auto-deduct crate tare (0.35kg baseline), and log net weights.\n9. **Cold Storage & Market**: Conclude sessions and transfer fruit crates directly into Cold Storage inventory.${noticeFooter}`,
+            text: `📋 **AgriMap Pro Sequential 16-Step SOP Guide (Attached Company: ${orgName})**\n\n1. **Profile & KYC**: Complete user identification & role assignment.\n2. **Company Registration**: Setup company tax ID, banking & equity in Founders Hub.\n3. **GIS Satellite Mapping**: Locate parcel by GPS/cadastre, draw polygon boundaries, auto-calculate hectares.\n4. **Crop Catalog**: Add crop varieties (Blueberry Duke/Legacy, Hazelnut, Vine) and spacing.\n5. **Active Standing Register**: Add transport vehicles (🚜) and packaging materials (📦).\n6. **Workforce Registration**: Register pickers, assign piece-rate tariffs ($/kg or $/crate), print QR badges.\n7. **Warehouse Stock**: Stock crates, punnets, fertilizers, and setup FIFO auto-depletion.\n8. **Harvest Session**: Launch live harvest event, select target sectors and active picking teams.\n9. **Weigh Station (6 Protocols)**: Pair Bluetooth digital scale, auto-deduct 0.35kg tare, scan picker QRs.\n10. **Cold Storage & Logistics**: Enforce 45-min cold-chain buffer, generate dispatch waybills and traceability passports.${noticeFooter}`,
             action: { type: 'none' }
         };
     }
 
-    // 9. Default enterprise-aware fallback
-    const orgName = context?.activeOrgName || 'Active Farm Enterprise';
+    // 15. Default enterprise-aware fallback
     const taskCount = (context?.workAssignments || []).length;
     const harvestCount = (context?.harvestEntries || []).length;
     const notesCount = (context?.notes || []).length;
 
     return {
-        text: `🌾 **AgriMap Agricultural Operations Assistant**\n\nI am connected to your enterprise (**${orgName}**).\n\n**Active System State**:\n- **Registered Tasks**: ${taskCount} work items\n- **Harvest Batches**: ${harvestCount} sessions recorded\n- **Field Notes**: ${notesCount} active observations\n\nI am ready to assist you with:\n- **Harvest & Weigh Station Management**: Step-by-step SOP for QR check-ins, tare deduction, and cold storage handoff.\n- **Excel Exports**: Instant spreadsheets for harvest sales and produce revenue.\n- **Agronomic Guidance**: Timed spray schedules, drip fertigation, and pruning velocity.\n- **Presentation Generation**: Creating downloadable PDF/PPTX/HTML architecture presentations.\n- **Task & Reminder Scheduling**: Creating tasks, notes, and alerts.${noticeFooter}`,
+        text: `🌾 **Gemini 2.5 Knowledge Engine — AI System Navigator & Copilot**
+
+Connected to attached company: **${orgName}** (Operating within company data radius).
+
+**Active Enterprise State**:
+- **Work Assignments**: ${taskCount} active tasks
+- **Harvest Sessions**: ${harvestCount} records logged
+- **Field & Voice Notes**: ${notesCount} observations recorded
+
+**Ready to Assist You With Technical & Application Details**:
+- **GIS Satellite Mapping**: Locating parcels via GPS or Cadastral code, tracing boundaries, auto-calculating hectares.
+- **Active Standing Register**: Adding transport vehicles (🚜) and materials (📦) to active tasks.
+- **Harvest & Weigh Station**: 6 electronic scale protocols, 0.35kg tare auto-deduction, QR picker scanning, and cold-chain timing.
+- **Stock & Warehouse**: Automated FIFO packaging and chemical depletion.
+- **HR & Workforce**: Piece-rate compensation tariffs ($/kg), attendance rosters, and payroll exports.
+- **Plant Disease AI & Agronomy**: Spray intervals, Bt biological timings, and nutrition plans.
+- **Root AI Assistant**: Multi-company macro benchmarks across all enterprises (authorized for Root Admins).${noticeFooter}`,
         action: { type: 'none' }
     };
 };
 
 export const useAiAssistant = (language: string) => {
     const [assistantMessages, setAssistantMessages] = useState<AssistantMessage[]>([
-        { id: '1', type: 'bot', text: 'Hello! I am your Agri-Assistant. How can I help you today?', timestamp: new Date().toISOString() }
+        { 
+            id: '1', 
+            type: 'bot', 
+            text: 'Hello! I am your Gemini 2.5 Knowledge Engine AI System Navigator & Copilot. I can guide you through the entire application, GIS cadastral mapping, active standing register (vehicles & materials), 6 electronic scale protocols, inventory FIFO, piece-rate tariffs, and agronomic management for your attached enterprise. How can I assist you today?', 
+            timestamp: new Date().toISOString() 
+        }
     ]);
     const [assistantMode, setAssistantModeState] = useState<AIAssistantMode>(() => {
         try {
@@ -227,11 +424,11 @@ export const useAiAssistant = (language: string) => {
         
         let introText = '';
         if (mode === 'expert') {
-            introText = '🌿 Switched to Expert Agronomist & PM Mode. Attached to your active enterprise. I monitor work assignments, task designs, bottlenecks, labor efficiency, machinery, and phenology.';
+            introText = '🌿 Switched to Company Expert Agronomist & PM Mode (Gemini 2.5). Operating strictly within the data radius of your attached enterprise. Monitoring tasks, bottleneck detection, machinery, and crop phenology.';
         } else if (mode === 'god_ai') {
-            introText = '👑 Switched to Omniscient God AI Mode (Super Admin). Cross-enterprise learning active across all registered companies. Synthesizing macro benchmarks and evolutionary heuristics.';
+            introText = '👑 Switched to Root AI Assistant (Omniscient God AI). Multi-company oversight active across all registered enterprises for Super Admins. Synthesizing cross-enterprise benchmarks and macro heuristics.';
         } else {
-            introText = '🤖 Switched to Standard Agri-Assistant Mode. Ready to assist with SOP navigation, tasks, notes, and records.';
+            introText = '🤖 Switched to AI System Navigator & Copilot (Standard Mode). Operating within attached company radius. Ready to assist with technical protocols, SOPs, tasks, and field operations.';
         }
         
         setAssistantMessages(prev => [
@@ -314,8 +511,9 @@ export const useAiAssistant = (language: string) => {
                 Learned Agronomic Heuristics: ${JSON.stringify(topHeuristics)}
                 `;
 
-                modeRolePrompt = `You are an ELITE SENIOR AGRONOMIST and AGRICULTURAL PROJECT MANAGER operating in COMPANY EXPERT MODE attached to "${context?.activeOrgName || 'the assigned enterprise'}". 
-                You have an extensive background in orchard & berry agronomy (blueberries, hazelnuts, vineyards), drip irrigation hydraulics, crop protection schedules (Bt bio-pesticides, copper fungicides, pruning windows), and project delivery.
+                modeRolePrompt = `You are the GEMINI 2.5 KNOWLEDGE ENGINE — AI SYSTEM NAVIGATOR & COPILOT operating in COMPANY EXPERT MODE attached to "${context?.activeOrgName || 'the assigned enterprise'}". 
+                You have an extensive background in orchard & berry agronomy (blueberries, hazelnuts, vineyards), precision GIS mapping, drip irrigation hydraulics, crop protection schedules (Bt bio-pesticides, copper fungicides, pruning windows), and project delivery.
+                TENANT RADIUS RESTRICTION: You operate strictly within the operational perimeter and data radius of the attached enterprise ("${context?.activeOrgName || 'Attached Enterprise'}"). If the user inquires about other companies, competitors, or cross-enterprise datasets, explain that cross-company analysis is strictly restricted to the Root AI Assistant (Super Admin).
                 Directly monitor work designs, task velocity, labor allocations, delays, and harvest synchronization. Provide clear, mathematically sound, actionable advice.`;
             } else if (effectiveMode === 'god_ai') {
                 if (isSysAdmin) {
@@ -329,8 +527,9 @@ export const useAiAssistant = (language: string) => {
                     );
 
                     modeContextStr = `
-                    [ECOSYSTEM INTELLIGENCE - OMNISCIENT GOD AI MODE]
+                    [ECOSYSTEM INTELLIGENCE - ROOT AI ASSISTANT / OMNISCIENT GOD AI MODE]
                     Total Registered Enterprises Monitored: ${matrix.totalOrganizationsMonitored}
+                    Registered Companies in Scope: ${(context?.organizations || []).map((o: any) => o.name || o.id).join(', ')}
                     Total Tasks Across Entire Ecosystem: ${matrix.totalTasksAnalyzed}
                     Total Harvest Monitored: ${matrix.totalHarvestKgAnalyzed} kg
                     Clinical Cases Evaluated: ${matrix.totalClinicalCasesAnalyzed}
@@ -341,19 +540,23 @@ export const useAiAssistant = (language: string) => {
                     Super Admin Macro Insights: ${JSON.stringify(matrix.systemAdminMacroInsights)}
                     `;
 
-                    modeRolePrompt = `You are the OMNISCIENT GOD AI - Universal Master Agronomist and Cross-Enterprise Portfolio Overseer (Exclusive Super Admin Mode). 
-                    You monitor and synthesize operational and agronomic intelligence across ALL companies registered in the application. 
-                    Identify macro benchmarks, systemic bottlenecks across multiple farms, cross-enterprise labor efficiency percentiles, and regional pathogen curves. Provide high-level, authoritative strategic counsel.`;
+                    modeRolePrompt = `You are the ROOT AI ASSISTANT (Powered by Gemini 2.5 Knowledge Engine - Omniscient God AI Mode). 
+                    You possess authorized Root / Super Admin oversight across ALL registered companies in the system. 
+                    You analyze cross-enterprise benchmarks, multi-company yield averages, systemic bottlenecks across multiple farms, cross-enterprise labor efficiency percentiles, and regional pathogen curves. Provide high-level, authoritative strategic counsel across all companies.`;
                 } else {
-                    modeRolePrompt = `You are the Agri-Assistant. Notice: Omniscient God AI Mode requires Super Admin authorization. Please explain this politely and provide standard expert agronomic assistance for the user's current company.`;
+                    modeRolePrompt = `You are the GEMINI 2.5 KNOWLEDGE ENGINE — AI SYSTEM NAVIGATOR & COPILOT. 
+                    NOTICE: You are attached to company "${context?.activeOrgName || 'Current Enterprise'}". Cross-company multi-tenant analysis is restricted exclusively to the Root AI Assistant for authorized Super Admins. Politely guide the user within the operational radius of their attached company.`;
                 }
             } else {
-                modeRolePrompt = `You are an AI Agri-Assistant. You assist with navigating the app, tasks, notes, reminders, and harvest records.`;
+                modeRolePrompt = `You are the GEMINI 2.5 KNOWLEDGE ENGINE — AI SYSTEM NAVIGATOR & COPILOT. 
+                You operate strictly within the operational radius of the attached company: "${context?.activeOrgName || 'Current Enterprise'}". 
+                You provide deep technical guidance on all application modules (KYC, GIS Map & Cadastre, Active Standing Register with Vehicles and Materials, 6 Electronic Scale Protocols, Warehouse FIFO, HR piece-rate tariffs, and agronomy). If the user asks about other companies, inform them that cross-company analysis is restricted strictly to the Root AI Assistant (Super Admin).`;
             }
 
             const contextStr = context ? `
             Context:
             - Active Mode: ${effectiveMode.toUpperCase()}
+            - Attached Company: ${context?.activeOrgName || 'Current Enterprise'}
             - Global Field & Voice Notes Index (${notesList.length} notes total): ${JSON.stringify(notesList)}
             - Harvest Entries: ${JSON.stringify(context.harvestEntries || [])}
             - Current Work Assignments: ${JSON.stringify(context.workAssignments || [])}
@@ -363,17 +566,23 @@ export const useAiAssistant = (language: string) => {
             ` : '';
 
             const sopGuidance = `
-            Standard Operating Procedure (SOP) Guide for the app:
-            1. Profile Verification: Go to My Profile, verify identity.
-            2. Company Registration: Go to Company Enterprise, create org, and add target crops along with custom varieties.
-            3. Map Planner (Boundaries): Go to Map/Dashboard, draw operational boundaries, sections, trenches.
-            4. Register Workers & Teams: Go to Individual Tools, register employees, create groups, assign IDs/QRs.
-            5. Manage Stock: Go to Stock, add packaging, assign weights, upload invoices.
-            6. Start Harvest Session: Go to Harvesting Module, select fields, teams.
-            7. Live Monitoring: Stay in Harvesting Module, monitor operations.
-            8. Weigh Station: In Harvesting Module, use the Weigh Station to scan QRs and input box weights.
-            9. Storage/Market: Finish session, stock goes to Cold Storage, list it to Market.
-            Use this SOP to guide the user if they ask how to use the app or how to do a specific process.
+            TECHNICAL DIRECTIVES & SOP ARCHITECTURE:
+            1. Profile & KYC Verification: Access user profile, set agronomic authority (Founder, Agronomist, Manager, Worker, Buyer), upload national ID/passport for 100% verification.
+            2. Company Registration: Configure tax ID, banking & partner equity in Founders Hub.
+            3. GIS Satellite Mapping: Search by GPS coordinates (lat, lng), Cadastral Parcel Code (e.g. 05.24.03.112), or locality. Toggle Satellite View (Google/ESRI). Trace boundary with Polygon Tool; engine auto-calculates geodesic Hectares (ha) and perimeter. Layer planting trenches and drip irrigation vectors.
+            4. Crop Catalog: Blueberry (Duke, Legacy, Bluecrop, Draper), Hazelnut, Vineyard, rootstock & density metrics.
+            5. Active Standing Register: Located in Tasks & Works header. Features "Add Vehicles" (🚜 - model, plate, driver, payload capacity, route) and "Add Materials" (📦 - crates, punnets, pallet wraps, drip lines, fertilizers) directly linked to active tasks.
+            6. Harvest Live Monitoring & 6 Digital Scale Protocols:
+               - Protocol 1: Continuous Broadcast Stream (serial/Bluetooth streaming).
+               - Protocol 2: On-Demand Query Poll (weight command polling).
+               - Protocol 3: Auto-Tare Deduction (0.35kg baseline crate subtraction for 100% net weight accuracy).
+               - Protocol 4: Dual Weighmaster Verification (sign-off for export batches).
+               - Protocol 5: High-Speed Batch Palletizing (QR pallet batch stamping).
+               - Protocol 6: Offline Resilient Local Cache (encrypted browser storage auto-syncing upon reconnection).
+               - Sub-second picker QR badge scanning, real-time piece-rate tariff wage calculation, 45-minute cold chain timer.
+            7. Stock & Warehouse: Automated FIFO deduction (weighing crates depletes packaging; executing sprays depletes agro-chemicals).
+            8. HR Workforce: Piece-rate compensation tariffs ($/kg, $/box) vs daily wages, attendance sheets, automated payroll export.
+            9. Agronomic Disease Suite & Soil Nutrition: Anthracnose, powdery mildew, phytophthora, botrytis; Bt spray timing (late afternoon/overcast), copper intervals and withholding periods.
             `;
 
             const response = await executeGeminiCall({
@@ -382,18 +591,11 @@ export const useAiAssistant = (language: string) => {
                 ${contextStr}
                 ${sopGuidance}
                 
-                You can help with:
-                - In-depth work and task analysis (detecting bottlenecks, evaluating planned vs actual hours, suggesting labor reassignments)
-                - Practical agronomic advice (Bt spray timings, drip fertigation, fungicide windows, post-harvest fruit chilling)
-                - Omniscient cross-company macro benchmarks (if in God AI mode)
-                - Navigating the app (using the SOP Guide above)
-                - Reminders, Tasks, Notes
-                - Generating/exporting excel reports for harvest sales (set action type to "excel_export" if requested).
-                
-                IMPORTANT: If they ask to generate a harvest sale Excel:
-                - If 'System Harvest Sales / Produce Record Count' is greater than 0, tell them you are generating and downloading their Excel spreadsheet now using active system records. Set 'action.type' to 'excel_export'.
-                - If 'System Harvest Sales / Produce Record Count' is 0, let them know there are no active sales records in the current session. Explain that you are forwarding them directly to the Stock module's Harvest Sale (Produce) interface where they can manage logs and use the Export Excel button. Set 'action.type' to 'excel_export' (the client-side coordinator will then redirect them automatically).
-                - Respond in a helpful, concise way.`,
+                You are the GEMINI 2.5 KNOWLEDGE ENGINE AI System Navigator & Copilot:
+                - If the user asks about technical or application details, provide precise, step-by-step guidance referencing the relevant module and protocols.
+                - TENANT RADIUS: Remember that in Standard and Expert mode, you operate strictly within the radius of attached company "${context?.activeOrgName || 'Current Enterprise'}". Only the ROOT AI ASSISTANT (God AI mode, authorized for Root / Super Admins) can analyze details of other companies.
+                - If they ask to generate a harvest sale Excel: Set 'action.type' to 'excel_export'.
+                - Respond in an articulate, expert, and helpful manner.`,
                 config: {
                     responseMimeType: "application/json",
                     responseSchema: {

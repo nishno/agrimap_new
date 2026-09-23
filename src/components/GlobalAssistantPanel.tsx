@@ -66,6 +66,7 @@ interface GlobalAssistantPanelProps {
       language?: string
   ) => Promise<void>;
   onDeleteNote?: (noteId: string) => void;
+  onDeleteMultipleNotes?: (noteIds: string[]) => void;
   activeOrgId?: string;
   activeOrgName?: string;
   currentUser?: User | null;
@@ -126,6 +127,7 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
   notes = [],
   onAddNote,
   onDeleteNote,
+  onDeleteMultipleNotes,
   activeOrgId = '',
   activeOrgName = '',
   currentUser = null,
@@ -263,6 +265,46 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
       window.removeEventListener('agrimap_open_assistant', handleOpenAssistant);
     };
   }, []);
+
+  // Viewport resize clamping to ensure chat never slips off-screen or becomes inaccessible
+  useEffect(() => {
+    const handleWindowResize = () => {
+      const availW = typeof window !== 'undefined' ? window.innerWidth : 1200;
+      const availH = typeof window !== 'undefined' ? window.innerHeight : 800;
+
+      setPanelSize(prev => {
+        const maxW = Math.max(280, availW - 16);
+        const maxH = Math.max(240, availH - 24);
+        return {
+          width: Math.max(280, Math.min(prev.width, maxW)),
+          height: Math.max(240, Math.min(prev.height, maxH))
+        };
+      });
+
+      setCommsPos(prev => {
+        if (!prev) return prev;
+        const clampedX = Math.max(8, Math.min(availW - 65, prev.x));
+        const clampedY = Math.max(8, Math.min(availH - 75, prev.y));
+        return { x: clampedX, y: clampedY };
+      });
+    };
+
+    const handleWindowBlur = () => {
+      if (isListening) {
+        recognitionRef.current?.stop();
+        setIsListening(false);
+      }
+    };
+
+    window.addEventListener('resize', handleWindowResize);
+    window.addEventListener('blur', handleWindowBlur);
+    document.addEventListener('visibilitychange', handleWindowBlur);
+    return () => {
+      window.removeEventListener('resize', handleWindowResize);
+      window.removeEventListener('blur', handleWindowBlur);
+      document.removeEventListener('visibilitychange', handleWindowBlur);
+    };
+  }, [isListening]);
 
   // Movable Floating Comms Hub State
   const [commsPos, setCommsPos] = useState<{ x: number; y: number } | null>(() => {
@@ -513,9 +555,9 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
         <div 
           ref={commsContainerRef}
           style={{
-              position: commsPos ? 'fixed' : 'relative',
-              ...(commsPos ? { left: `${commsPos.x}px`, top: `${commsPos.y}px` } : {}),
-              zIndex: 3500
+              position: 'fixed',
+              ...(commsPos ? { left: `${commsPos.x}px`, top: `${commsPos.y}px` } : { right: '16px', bottom: '80px' }),
+              zIndex: 8500
           }}
           className="select-none pointer-events-auto"
         >
@@ -600,16 +642,16 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
                 <button
                     onClick={() => setIsCollapsed(false)}
                     className="w-12 h-12 rounded-full bg-emerald-500 hover:bg-emerald-400 text-white shadow-xl shadow-emerald-950/50 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border border-emerald-300/40"
-                    title={isKa ? "აგრო-ასისტენტის ჩატის & დიაგნოსტიკის პანელის გახსნა" : "Open Agri-Assistant AI & Agronomy Diagnostics"}
+                    title={isKa ? "Gemini 2.5 Knowledge Engine - AI სისტემის ნავიგატორი & Copilot" : "Gemini 2.5 Knowledge Engine - AI System Navigator & Copilot"}
                 >
                     <Sparkles className="w-6 h-6 text-white" />
                 </button>
 
-                {/* 6. God AI & Agronomy PM Intelligence Console Button */}
+                {/* 6. Root AI & God AI Intelligence Console Button */}
                 <button
                     onClick={() => setIsGodAIHubOpen(true)}
                     className="w-12 h-12 rounded-full bg-gradient-to-tr from-amber-600 via-amber-500 to-yellow-500 hover:from-amber-500 hover:to-yellow-400 text-white shadow-xl shadow-amber-950/60 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border-2 border-amber-300/50 relative"
-                    title={isSystemAdmin ? "God AI Omniscient Intelligence Hub (Super Admin)" : "Expert PM & Agronomy Intelligence Hub"}
+                    title={isSystemAdmin ? (isKa ? "Root AI ასისტენტი & God AI კონსოლი (სუპერ ადმინი - ყველა კომპანია)" : "Root AI Assistant & God AI Console (Super Admin - All Companies)") : (isKa ? "აგრონომიული PM კონსოლი" : "Agronomy PM Intelligence Console")}
                 >
                     <Crown className="w-6 h-6 text-white" />
                     <span className="absolute -top-1 -right-1 flex h-3 w-3">
@@ -630,6 +672,7 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
                 notes={notes}
                 onAddNote={onAddNote}
                 onDeleteNote={onDeleteNote}
+                onDeleteMultipleNotes={onDeleteMultipleNotes}
             />
         )}
       </>
@@ -642,15 +685,15 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
         ref={commsContainerRef}
         style={{
           position: 'fixed',
-          left: commsPos ? `${Math.max(8, Math.min(window.innerWidth - panelSize.width - 8, commsPos.x))}px` : undefined,
-          top: commsPos ? `${Math.max(8, Math.min(window.innerHeight - panelSize.height - 8, commsPos.y))}px` : undefined,
+          left: commsPos ? `${Math.max(8, Math.min((typeof window !== 'undefined' ? window.innerWidth : 1200) - panelSize.width - 8, commsPos.x))}px` : undefined,
+          top: commsPos ? `${Math.max(8, Math.min((typeof window !== 'undefined' ? window.innerHeight : 800) - panelSize.height - 8, commsPos.y))}px` : undefined,
           right: !commsPos ? '16px' : undefined,
-          bottom: !commsPos ? '80px' : undefined,
-          width: `${panelSize.width}px`,
-          height: `${panelSize.height}px`,
+          bottom: !commsPos ? '16px' : undefined,
+          width: `${Math.max(280, Math.min(panelSize.width, typeof window !== 'undefined' ? window.innerWidth - 16 : 440))}px`,
+          height: `${Math.max(240, Math.min(panelSize.height, typeof window !== 'undefined' ? window.innerHeight - 24 : 560))}px`,
           maxWidth: 'calc(100vw - 16px)',
-          maxHeight: 'calc(100vh - 16px)',
-          zIndex: 3500
+          maxHeight: 'calc(100vh - 24px)',
+          zIndex: 8500
         }}
         className="bg-white flex flex-col rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200 origin-bottom-right relative pointer-events-auto transition-[box-shadow,border-color] duration-150"
       >
@@ -669,11 +712,21 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
               <SparklesIcon className="h-5 w-5 text-emerald-500 shrink-0" />
               <div className="min-w-0">
                 <h3 className="text-xs sm:text-sm font-black text-slate-800 uppercase tracking-tight truncate">
-                  {isKa ? 'აგრო-ასისტენტი' : 'Agri-Assistant'}
+                  {isKa ? 'AI სისტემის ნავიგატორი & Copilot' : 'AI System Navigator & Copilot'}
                 </h3>
-                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded truncate inline-block max-w-[150px]">
-                    {isKa ? 'მოდული:' : 'Module:'} {activeModuleName}
-                </span>
+                <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                  <span className="text-[9px] font-black text-emerald-800 bg-emerald-100 px-1.5 py-0.2 rounded tracking-wide border border-emerald-300">
+                    Gemini 2.5 Knowledge Engine
+                  </span>
+                  <span className="text-[9px] font-bold text-slate-600 bg-slate-200/80 px-1 py-0.2 rounded truncate max-w-[120px]">
+                    {activeModuleName}
+                  </span>
+                  {isGodAIHubOpen && (
+                    <span className="text-[8px] font-black text-amber-700 bg-amber-100 border border-amber-300 px-1 rounded animate-pulse">
+                      Console Active
+                    </span>
+                  )}
+                </div>
               </div>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
@@ -836,25 +889,36 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
           </div>
         </div>
 
-        {/* Tenant Attachment / God AI Banner */}
+        {/* Tenant Attachment / Scope Radius / Root AI Banner */}
         {currentAiMode === 'expert' && (
-          <div className="px-3 py-1 bg-emerald-950/95 border-b border-emerald-800/80 text-[10px] text-emerald-200 flex items-center justify-between shrink-0">
-            <span className="flex items-center gap-1 truncate">
-              <Leaf size={11} className="text-emerald-400 shrink-0" />
-              <strong className="font-bold text-white">Company Expert:</strong> {activeOrgName || activeOrgId || 'Active Enterprise'}
+          <div className="px-3 py-1.5 bg-emerald-950/95 border-b border-emerald-800/80 text-[10px] text-emerald-200 flex items-center justify-between shrink-0">
+            <span className="flex items-center gap-1.5 truncate">
+              <Leaf size={12} className="text-emerald-400 shrink-0" />
+              <span><strong className="font-bold text-white">Attached Company Radius:</strong> {activeOrgName || activeOrgId || 'Active Enterprise'}</span>
             </span>
-            <span className="text-[9px] bg-emerald-800/80 px-1.5 py-0.2 rounded text-emerald-100 uppercase tracking-wider font-mono shrink-0 ml-1">
-              Enterprise PM
+            <span className="text-[9px] bg-emerald-800/90 px-1.5 py-0.5 rounded text-emerald-100 uppercase tracking-wider font-mono shrink-0 ml-1 border border-emerald-600/40">
+              Attached Scope
+            </span>
+          </div>
+        )}
+        {currentAiMode === 'standard' && (
+          <div className="px-3 py-1.5 bg-slate-900 border-b border-slate-800 text-[10px] text-slate-300 flex items-center justify-between shrink-0">
+            <span className="flex items-center gap-1.5 truncate">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
+              <span><strong className="font-bold text-slate-300">Attached Company Radius:</strong> <span className="text-emerald-300 font-bold">{activeOrgName || activeOrgId || 'Active Enterprise'}</span></span>
+            </span>
+            <span className="text-[9px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-300 uppercase tracking-wider font-mono shrink-0 ml-1 border border-slate-700">
+              Copilot Radius
             </span>
           </div>
         )}
         {currentAiMode === 'god_ai' && (
-          <div className="px-3 py-1 bg-amber-950/95 border-b border-amber-800/80 text-[10px] text-amber-200 flex items-center justify-between shrink-0">
-            <span className="flex items-center gap-1 truncate">
-              <Crown size={11} className="text-amber-400 shrink-0" />
-              <strong className="font-bold text-white">God AI:</strong> Learning Across All {organizations?.length || 0} Registered Companies
+          <div className="px-3 py-1.5 bg-amber-950/95 border-b border-amber-800/80 text-[10px] text-amber-200 flex items-center justify-between shrink-0">
+            <span className="flex items-center gap-1.5 truncate">
+              <Crown size={12} className="text-amber-400 shrink-0 animate-pulse" />
+              <span><strong className="font-bold text-white">Root AI Assistant:</strong> Multi-Company Oversight Across All {organizations?.length || 0} Enterprises</span>
             </span>
-            <span className="text-[9px] bg-amber-800/80 px-1.5 py-0.2 rounded text-amber-100 uppercase tracking-wider font-mono shrink-0 ml-1">
+            <span className="text-[9px] bg-amber-800/90 px-1.5 py-0.5 rounded text-amber-100 uppercase tracking-wider font-mono shrink-0 ml-1 border border-amber-600/40">
               Super Admin
             </span>
           </div>
@@ -864,37 +928,54 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
         <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-100 flex items-center gap-1.5 overflow-x-auto no-scrollbar text-[10px] shrink-0">
           <button
             type="button"
+            onClick={() => onSendCommand("Explain the whole application architecture, GIS cadastral workflow, and 16-step SOP directives for our attached company.")}
+            className="whitespace-nowrap px-2 py-0.5 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-900 rounded-full font-bold transition-colors cursor-pointer flex items-center gap-1"
+          >
+            🧭 App Architecture & SOP
+          </button>
+          <button
+            type="button"
+            onClick={() => onSendCommand("How do I use the Active Standing Register to add vehicles and materials, and link them to tasks and work assignments?")}
+            className="whitespace-nowrap px-2 py-0.5 bg-amber-50 border border-amber-200 hover:bg-amber-100 text-amber-900 rounded-full font-bold transition-colors cursor-pointer flex items-center gap-1"
+          >
+            🚜 Vehicles & Materials
+          </button>
+          <button
+            type="button"
+            onClick={() => onSendCommand("Detail the 6 electronic digital scale protocols, 0.35kg tare deduction, and harvest weigh station integration.")}
+            className="whitespace-nowrap px-2 py-0.5 bg-blue-50 border border-blue-200 hover:bg-blue-100 text-blue-900 rounded-full font-bold transition-colors cursor-pointer flex items-center gap-1"
+          >
+            ⚖️ 6 Scale Protocols
+          </button>
+          <button
+            type="button"
+            onClick={() => onSendCommand(`Provide a full status report on work assignments, bottlenecks, inventory FIFO, and machinery strictly within the radius of our attached company (${activeOrgName || 'Active Enterprise'}).`)}
+            className="whitespace-nowrap px-2 py-0.5 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-900 rounded-full font-bold transition-colors cursor-pointer flex items-center gap-1"
+          >
+            📍 Company Radius Intel
+          </button>
+          {isSystemAdmin && (
+            <button
+              type="button"
+              onClick={() => {
+                if (currentAiMode !== 'god_ai' && onSetAiMode) onSetAiMode('god_ai');
+                onSendCommand("As the Root AI Assistant, analyze cross-enterprise benchmarks and comparative performance across all registered companies.");
+              }}
+              className="whitespace-nowrap px-2 py-0.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-full font-bold transition-colors cursor-pointer hover:opacity-90 flex items-center gap-1 shadow-xs"
+            >
+              👑 Root AI: All Companies
+            </button>
+          )}
+          <button
+            type="button"
             onClick={() => {
               setAnalysisInitialTool('disease');
               setAssistantView('analysis');
             }}
             className="whitespace-nowrap px-2 py-0.5 bg-emerald-100 border border-emerald-300 text-emerald-900 rounded-full font-bold transition-colors cursor-pointer hover:bg-emerald-200 flex items-center gap-1"
           >
-            <Leaf size={10} className="text-emerald-700" /> 🔬 AI დიაგნოსტიკა & რეცეპტები
+            <Leaf size={10} className="text-emerald-700" /> 🔬 AI დიაგნოსტიკა
           </button>
-          <button
-            type="button"
-            onClick={() => onSendCommand("Analyze our current works and tasks, detect any bottlenecks, overdue operations, or labor inefficiencies.")}
-            className="whitespace-nowrap px-2 py-0.5 bg-white border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 rounded-full font-bold transition-colors cursor-pointer"
-          >
-            📊 Task Bottlenecks
-          </button>
-          <button
-            type="button"
-            onClick={() => onSendCommand("Provide an agronomic analysis of our active plantation, spray schedule, irrigation status, and harvest yield.")}
-            className="whitespace-nowrap px-2 py-0.5 bg-white border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 rounded-full font-bold transition-colors cursor-pointer"
-          >
-            🌾 Agronomy Synergy
-          </button>
-          {isSystemAdmin && currentAiMode === 'god_ai' && (
-            <button
-              type="button"
-              onClick={() => onSendCommand("Synthesize cross-enterprise agronomic benchmarks and labor efficiency trends across all registered companies.")}
-              className="whitespace-nowrap px-2 py-0.5 bg-amber-50 border border-amber-300 text-amber-900 rounded-full font-bold transition-colors cursor-pointer hover:bg-amber-100"
-            >
-              👑 Multi-Company Benchmark
-            </button>
-          )}
           <button
             type="button"
             onClick={() => setIsGodAIHubOpen(true)}
@@ -1119,14 +1200,14 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                placeholder={isKa ? "ჰკითხეთ AI-ს ან მოიძიეთ კლინიკური დიაგნოსტიკა..." : "Ask AI or query clinical diagnostics..."}
-                className="flex-grow p-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:outline-none bg-white"
-                disabled={isLoading || isListening}
+                placeholder={isKa ? "ჰკითხეთ AI-ს ან მოიძიეთ კლინიკური დიაგნოსტიკა..." : "Ask Gemini 2.5 AI Navigator & Copilot..."}
+                className="flex-grow p-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:outline-none bg-white transition-all"
+                disabled={isListening}
               />
               <button
                 type="button"
                 onClick={handleVoiceCommand}
-                disabled={isLoading}
+                disabled={isListening}
                 className={`p-2 rounded-xl transition-colors ${isListening ? 'bg-red-100 text-red-600 animate-pulse' : 'hover:bg-slate-200 text-slate-400'}`}
                 title={isKa ? "ხმოვანი ბრძანება" : "Speak command"}
               >
@@ -1134,10 +1215,15 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
               </button>
               <button
                 type="submit"
-                disabled={isLoading || !inputValue.trim() || isListening}
-                className="p-2 bg-green-600 text-white rounded-xl hover:bg-green-700 disabled:bg-slate-300 transition-colors cursor-pointer"
+                disabled={!inputValue.trim() || isListening}
+                className="p-2 bg-green-600 text-white rounded-xl hover:bg-green-700 disabled:bg-slate-300 transition-colors cursor-pointer flex items-center justify-center min-w-[36px]"
+                title={isKa ? "გაგზავნა" : "Send message"}
               >
-                <ArrowUpCircleIcon className="h-5 w-5" />
+                {isLoading ? (
+                  <Sparkles className="h-5 w-5 animate-spin text-white" />
+                ) : (
+                  <ArrowUpCircleIcon className="h-5 w-5" />
+                )}
               </button>
             </form>
           </>
@@ -1268,6 +1354,7 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
               notes={notes}
               onAddNote={onAddNote}
               onDeleteNote={onDeleteNote}
+              onDeleteMultipleNotes={onDeleteMultipleNotes}
           />
       )}
 

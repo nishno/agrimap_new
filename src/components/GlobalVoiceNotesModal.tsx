@@ -35,6 +35,7 @@ interface GlobalVoiceNotesModalProps {
         language?: string
     ) => Promise<void>;
     onDeleteNote?: (noteId: string) => void;
+    onDeleteMultipleNotes?: (noteIds: string[]) => void;
 }
 
 const PRESET_TAGS = [
@@ -57,7 +58,8 @@ export const GlobalVoiceNotesModal: React.FC<GlobalVoiceNotesModalProps> = ({
     currentUser,
     notes = [],
     onAddNote,
-    onDeleteNote
+    onDeleteNote,
+    onDeleteMultipleNotes
 }) => {
     const { t } = useLanguage();
     const isKa = t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka';
@@ -72,9 +74,19 @@ export const GlobalVoiceNotesModal: React.FC<GlobalVoiceNotesModalProps> = ({
     const [searchQuery, setSearchQuery] = useState('');
     const [moduleFilter, setModuleFilter] = useState<string>('all');
     const [isSpeakingId, setIsSpeakingId] = useState<string | null>(null);
+    const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+    const [isCleanOldMenuOpen, setIsCleanOldMenuOpen] = useState(false);
 
     const recognitionRef = useRef<any>(null);
     const timerRef = useRef<any>(null);
+
+    useEffect(() => {
+        if (!confirmDeleteId) return;
+        const timer = setTimeout(() => {
+            setConfirmDeleteId(null);
+        }, 4000);
+        return () => clearTimeout(timer);
+    }, [confirmDeleteId]);
 
     useEffect(() => {
         if (!isOpen) {
@@ -238,6 +250,52 @@ export const GlobalVoiceNotesModal: React.FC<GlobalVoiceNotesModalProps> = ({
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    const handleDeleteSingle = (noteId: string) => {
+        try {
+            if (onDeleteNote) {
+                onDeleteNote(noteId);
+            } else {
+                window.dispatchEvent(new CustomEvent('agrimap_delete_note', { detail: { id: noteId } }));
+            }
+        } catch (err) {
+            console.error('Failed to delete note:', err);
+        }
+    };
+
+    const handleDeleteOldNotes = (days: number) => {
+        const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+        const oldNotes = filteredNotes.filter(n => new Date(n.timestamp).getTime() < cutoff);
+        if (oldNotes.length === 0) {
+            toast.info(isKa ? `${days} დღეზე ძველი ჩანაწერები არ მოიძებნა` : `No notes older than ${days} days found`);
+            setIsCleanOldMenuOpen(false);
+            return;
+        }
+        const ids = oldNotes.map(n => n.id);
+        if (onDeleteMultipleNotes) {
+            onDeleteMultipleNotes(ids);
+        } else {
+            ids.forEach(id => {
+                if (onDeleteNote) onDeleteNote(id);
+            });
+            window.dispatchEvent(new CustomEvent('agrimap_delete_note', { detail: { ids } }));
+        }
+        setIsCleanOldMenuOpen(false);
+    };
+
+    const handleDeleteAllFiltered = () => {
+        if (filteredNotes.length === 0) return;
+        const ids = filteredNotes.map(n => n.id);
+        if (onDeleteMultipleNotes) {
+            onDeleteMultipleNotes(ids);
+        } else {
+            ids.forEach(id => {
+                if (onDeleteNote) onDeleteNote(id);
+            });
+            window.dispatchEvent(new CustomEvent('agrimap_delete_note', { detail: { ids } }));
+        }
+        setIsCleanOldMenuOpen(false);
     };
 
     const filteredNotes = notes.filter(n => {
@@ -550,6 +608,60 @@ export const GlobalVoiceNotesModal: React.FC<GlobalVoiceNotesModalProps> = ({
                                             <option key={m} value={m}>{m}</option>
                                         ))}
                                     </select>
+
+                                    {/* Clean / Delete Old Notes Menu */}
+                                    <div className="relative">
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsCleanOldMenuOpen(prev => !prev)}
+                                            className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-red-50 text-slate-600 hover:text-red-600 border border-slate-200 hover:border-red-200 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 shadow-2xs active:scale-95"
+                                            title={isKa ? 'ძველი ჩანაწერების გასუფთავება' : 'Delete Old Notes'}
+                                        >
+                                            <TrashIcon className="w-3.5 h-3.5 text-red-500" />
+                                            <span className="hidden sm:inline">
+                                                {isKa ? 'ძველების წაშლა' : 'Delete Old'}
+                                            </span>
+                                        </button>
+
+                                        {isCleanOldMenuOpen && (
+                                            <div 
+                                                className="absolute right-0 top-full mt-1.5 w-60 bg-white rounded-2xl shadow-xl border border-slate-200 p-2 z-[100] text-slate-700 text-xs font-medium animate-in fade-in zoom-in-95 duration-100"
+                                            >
+                                                <div className="px-2 py-1 text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                                                    {isKa ? 'ძველი შენიშვნების წაშლა' : 'Delete Old Voice Notes'}
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDeleteOldNotes(7)}
+                                                    className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-red-50 hover:text-red-700 flex items-center justify-between transition-colors cursor-pointer"
+                                                >
+                                                    <span>{isKa ? '> 7 დღეზე ძველი' : 'Older than 7 days'}</span>
+                                                    <span className="text-[10px] font-bold text-slate-400">
+                                                        ({filteredNotes.filter(n => Date.now() - new Date(n.timestamp).getTime() > 7 * 86400000).length})
+                                                    </span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDeleteOldNotes(30)}
+                                                    className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-red-50 hover:text-red-700 flex items-center justify-between transition-colors cursor-pointer"
+                                                >
+                                                    <span>{isKa ? '> 30 დღეზე ძველი' : 'Older than 30 days'}</span>
+                                                    <span className="text-[10px] font-bold text-slate-400">
+                                                        ({filteredNotes.filter(n => Date.now() - new Date(n.timestamp).getTime() > 30 * 86400000).length})
+                                                    </span>
+                                                </button>
+                                                <div className="my-1 border-t border-slate-100" />
+                                                <button
+                                                    type="button"
+                                                    onClick={handleDeleteAllFiltered}
+                                                    className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-red-100 text-red-600 font-bold flex items-center justify-between transition-colors cursor-pointer"
+                                                >
+                                                    <span>{isKa ? 'ყველა ნაჩვენების წაშლა' : 'Delete All Shown'}</span>
+                                                    <span className="text-[10px] font-bold">({filteredNotes.length})</span>
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
 
@@ -568,6 +680,7 @@ export const GlobalVoiceNotesModal: React.FC<GlobalVoiceNotesModalProps> = ({
                                 <div className="space-y-3">
                                     {filteredNotes.map(note => {
                                         const isSpeaking = isSpeakingId === note.id;
+                                        const isConfirming = confirmDeleteId === note.id;
                                         return (
                                             <div
                                                 key={note.id}
@@ -590,28 +703,53 @@ export const GlobalVoiceNotesModal: React.FC<GlobalVoiceNotesModalProps> = ({
                                                         </span>
                                                     </div>
 
-                                                    <div className="flex items-center gap-1">
+                                                    <div className="flex items-center gap-1.5 shrink-0">
                                                         {/* Text to Speech Button */}
                                                         <button
                                                             type="button"
                                                             onClick={() => handleTextToSpeech(note)}
-                                                            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                                            className={`p-1.5 rounded-xl border transition-all cursor-pointer ${
                                                                 isSpeaking
-                                                                    ? 'bg-emerald-600 text-white animate-pulse'
-                                                                    : 'text-slate-400 hover:text-emerald-700 hover:bg-emerald-50'
+                                                                    ? 'bg-emerald-600 text-white border-emerald-600 animate-pulse shadow-xs'
+                                                                    : 'text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 border-slate-200/80 bg-white'
                                                             }`}
-                                                            title={isSpeaking ? "Stop Reading" : "Read Aloud (Text to Speech)"}
+                                                            title={isSpeaking ? (isKa ? "მოსმენის შეწყვეტა" : "Stop Reading") : (isKa ? "ხმამაღლა წაკითხვა" : "Read Aloud (Text to Speech)")}
                                                         >
                                                             <SpeakerWaveIcon className="w-4 h-4" />
                                                         </button>
 
-                                                        {/* Delete Note */}
-                                                        {onDeleteNote && (
+                                                        {/* Delete Note Button - Always visible for deleting old voice notes */}
+                                                        {isConfirming ? (
+                                                            <div className="flex items-center gap-1 bg-red-50 p-1 rounded-xl border border-red-200 animate-in fade-in duration-150">
+                                                                <span className="text-[10px] font-bold text-red-700 px-1">
+                                                                    {isKa ? 'წავშალოთ?' : 'Delete?'}
+                                                                </span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        handleDeleteSingle(note.id);
+                                                                        setConfirmDeleteId(null);
+                                                                    }}
+                                                                    className="p-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors shadow-2xs"
+                                                                    title={isKa ? 'დადასტურება' : 'Confirm Delete'}
+                                                                >
+                                                                    <CheckIcon className="w-3.5 h-3.5" />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setConfirmDeleteId(null)}
+                                                                    className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg text-xs cursor-pointer transition-colors"
+                                                                    title={isKa ? 'გაუქმება' : 'Cancel'}
+                                                                >
+                                                                    <XIcon className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            </div>
+                                                        ) : (
                                                             <button
                                                                 type="button"
-                                                                onClick={() => onDeleteNote(note.id)}
-                                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer opacity-0 group-hover:opacity-100"
-                                                                title="Delete Note"
+                                                                onClick={() => setConfirmDeleteId(note.id)}
+                                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 bg-white border border-slate-200/80 hover:border-red-200 rounded-xl transition-all cursor-pointer shadow-2xs"
+                                                                title={isKa ? "ძველი ჩანაწერის წაშლა" : "Delete Note"}
                                                             >
                                                                 <TrashIcon className="w-4 h-4" />
                                                             </button>

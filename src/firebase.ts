@@ -358,11 +358,11 @@ export const trackModification = (path: string, type: 'set' | 'update' | 'add' |
         let category: SyncLogEntry['category'] = 'other';
         if (path.includes('harvest')) category = 'harvest';
         else if (path.includes('inventory') || path.includes('stock')) category = 'inventory';
-        else if (path.includes('employees') || path.includes('users')) category = 'employee';
+        else if (path.includes('employees') || path.includes('users') || path.includes('dailyLogs') || path.includes('roles') || path.includes('attendance') || path.includes('workAssignments')) category = 'employee';
         else if (path.includes('map') || path.includes('plantations') || path.includes('trenches') || path.includes('plantationFeatures') || path.includes('layers')) category = 'map';
         else if (path.includes('agronomy') || path.includes('nutrition') || path.includes('protection')) category = 'agronomy';
-        else if (path.includes('tasks') || path.includes('plans')) category = 'task';
-        else if (path.includes('accounting') || path.includes('transactions')) category = 'accounting';
+        else if (path.includes('tasks') || path.includes('plans') || path.includes('machinery')) category = 'task';
+        else if (path.includes('accounting') || path.includes('transactions') || path.includes('accounts')) category = 'accounting';
 
         // Gather Metadata
         const defaultOrgId = getLocalStorageItem('agri-planter-active-org') || undefined;

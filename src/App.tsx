@@ -58,6 +58,7 @@ import { GlobalDataInterceptorProvider } from './contexts/GlobalDataInterceptorC
 import { useAiAssistant } from './hooks/useAiAssistant';
 import GlobalAssistantPanel from './components/GlobalAssistantPanel';
 import { godAIKnowledgeEngine } from './new_engine/ai/GodAIKnowledgeEngine';
+import { getSavedDashboardLayout, saveDashboardLayout } from './utils/dashboardLayoutStorage';
 import FloatingCommunicationHub, { LiveMapShowcase } from './components/FloatingCommunicationHub';
 import LiveMapShowcaseOverlay from './components/LiveMapShowcaseOverlay';
 import { useProjectManagement } from './hooks/useProjectManagement';
@@ -1292,13 +1293,21 @@ const App: React.FC = () => {
         return () => unsubscribe();
     }, [isSystemAdmin, activeOrgId, currentUser?.id]);
     
-    // AI Analyst State
-    const [dashboardLayout, setDashboardLayout] = useState<DashboardWidget[]>([
-        { id: 'w1', type: 'daily_news', title: 'Daily Briefing', isVisible: true, order: 0 },
-        { id: 'w5', type: 'seedling_summary', title: 'Seedling Summary', isVisible: true, order: 1 },
-        { id: 'w2', type: 'field_summary', title: 'Field Summary', isVisible: true, order: 2 },
-        { id: 'w3', type: 'market_feed', title: 'Market Feed', isVisible: true, order: 3 }
-    ]);
+    // Dashboard Modular Layout State with User Persistence
+    const [dashboardLayout, setDashboardLayout] = useState<DashboardWidget[]>(() => {
+        return getSavedDashboardLayout(currentUser?.id);
+    });
+
+    // When currentUser changes (e.g. login, logout, switch account), reload and remember their personal layout
+    useEffect(() => {
+        const userLayout = getSavedDashboardLayout(currentUser?.id);
+        setDashboardLayout(userLayout);
+    }, [currentUser?.id]);
+
+    const handleSetDashboardLayout = useCallback((newLayout: DashboardWidget[]) => {
+        setDashboardLayout(newLayout);
+        saveDashboardLayout(newLayout, currentUser?.id);
+    }, [currentUser?.id]);
 
     // Agronomy Module State
     const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
@@ -1727,15 +1736,14 @@ const App: React.FC = () => {
         }
     }, [activeDrawingTool.tool]);
 
-    const handleDeleteOrganization = async (id: string, name: string) => {
-        if (!confirm(`NUCLEAR OPTION: Are you sure you want to PERMANENTLY DELETE organization "${name}" and ALL its data? This includes employees, crops, and map features. THIS CANNOT BE UNDONE.`)) return;
+    const handleDeleteOrganization = async (id: string, name: string, skipConfirm = false) => {
+        if (!skipConfirm && !confirm(`NUCLEAR OPTION: Are you sure you want to PERMANENTLY DELETE organization "${name}" and ALL its data? This includes employees, crops, and map features. THIS CANNOT BE UNDONE.`)) return;
         
         try {
             if (USE_FIREBASE && auth.currentUser && currentUser?.id !== 'root-system') {
                 const batch = writeBatch(db);
                 
-                // 1. Mark for deletion in cloud (we'll use a batch for most, but some might need separate calls if very large)
-                // For now, we'll try to find associated items in the current state
+                // 1. Mark for deletion in cloud
                 plantationFeatures.filter(f => f.organizationId === id).forEach(f => {
                     batch.delete(doc(db, 'plantationFeatures', f.id));
                 });
@@ -1756,21 +1764,20 @@ const App: React.FC = () => {
                 batch.delete(doc(db, 'organizations', id));
                 
                 await batch.commit();
-                toast.success(`Organization "${name}" and all associated data deleted from Cloud Registry.`);
-            } else {
-                // Local only
-                setOrganizations(prev => prev.filter(o => o.id !== id));
-                setPlantationFeatures(prev => prev.filter(f => f.organizationId !== id));
-                setEmployees(prev => prev.filter(e => e.organizationId !== id));
-                setMemberships(prev => prev.filter(m => m.organizationId !== id));
-                toast.success(`Organization "${name}" deleted locally.`);
+                toast.success(`Organization "${name}" and all associated data deleted.`);
             }
+
+            // Always update local state
+            setOrganizations(prev => prev.filter(o => o.id !== id));
+            setPlantationFeatures(prev => prev.filter(f => f.organizationId !== id));
+            setEmployees(prev => prev.filter(e => e.organizationId !== id));
+            setMemberships(prev => prev.filter(m => m.organizationId !== id));
             
             if (activeOrgId === id) setActiveOrgId(null);
             logActivity("Delete Organization", 'profile', 'success', `Permanent deletion of ${name}.`);
         } catch (error) {
             handleFirestoreError(error, 'delete', `organizations/${id}`);
-            toast.error("Cloud deletion failed. Check your permissions.");
+            toast.error("Deletion failed. Check your permissions.");
         }
     };
 
@@ -2050,6 +2057,19 @@ const App: React.FC = () => {
         const nextFeatures = recursiveUpdateFeatureList(plantationFeatures, cleanedFeature);
         setPlantationFeatures(nextFeatures);
         localStorage.setItem('mock_plantationFeatures', JSON.stringify(nextFeatures));
+
+        // Sync linked work assignments if priority/color/status changed
+        setWorkAssignments(prev => (prev || []).map(w => {
+            if (w.id === feature.id || w.linkedFeatureId === feature.id || (feature as any).linkedFeatureId === w.id) {
+                return {
+                    ...w,
+                    status: (feature as any).status === 'completed' ? 'completed' : ((feature as any).status || w.status),
+                    priority: (feature as any).priority || w.priority,
+                    color: (feature as any).color || (feature as any).customColor || w.color
+                };
+            }
+            return w;
+        }));
 
         const result = findFeatureAndPath(nextFeatures, feature.id);
         const featureToSync = (result && result.path.length > 1) ? result.path[0] : cleanedFeature;
@@ -2417,7 +2437,26 @@ const App: React.FC = () => {
         }
     }, [currentUser, USE_FIREBASE]);
 
-    const handleFeatureDrawn = async (type: FeatureType | 'boundary', geometry: any, clickPos?: any, metadata?: any) => {
+    const handleFeatureDrawn = async (type: FeatureType | 'boundary' | any, geometry: any, clickPos?: any, metadata?: any) => {
+        // If a full feature object was passed as the first argument, unpack it cleanly
+        if (typeof type === 'object' && type !== null) {
+            const featureObj = type as any;
+            metadata = {
+                id: featureObj.id,
+                name: featureObj.name,
+                notes: featureObj.notes,
+                monitoringType: featureObj.monitoringType,
+                taskType: featureObj.taskType,
+                source: featureObj.source,
+                status: featureObj.status,
+                organizationId: featureObj.organizationId,
+                layerId: featureObj.layerId,
+                ...metadata
+            };
+            geometry = featureObj.geometry || geometry;
+            type = featureObj.type || 'checkpoint';
+        }
+
         console.log(`[App] handleFeatureDrawn: type=${type}, tool=${activeDrawingTool.tool}, isRegistering=${isRegisteringOnMap}, points=${geometry?.length}`);
         
         // Rigorous geometry validation
@@ -2432,7 +2471,9 @@ const App: React.FC = () => {
 
         if (!isValid(geometry)) {
             console.error("[App] handleFeatureDrawn caught invalid geometry:", geometry);
-            toast.error("Invalid geometry data. Mapping failed.");
+            if (activeDrawingTool.tool) {
+                toast.error("Invalid geometry data. Mapping failed.");
+            }
             return;
         }
 
@@ -2764,6 +2805,15 @@ const App: React.FC = () => {
             }
         }
 
+        const featurePriority = metadata?.priority || 'medium';
+        const featureColor = metadata?.color || metadata?.customColor || (
+            featurePriority === 'urgent' ? '#dc2626' :
+            featurePriority === 'high' ? '#ef4444' :
+            featurePriority === 'low' ? '#64748b' :
+            featurePriority === 'medium' && (type === 'checkpoint' || monitoringType) ? '#f59e0b' :
+            activeDrawingTool.color || (type === 'checkpoint' ? '#f59e0b' : '#3b82f6')
+        );
+
         const newFeature: PlantationFeature = {
             id: metadata?.id || `${type}-${Date.now()}`,
             name: metadata?.name || featureName.toUpperCase(),
@@ -2771,7 +2821,10 @@ const App: React.FC = () => {
             geometry: cleanGeometry as any,
             layerId,
             isVisible: true,
-            color: activeDrawingTool.color || (type === 'checkpoint' ? '#8b5cf6' : '#3b82f6'),
+            color: featureColor,
+            customColor: metadata?.color || metadata?.customColor || featureColor,
+            priority: featurePriority,
+            status: metadata?.status || 'pending',
             organizationId: orgIdToSave,
             createdBy: currentUser?.id,
             parentId: activeDrawingTool.context?.parentId,
@@ -3526,13 +3579,21 @@ const App: React.FC = () => {
             assignments.forEach(item => {
                 const id = item.id || `work-${Date.now()}-${Math.random()}`;
                 const newItem = { ...item, id, organizationId: activeOrgId || 'personal' };
-                const idx = newItems.findIndex(i => i.id === item.id);
+                const idx = newItems.findIndex(i => i.id === id);
                 if (idx >= 0) newItems[idx] = newItem;
                 else newItems.push(newItem);
                 itemsToSave.push(newItem);
             });
+            // Ensure unique IDs in state
+            const seen = new Set<string>();
+            const uniqueItems = newItems.filter(item => {
+                if (!item || !item.id) return false;
+                if (seen.has(item.id)) return false;
+                seen.add(item.id);
+                return true;
+            });
             saveMockData('workAssignments', itemsToSave);
-            return newItems;
+            return uniqueItems;
         });
 
         if (USE_FIREBASE && auth.currentUser && currentUser?.id !== 'root-system') {
@@ -3636,38 +3697,42 @@ const App: React.FC = () => {
     const handleSetDailyLogs = async (logs: DailyLogEntry[]) => {
         if (!activeOrgId || !Array.isArray(logs)) return;
         
-        // Optimistically update React state and offline cache immediately
-        setDailyLogs(prev => {
-            const newItems = [...prev];
-            const itemsToSave: DailyLogEntry[] = [];
-            logs.forEach(item => {
-                const id = item.id || `dl-${Date.now()}-${Math.random()}`;
-                const newItem = { ...item, id, organizationId: activeOrgId || 'personal' };
-                const idx = newItems.findIndex(i => i.id === item.id);
-                if (idx >= 0) newItems[idx] = newItem;
-                else newItems.push(newItem);
-                itemsToSave.push(newItem);
-            });
-            saveMockData('dailyLogs', itemsToSave);
-            return newItems;
+        // Match existing items by ID and by employeeId + date
+        const existingMap = new Map((dailyLogs || []).map(item => [item.id, item]));
+        const existingEmpDateMap = new Map((dailyLogs || []).map(item => [`${item.employeeId}_${item.date?.split('T')[0]}`, item]));
+        
+        const changedLogs: DailyLogEntry[] = [];
+        const enrichedLogs = logs.map(item => {
+            const dateKey = item.date?.split('T')[0] || item.date;
+            const existingEmp = existingEmpDateMap.get(`${item.employeeId}_${dateKey}`);
+            const id = item.id || existingEmp?.id || `dl-${item.employeeId}-${dateKey}`;
+            const newItem = { ...item, id, organizationId: activeOrgId || 'personal' };
+            const existing = existingMap.get(id) || existingEmp;
+            if (!existing || existing.logType !== newItem.logType) {
+                changedLogs.push(newItem);
+            }
+            return newItem;
         });
 
-        if (USE_FIREBASE && auth.currentUser && currentUser?.id !== 'root-system') {
+        // Optimistically update React state and offline cache immediately
+        setDailyLogs(enrichedLogs);
+        saveMockData('dailyLogs', enrichedLogs);
+
+        // Only persist and queue changed or newly added daily attendance records
+        if (changedLogs.length > 0 && USE_FIREBASE && auth.currentUser && currentUser?.id !== 'root-system') {
+            // Track modification once per changed item so offline queue is accurate
+            changedLogs.forEach(l => {
+                trackModification(`dailyLogs/${l.id}`, 'set', l);
+            });
+
             try {
                 const batch = writeBatch(db);
-                logs.forEach(l => {
-                    const id = l.id || `dl-${Date.now()}-${Math.random()}`;
-                    const data = { ...l, id, organizationId: activeOrgId };
-                    trackModification(`dailyLogs/${id}`, 'set', data);
-                    batch.set(doc(db, 'dailyLogs', id), data);
+                changedLogs.slice(0, 450).forEach(l => {
+                    batch.set(doc(db, 'dailyLogs', l.id), l);
                 });
                 await batch.commit();
             } catch (error) {
-                console.warn("Firestore write error for dailyLogs, queued locally:", error);
-                logs.forEach(l => {
-                    const id = l.id || `dl-${Date.now()}-${Math.random()}`;
-                    trackModification(`dailyLogs/${id}`, 'set', { ...l, id, organizationId: activeOrgId });
-                });
+                console.warn("Firestore write error for dailyLogs, safely queued locally:", error);
             }
         }
     };
@@ -4961,6 +5026,217 @@ const App: React.FC = () => {
         }
     };
 
+    const handleDeleteMultipleNotes = async (noteIds: string[]) => {
+        if (!noteIds || noteIds.length === 0) return;
+        if (USE_FIREBASE && auth.currentUser && currentUser?.id !== 'root-system') {
+            try {
+                await Promise.all(noteIds.map(id => {
+                    trackModification(`notes/${id}`, 'delete', null);
+                    return deleteDoc(doc(db, 'notes', id));
+                }));
+                toast.success(`${noteIds.length} notes deleted`);
+            } catch (error) {
+                handleFirestoreError(error, 'delete', 'notes');
+            }
+        } else {
+            const idSet = new Set(noteIds);
+            setNotes(prev => prev.filter(n => !idSet.has(n.id)));
+            toast.success(`${noteIds.length} notes deleted`);
+        }
+    };
+
+    useEffect(() => {
+        const handleVoiceNoteDeleteEvent = (e: any) => {
+            if (e.detail?.ids && Array.isArray(e.detail.ids)) {
+                handleDeleteMultipleNotes(e.detail.ids);
+            } else if (e.detail?.id) {
+                handleDeleteNote(e.detail.id);
+            }
+        };
+        window.addEventListener('agrimap_delete_note', handleVoiceNoteDeleteEvent);
+        return () => window.removeEventListener('agrimap_delete_note', handleVoiceNoteDeleteEvent);
+    }, [handleDeleteNote, handleDeleteMultipleNotes]);
+
+    // Handle Map & Context Menu events: Work assignments, Planner tasks, Field notes, and Feature deletions
+    useEffect(() => {
+        const handleAddWorkAssignmentEvent = async (e: any) => {
+            const data = e.detail;
+            if (!data) return;
+            const id = data.id || `work-${Date.now()}`;
+            const assignmentPriority = data.priority || 'medium';
+            const assignmentColor = data.color || (assignmentPriority === 'urgent' ? '#dc2626' : assignmentPriority === 'high' ? '#ef4444' : '#f59e0b');
+            const newAssignment: WorkAssignment = {
+                id,
+                workName: data.workName || data.name || 'Work Assignment',
+                taskType: data.taskType || 'Other',
+                date: data.date || new Date().toISOString().split('T')[0],
+                assignedEmployeeIds: data.assignedEmployeeIds || [],
+                employeeHours: [],
+                plannedHours: data.plannedHours || 8,
+                complexity: data.complexity || 'solo',
+                status: data.status || 'planned',
+                priority: assignmentPriority,
+                color: assignmentColor,
+                notes: data.notes || '',
+                organizationId: activeOrgId || undefined,
+                linkedFeatureId: data.linkedFeatureId,
+                sectorIds: data.sectorIds || (data.linkedFeatureId ? [data.linkedFeatureId] : []),
+                createdAt: new Date().toISOString()
+            };
+
+            if (USE_FIREBASE && auth.currentUser && currentUser?.id !== 'root-system') {
+                try {
+                    await setDoc(doc(db, 'workAssignments', id), sanitizeObject(newAssignment));
+                } catch (err) {
+                    console.warn("Could not save work assignment to Firestore:", err);
+                }
+            }
+            setWorkAssignments(prev => [newAssignment, ...(prev || []).filter(w => w.id !== id)]);
+            saveMockData('workAssignments', [newAssignment]);
+
+            if (data.createMapMarker !== false && data.coordinates && !data.linkedFeatureId) {
+                handleFeatureDrawn(
+                    'checkpoint',
+                    [data.coordinates.lat, data.coordinates.lng],
+                    undefined,
+                    {
+                        id: `work-marker-${id}`,
+                        name: newAssignment.workName,
+                        monitoringType: 'work',
+                        taskType: newAssignment.taskType,
+                        source: 'tasks',
+                        status: newAssignment.status,
+                        priority: assignmentPriority,
+                        color: assignmentColor,
+                        customColor: assignmentColor,
+                        notes: newAssignment.notes,
+                        organizationId: activeOrgId || 'personal',
+                        linkedFeatureId: id
+                    }
+                );
+            }
+        };
+
+        const handleAddTaskEvent = async (e: any) => {
+            const data = e.detail;
+            if (!data) return;
+            const id = data.id || `task-${Date.now()}`;
+            const taskPriority = data.priority || 'medium';
+            const taskColor = data.color || (taskPriority === 'urgent' ? '#dc2626' : taskPriority === 'high' ? '#ef4444' : '#f59e0b');
+            const newTask: WorkAssignment = {
+                id,
+                workName: data.title || data.workName || 'Planner Task',
+                taskType: data.taskType || 'Other',
+                date: data.dueDate || data.date || new Date().toISOString().split('T')[0],
+                assignedEmployeeIds: data.assignedEmployeeId ? [data.assignedEmployeeId] : (data.assignedEmployeeIds || []),
+                employeeHours: [],
+                plannedHours: 4,
+                complexity: 'solo',
+                status: 'planned',
+                priority: taskPriority,
+                color: taskColor,
+                notes: data.notes || '',
+                organizationId: activeOrgId || undefined,
+                linkedFeatureId: data.linkedFeatureId,
+                sectorIds: data.sectorIds || (data.linkedFeatureId ? [data.linkedFeatureId] : []),
+                createdAt: new Date().toISOString()
+            };
+
+            if (USE_FIREBASE && auth.currentUser && currentUser?.id !== 'root-system') {
+                try {
+                    await setDoc(doc(db, 'workAssignments', id), sanitizeObject(newTask));
+                } catch (err) {
+                    console.warn("Could not save task to Firestore:", err);
+                }
+            }
+            setWorkAssignments(prev => [newTask, ...(prev || []).filter(w => w.id !== id)]);
+            saveMockData('workAssignments', [newTask]);
+
+            if (data.createMapMarker !== false && data.coordinates && !data.linkedFeatureId) {
+                handleFeatureDrawn(
+                    'checkpoint',
+                    [data.coordinates.lat, data.coordinates.lng],
+                    undefined,
+                    {
+                        id: `task-marker-${id}`,
+                        name: newTask.workName,
+                        monitoringType: 'task',
+                        source: 'planner',
+                        status: newTask.status,
+                        priority: taskPriority,
+                        color: taskColor,
+                        customColor: taskColor,
+                        notes: newTask.notes,
+                        organizationId: activeOrgId || 'personal',
+                        linkedFeatureId: id
+                    }
+                );
+            }
+        };
+
+        const handleAddNoteEvent = async (e: any) => {
+            const data = e.detail;
+            if (!data) return;
+            const noteContent = data.content || data.notes || data.title || '';
+            const notePriority = data.priority || 'medium';
+            const noteColor = data.color || '#10b981';
+            if (handleAddNote) {
+                await handleAddNote(
+                    noteContent,
+                    data.coordinates,
+                    data.linkedFeatureId,
+                    'Planner & Notes',
+                    data.category ? [data.category] : ['Field Note']
+                );
+            }
+
+            if (data.createMapMarker !== false && data.coordinates && !data.linkedFeatureId) {
+                handleFeatureDrawn(
+                    'note',
+                    [data.coordinates.lat, data.coordinates.lng],
+                    undefined,
+                    {
+                        id: `note-marker-${Date.now()}`,
+                        name: data.title || 'Field Note',
+                        monitoringType: 'note',
+                        source: 'planner',
+                        status: 'pending',
+                        priority: notePriority,
+                        color: noteColor,
+                        customColor: noteColor,
+                        notes: noteContent,
+                        organizationId: activeOrgId || 'personal'
+                    }
+                );
+            }
+        };
+
+        const handleDeleteFeaturesEvent = (e: any) => {
+            const ids = e.detail?.ids;
+            if (Array.isArray(ids) && ids.length > 0) {
+                handleDeleteItems(ids);
+            }
+        };
+
+        window.addEventListener('agrimap_add_work_assignment', handleAddWorkAssignmentEvent);
+        window.addEventListener('agrimap_add_map_work', handleAddWorkAssignmentEvent);
+        window.addEventListener('agrimap_add_task', handleAddTaskEvent);
+        window.addEventListener('agrimap_add_map_task', handleAddTaskEvent);
+        window.addEventListener('agrimap_add_note', handleAddNoteEvent);
+        window.addEventListener('agrimap_add_map_note', handleAddNoteEvent);
+        window.addEventListener('agrimap_delete_features', handleDeleteFeaturesEvent);
+
+        return () => {
+            window.removeEventListener('agrimap_add_work_assignment', handleAddWorkAssignmentEvent);
+            window.removeEventListener('agrimap_add_map_work', handleAddWorkAssignmentEvent);
+            window.removeEventListener('agrimap_add_task', handleAddTaskEvent);
+            window.removeEventListener('agrimap_add_map_task', handleAddTaskEvent);
+            window.removeEventListener('agrimap_add_note', handleAddNoteEvent);
+            window.removeEventListener('agrimap_add_map_note', handleAddNoteEvent);
+            window.removeEventListener('agrimap_delete_features', handleDeleteFeaturesEvent);
+        };
+    }, [activeOrgId, currentUser, handleDeleteItems, handleAddNote]);
+
     const handleAddReminder = async (content: string) => {
         if (!activeOrgId) return;
         const id = `alert-${Date.now()}`;
@@ -5945,6 +6221,37 @@ const App: React.FC = () => {
                 discoverableOrganizations={discoverableOrganizations}
                 memberships={memberships}
                 onAddOrg={handleAddOrg}
+                onUpdateOrg={(updatedOrg) => {
+                    setOrganizations(prev => prev.map(o => o.id === updatedOrg.id ? updatedOrg : o));
+                    if (USE_FIREBASE && auth.currentUser) {
+                        setDoc(doc(db, 'organizations', updatedOrg.id), updatedOrg, { merge: true }).catch(console.error);
+                    }
+                }}
+                onDeleteOrganization={handleDeleteOrganization}
+                onDeleteAccount={handleDeleteAccount}
+                onPauseOrg={(orgId, isPaused) => {
+                    const newStatus = isPaused ? 'paused' : 'active';
+                    setOrganizations(prev => prev.map(o => {
+                        if (o.id !== orgId) return o;
+                        return { ...o, status: newStatus as any, isPaused };
+                    }));
+                    if (USE_FIREBASE && auth.currentUser) {
+                        setDoc(doc(db, 'organizations', orgId), { status: newStatus, isPaused }, { merge: true }).catch(console.error);
+                    }
+                }}
+                onResetPlantation={(orgId) => {
+                    setPlantationFeatures(prev => prev.filter(f => f.organizationId !== orgId));
+                    setHarvestEntries(prev => prev.filter(h => h.organizationId !== orgId));
+                    if (USE_FIREBASE && auth.currentUser) {
+                        plantationFeatures.filter(f => f.organizationId === orgId).forEach(f => {
+                            deleteDoc(doc(db, 'plantationFeatures', f.id)).catch(console.error);
+                        });
+                    }
+                    toast.success(language === 'ka' ? "პლანტაციის მონაცემები წარმატებით განულდა" : "Plantation data reset successfully");
+                }}
+                onUpdateMemberships={(newMems) => {
+                    setMemberships(newMems);
+                }}
                 onSwitchOrg={handleSwitchOrg}
                 onAddPost={handleAddPost}
                 onStartMapRegistration={(regData) => {
@@ -5955,6 +6262,7 @@ const App: React.FC = () => {
                 }}
                 activeOrgId={activeOrgId}
                 currentUser={currentUser!}
+                allUsers={users}
                 crops={crops}
             />;
             case 'onboarding':
@@ -6002,6 +6310,19 @@ const App: React.FC = () => {
                 onOpenChat={handleOpenChatHub}
                 onOpenNotes={() => window.dispatchEvent(new CustomEvent('agrimap_open_voice_notes'))}
                 onOpenAssistant={() => window.dispatchEvent(new CustomEvent('agrimap_open_assistant'))}
+                currentUser={currentUser}
+                activeOrg={activeOrg}
+                organizations={organizations}
+                onUpdateOrganization={(updatedOrg) => setOrganizations(prev => prev.map(o => o.id === updatedOrg.id ? updatedOrg : o))}
+                onAddOrg={handleAddOrg}
+                onSwitchOrg={handleSwitchOrg}
+                onUpdateUser={setCurrentUser}
+                onStartMapRegistration={(regData) => {
+                    setPendingOrgData(regData);
+                    setActiveDrawingTool({ tool: 'boundary', color: '#16a34a' });
+                    setIsRegisteringOnMap(true);
+                    toast.info(language === 'ka' ? "მონიშნეთ კომპანიის მიწის ნაკვეთის საზღვარი რუკაზე" : "Draw company land boundary on the map");
+                }}
             />;
             case 'agronomy': 
                 if (!activeOrgId) return <EnterpriseLock onSwitchToFounders={() => setAppMode('founders')} />;
@@ -6127,12 +6448,8 @@ const App: React.FC = () => {
                     employees={employees || []}
                     listings={listings || []} 
                     nutritionPlans={nutritionPlans || []}
-                    dashboardLayout={currentUser?.id === 'guest' || currentUser?.isGuest ? [
-                        { id: 'w1', type: 'daily_news', title: 'Daily Briefing', isVisible: true, order: 0 },
-                        { id: 'w5', type: 'seedling_summary', title: 'Seedling Summary', isVisible: true, order: 1 },
-                        { id: 'w4', type: 'guest_stats', title: 'Global Stats', isVisible: true, order: 2 }
-                    ] : dashboardLayout} 
-                    onSetDashboardLayout={setDashboardLayout} 
+                    dashboardLayout={dashboardLayout} 
+                    onSetDashboardLayout={handleSetDashboardLayout} 
                     isMapFullScreen={isMapFullScreen} 
                     onSetIsMapFullScreen={setIsMapFullScreen} 
                     assistantMessages={assistantMessages} 
@@ -6141,13 +6458,31 @@ const App: React.FC = () => {
                     harvestEntries={harvestEntries || []}
                     users={users}
                     organizations={organizations}
+                    discoverableOrganizations={discoverableOrganizations}
+                    memberships={memberships}
+                    onAddOrg={handleAddOrg}
+                    onSwitchOrg={handleSwitchOrg}
+                    onUpdateUser={handleUpdateUser}
                     crops={crops}
                     activeOrgId={activeOrgId}
                     onOpenMeet={handleOpenMeetHub}
                     onOpenChat={handleOpenChatHub}
+                    forumPosts={forumPosts || []}
+                    onAddPost={handleAddPost}
+                    onAddReply={handleAddReply}
+                    onUpdatePost={handleUpdatePost}
+                    allUsers={users}
+                    roles={roles || []}
+                    onSetMemberships={handleSetMemberships}
+                    onSetEmployees={handleSetEmployees}
+                    onSetUsers={handleSetUsers}
                     onOpenAssistant={() => window.dispatchEvent(new CustomEvent('agrimap_open_assistant'))}
                     onOpenNotes={() => window.dispatchEvent(new CustomEvent('agrimap_open_voice_notes'))}
                     notes={notes || []}
+                    currentUser={currentUser}
+                    onNavigateMode={(mode) => setAppMode(mode as AppMode)}
+                    onOpenProfile={() => setAppMode('profile')}
+                    onOpenHelp={() => setAppMode('guide')}
                 />
             );
         }
@@ -6295,7 +6630,7 @@ const App: React.FC = () => {
                     checkPermission={(mode) => checkModuleAccess(currentUser, mode, activeOrg, memberships) !== 'none'} 
                 />
 
-                <div className="fixed bottom-20 right-3 sm:right-6 z-[3500] lg:bottom-6 pointer-events-none">
+                <div className="pointer-events-none z-[8500]">
                     <div className="pointer-events-auto">
                         <GlobalAssistantPanel 
                             messages={assistantMessages}
@@ -6324,6 +6659,7 @@ const App: React.FC = () => {
                             notes={notes || []}
                             onAddNote={handleAddNote}
                             onDeleteNote={handleDeleteNote}
+                            onDeleteMultipleNotes={handleDeleteMultipleNotes}
                             activeOrgId={activeOrgId}
                             activeOrgName={activeOrg?.name}
                             currentUser={currentUser}

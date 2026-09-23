@@ -4,11 +4,13 @@ import {
     UsersIcon, MapPinIcon, ArchiveBoxIcon, RectangleStackIcon, 
     BuildingStorefrontIcon, BanknotesIcon
 } from './Icons';
-import { ArrowRightIcon, ImageIcon as PhotoIcon, CheckCircle2 as CheckCircleIcon, Search, Trash2, Sparkles, Brain, ShoppingBag, Bot, WifiOff, Layers, Settings2, Activity, TrendingUp, Network, BookOpen, Download } from 'lucide-react';
+import { ArrowRightIcon, ImageIcon as PhotoIcon, CheckCircle2 as CheckCircleIcon, Search, Trash2, Sparkles, Brain, ShoppingBag, Bot, WifiOff, Layers, Settings2, Activity, TrendingUp, Network, BookOpen, Download, MessageSquare, Wand2, ShieldAlert } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { db, doc, setDoc, getDoc, onSnapshot } from '../firebase';
 import { getDefaultScreenshotForStep } from '../utils/defaultScreenshots';
 import { AiModuleArchitectureAnalyzer } from './AiModuleArchitectureAnalyzer';
+import { AiSopGenerator } from './Help/AiSopGenerator';
+import { HelpAiAssistantChat } from './Help/HelpAiAssistantChat';
 
 interface HelpAndGuideViewProps {
     onSetAppMode: (mode: AppMode) => void;
@@ -821,7 +823,7 @@ const HelpAndGuideView: React.FC<HelpAndGuideViewProps> = ({ onSetAppMode, onTri
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('All');
     const [zoomedImage, setZoomedImage] = useState<string | null>(null);
-    const [activeViewMode, setActiveViewMode] = useState<'ai_architecture' | 'sop_timeline'>('ai_architecture');
+    const [activeViewMode, setActiveViewMode] = useState<'ai_architecture' | 'sop_timeline' | 'ai_chat'>('ai_architecture');
     
     // Extract unique categories
     const categories = ['All', ...Array.from(new Set(PROCESS_STEPS.map(s => s.category)))];
@@ -1027,64 +1029,116 @@ const HelpAndGuideView: React.FC<HelpAndGuideViewProps> = ({ onSetAppMode, onTri
         <div className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar p-4 md:p-8">
             <div className="max-w-6xl mx-auto space-y-8">
                 {/* Master Mode Switcher Tabs */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-3 rounded-3xl border border-slate-200 shadow-sm">
-                    <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-2xl w-full sm:w-auto">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-3 rounded-3xl border border-slate-200 shadow-sm">
+                    <div className="flex flex-wrap items-center gap-2 p-1 bg-slate-100 rounded-2xl w-full lg:w-auto">
                         <button
                             onClick={() => setActiveViewMode('ai_architecture')}
-                            className={`flex-1 sm:flex-initial px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 ${
+                            className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
                                 activeViewMode === 'ai_architecture'
                                     ? 'bg-slate-900 text-white shadow-md'
                                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                             }`}
                         >
                             <Brain className="w-4 h-4 text-emerald-400" />
-                            <span>{isKa ? 'AI მოდულების არქიტექტურა & გენერატორი' : 'AI Module Architecture & Downloads'}</span>
+                            <span>{isKa ? 'AI მოდულების არქიტექტურა & ექსპორტი' : 'AI Module Architecture & Downloads'}</span>
                         </button>
 
                         <button
                             onClick={() => setActiveViewMode('sop_timeline')}
-                            className={`flex-1 sm:flex-initial px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 ${
+                            className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
                                 activeViewMode === 'sop_timeline'
                                     ? 'bg-slate-900 text-white shadow-md'
                                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                             }`}
                         >
                             <BookOpen className="w-4 h-4 text-indigo-400" />
-                            <span>{isKa ? 'სტანდარტული SOP გზამკვლევი (16 ეტაპი)' : 'Standard SOP Timeline (16 Steps)'}</span>
+                            <span>{isKa ? 'სტანდარტული SOP-ები & AI გენერატორი' : 'Standard SOPs & AI Generator'}</span>
+                        </button>
+
+                        <button
+                            onClick={() => setActiveViewMode('ai_chat')}
+                            className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                activeViewMode === 'ai_chat'
+                                    ? 'bg-indigo-600 text-white shadow-md'
+                                    : 'text-slate-600 hover:text-indigo-600 hover:bg-indigo-50'
+                            }`}
+                        >
+                            <MessageSquare className="w-4 h-4 text-indigo-400" />
+                            <span>{isKa ? 'AI ასისტენტი & ჩატი' : 'AI Guide Assistant & Chat'}</span>
+                            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-indigo-500/20 text-indigo-600 border border-indigo-200">
+                                AI
+                            </span>
                         </button>
                     </div>
 
-                    <div className="text-xs font-extrabold text-slate-400 flex items-center gap-2 px-3">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                        <span>AgriMap Pro 2.0.6 Enterprise</span>
+                    <div className="text-xs font-extrabold text-slate-400 flex items-center justify-between sm:justify-end gap-3 px-3">
+                        <button
+                            onClick={() => setActiveViewMode('ai_chat')}
+                            className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer"
+                        >
+                            <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                            <span>{isKa ? 'კითხვა აპლიკაციაზე' : 'Ask System Question'}</span>
+                        </button>
+                        <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span>AgriMap Pro 2.0.6 Enterprise</span>
+                        </div>
                     </div>
                 </div>
 
                 {/* VIEW 1: AI ARCHITECTURE, INTERACTIVE TOPOLOGY & DOWNLOADABLE DECKS/GUIDES */}
                 {activeViewMode === 'ai_architecture' && (
-                    <AiModuleArchitectureAnalyzer onNavigateMode={(mode) => onSetAppMode(mode as AppMode)} />
+                    <AiModuleArchitectureAnalyzer 
+                        onNavigateMode={(mode) => onSetAppMode(mode as AppMode)} 
+                        currentUser={currentUser} 
+                    />
                 )}
 
-                {/* VIEW 2: STANDARD 16-STEP OPERATIONAL SOP TIMELINE */}
+                {/* VIEW 2: STANDARD 16-STEP OPERATIONAL SOP TIMELINE & AI SOP GENERATOR */}
                 {activeViewMode === 'sop_timeline' && (
-                    <div className="max-w-4xl mx-auto">
-                        <div className="mb-12">
-                            <h1 className="text-3xl font-black tracking-tight text-slate-800 leading-tight">{t('guide.main_title') || 'Standard Operating Procedures'}</h1>
-                            <p className="text-slate-500 mt-3 font-medium text-base leading-relaxed">{t('guide.subtitle') || 'Follow this sequential timeline to track your complete supply chain lifecycle.'}</p>
+                    <div className="max-w-5xl mx-auto space-y-10">
+                        {/* AI SOP & Operational Standard Generator */}
+                        <AiSopGenerator 
+                            language={language}
+                            currentUser={currentUser}
+                            onNavigateMode={(mode) => onSetAppMode(mode as AppMode)}
+                        />
+
+                        {/* Standard 16-Step Process Timeline Intro */}
+                        <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                                <div>
+                                    <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-800 leading-tight">
+                                        {t('guide.main_title') || 'Standard Operating Procedures (16 Steps)'}
+                                    </h1>
+                                    <p className="text-slate-500 mt-2 font-medium text-sm sm:text-base leading-relaxed">
+                                        {t('guide.subtitle') || 'Follow this sequential timeline to track your complete supply chain lifecycle.'}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => setActiveViewMode('ai_chat')}
+                                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 text-xs font-bold transition-all shrink-0 cursor-pointer"
+                                >
+                                    <MessageSquare className="w-4 h-4 text-indigo-600" />
+                                    <span>{isKa ? 'გჭირდებათ დახმარება? გახსენით ჩატი' : 'Need Guidance? Open AI Chat'}</span>
+                                </button>
+                            </div>
                             
                             {/* Record Banner Alert Block */}
-                            <div className="mt-8 bg-indigo-50/70 border border-indigo-100 rounded-2xl p-6 text-indigo-950 text-sm leading-relaxed shadow-sm">
+                            <div className="bg-indigo-50/70 border border-indigo-100 rounded-2xl p-5 text-indigo-950 text-sm leading-relaxed shadow-xs">
                                 <div className="flex gap-3">
-                                    <Sparkles className="h-5 w-5 text-indigo-600 flex-shrink-0 mt-0.5" />
+                                    <Sparkles className="h-5 w-5 text-indigo-600 shrink-0 mt-0.5" />
                                     <p className="font-semibold">{t('guide.record_banner')}</p>
                                 </div>
                             </div>
 
-                            <p className="text-slate-700 font-bold mt-8 text-sm bg-white py-3 px-5 border border-slate-100 shadow-sm rounded-xl inline-block">{t('guide.instructions_intro')}</p>
+                            <p className="text-slate-700 font-bold mt-6 text-xs sm:text-sm bg-slate-50 py-2.5 px-4 border border-slate-200 rounded-xl inline-block">
+                                {t('guide.instructions_intro')}
+                            </p>
                         </div>
                         
                         {/* Search & Filter Controls */}
-                        <div className="mb-12 flex flex-col sm:flex-row gap-4 items-center justify-between p-4 bg-white rounded-2xl border border-slate-200 shadow-sm">
+                        <div className="flex flex-col sm:flex-row gap-4 items-center justify-between p-4 bg-white rounded-2xl border border-slate-200 shadow-sm">
                             <div className="relative w-full sm:w-1/2">
                                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 h-5 w-5" />
                                 <input 
@@ -1092,7 +1146,7 @@ const HelpAndGuideView: React.FC<HelpAndGuideViewProps> = ({ onSetAppMode, onTri
                                     placeholder={t('common.search') || 'Search modules & operations...'}
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all font-medium text-slate-700"
+                                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all font-medium text-slate-700 text-sm"
                                 />
                             </div>
                             
@@ -1101,7 +1155,7 @@ const HelpAndGuideView: React.FC<HelpAndGuideViewProps> = ({ onSetAppMode, onTri
                                     <button
                                         key={cat}
                                         onClick={() => setSelectedCategory(cat)}
-                                        className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${selectedCategory === cat ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
+                                        className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${selectedCategory === cat ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
                                     >
                                         {cat}
                                     </button>
@@ -1305,6 +1359,17 @@ const HelpAndGuideView: React.FC<HelpAndGuideViewProps> = ({ onSetAppMode, onTri
                                 </div>
                             </div>
                         </div>
+                    </div>
+                )}
+
+                {/* VIEW 3: AI SYSTEM NAVIGATOR & CHAT ASSISTANT */}
+                {activeViewMode === 'ai_chat' && (
+                    <div className="max-w-5xl mx-auto">
+                        <HelpAiAssistantChat 
+                            currentUser={currentUser}
+                            language={language}
+                            onNavigateMode={(mode) => onSetAppMode(mode as AppMode)}
+                        />
                     </div>
                 )}
             </div>
