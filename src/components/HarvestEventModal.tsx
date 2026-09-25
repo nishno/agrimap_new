@@ -2,11 +2,14 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { HarvestEvent, AreaPlantationFeature, PlantationFeature, Employee, InventoryItem, Role, PaymentModel, AssignedPicker, AssignedVehicle, EmployeeGroup, LinePlantationFeature, HarvestSaleDetails, MaterialUsed } from '../types';
 import { XCircleIcon, PlusIcon, TrashIcon, TractorIcon, UsersIcon, CameraIcon, CheckIcon, CheckboxEmptyIcon, CheckboxCheckedIcon } from './Icons';
-import { Search, MoreVertical, ArrowUpDown, Check } from 'lucide-react';
+import { Search, MoreVertical, ArrowUpDown, Check, ScanLine, QrCode } from 'lucide-react';
 import { PAYMENT_MODELS } from '../types';
 import jsQR from 'jsqr';
 import { useLanguage } from '../contexts/LanguageContext';
 import { toast } from 'sonner';
+import QrScannerModal from './QrScannerModal';
+import { parseUniversalScan } from '../utils/universalScannerParser';
+import { findMatchingEmployee } from '../utils/employeeMatching';
 
 interface HarvestEventModalProps {
     event: HarvestEvent | null;
@@ -70,6 +73,7 @@ const HarvestEventModal: React.FC<HarvestEventModalProps> = ({ event, onSave, on
     const [bulkRate, setBulkRate] = useState<number>(0);
     const [selectedPickers, setSelectedPickers] = useState<Set<string>>(new Set());
     const [newTeamName, setNewTeamName] = useState<string>('');
+    const [isUniversalScannerOpen, setIsUniversalScannerOpen] = useState(false);
 
     // Scanner State
     const [isScanning, setIsScanning] = useState(false);
@@ -442,8 +446,9 @@ const HarvestEventModal: React.FC<HarvestEventModalProps> = ({ event, onSave, on
     };
 
     return (
-        <div className="fixed inset-0 bg-white md:bg-black/50 z-[5000] flex items-center justify-center md:p-4" onClick={onClose}>
-            <div className="bg-white w-full h-full md:h-auto md:rounded-lg md:shadow-xl md:max-w-5xl flex flex-col" onClick={e => e.stopPropagation()}>
+        <>
+            <div className="fixed inset-0 bg-white md:bg-black/50 z-[5000] flex items-center justify-center md:p-4" onClick={onClose}>
+                <div className="bg-white w-full h-full md:h-auto md:rounded-lg md:shadow-xl md:max-w-5xl flex flex-col" onClick={e => e.stopPropagation()}>
                 <div className="p-4 border-b flex justify-between items-center flex-shrink-0">
                     <h2 className="text-lg font-bold text-gray-800">{event ? t('harvest.edit_event') : t('harvest.new_event')}</h2>
                     <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><XCircleIcon className="h-6 w-6" /></button>
@@ -621,10 +626,19 @@ const HarvestEventModal: React.FC<HarvestEventModalProps> = ({ event, onSave, on
                                 </div>
                             </div>
 
-                            <div className="flex justify-between items-center">
+                            <div className="flex flex-wrap justify-between items-center gap-2">
                                 <h4 className="font-semibold text-gray-700">{t('harvest.assigned_pickers')} ({formState.assignedPickers.length})</h4>
-                                <div className="flex items-center gap-3">
-                                    <label className="text-xs text-slate-500 hover:text-slate-700 cursor-pointer flex items-center gap-1 border border-slate-200 px-2 py-1 rounded bg-slate-50">
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsUniversalScannerOpen(true)}
+                                        className="py-1.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                                        title={isKa ? "მუშაკის ID ბარათის ან QR-ის სკანირება სიაში დასამატებლად" : "Scan Worker ID badge or Harvest QR to drop worker in list"}
+                                    >
+                                        <ScanLine size={13} className="text-emerald-400" />
+                                        <span>{isKa ? 'QR სკანერი (მუშები / მასალები)' : 'Scan Workers / Materials'}</span>
+                                    </button>
+                                    <label className="text-xs text-slate-500 hover:text-slate-700 cursor-pointer flex items-center gap-1 border border-slate-200 px-2 py-1.5 rounded-xl bg-slate-50">
                                         <CameraIcon className="h-3 w-3" /> +Photo
                                         <input type="file" accept="image/*" capture="environment" className="hidden" onChange={async (e) => {
                                             const file = e.target.files?.[0];
@@ -640,13 +654,6 @@ const HarvestEventModal: React.FC<HarvestEventModalProps> = ({ event, onSave, on
                                             }
                                         }}/>
                                     </label>
-                                    <button 
-                                        type="button" 
-                                        onClick={startScanner}
-                                        className="text-sm text-blue-600 hover:underline flex items-center gap-1"
-                                    >
-                                        <CameraIcon className="h-4 w-4" /> {t('harvest.scan_id')}
-                                    </button>
                                 </div>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -935,11 +942,11 @@ const HarvestEventModal: React.FC<HarvestEventModalProps> = ({ event, onSave, on
                                             : (isKa ? 'შესაბამისი მუშაკი ვერ მოიძებნა' : 'No matching workers found')}
                                     </div>
                                 ) : (
-                                    filteredAssignedPickers.map((ap) => {
+                                    filteredAssignedPickers.map((ap, pIdx) => {
                                         const employeeData = employees.find(e => e.id === ap.employeeId);
                                         const actualIndex = formState.assignedPickers.findIndex(p => p.employeeId === ap.employeeId);
                                         return (
-                                            <div key={ap.employeeId} className={`grid grid-cols-12 gap-2 items-center p-2 rounded border ${selectedPickers.has(ap.employeeId) ? 'bg-indigo-50/50 border-indigo-200' : 'bg-gray-50'}`}>
+                                            <div key={`${ap.employeeId || 'picker'}-${pIdx}`} className={`grid grid-cols-12 gap-2 items-center p-2 rounded border ${selectedPickers.has(ap.employeeId) ? 'bg-indigo-50/50 border-indigo-200' : 'bg-gray-50'}`}>
                                                 <div className="col-span-1 flex items-center justify-center">
                                                     <input 
                                                         type="checkbox" 
@@ -999,7 +1006,18 @@ const HarvestEventModal: React.FC<HarvestEventModalProps> = ({ event, onSave, on
                              <div className="border-t pt-4">
                                 <div className="flex justify-between items-center mb-2">
                                     <h4 className="font-semibold text-gray-700">{t('harvest.materials_used')}</h4>
-                                    <button type="button" onClick={handleAddMaterial} className="text-xs text-blue-600 hover:underline flex items-center gap-1"><PlusIcon className="h-3 w-3"/> {t('work.add_material')}</button>
+                                    <div className="flex items-center gap-2">
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setIsUniversalScannerOpen(true)} 
+                                            className="text-xs text-emerald-600 hover:underline flex items-center gap-1 font-bold cursor-pointer"
+                                        >
+                                            <ScanLine className="h-3 w-3" /> {isKa ? 'მასალის QR სკანირება' : 'Scan Material QR'}
+                                        </button>
+                                        <button type="button" onClick={handleAddMaterial} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                                            <PlusIcon className="h-3 w-3"/> {t('work.add_material')}
+                                        </button>
+                                    </div>
                                 </div>
                                 <div className="space-y-2 max-h-40 overflow-y-auto">
                                     {(formState.materialsUsed || []).map((mu, idx) => (
@@ -1030,12 +1048,93 @@ const HarvestEventModal: React.FC<HarvestEventModalProps> = ({ event, onSave, on
                 </form>
                 )}
             </div>
+            </div>
+
+            {isUniversalScannerOpen && (
+                <QrScannerModal
+                    isOpen={isUniversalScannerOpen}
+                    onClose={() => setIsUniversalScannerOpen(false)}
+                    title={isKa ? "მოსავლის სკანერი (მუშები & მასალები)" : "Harvest Event Scanner (Workers & Materials)"}
+                    description={isKa ? "დაასკანერეთ მუშაკის ID ბარათი, ყუთის QR ან მასალის კოდი" : "Scan Worker ID badge, Crate QR or Material barcode"}
+                    mockEmployees={employees}
+                    mockItems={inventoryItems}
+                    onScan={(scannedCode, cat, parsedData) => {
+                        const code = String(scannedCode).trim();
+                        const parsed = parsedData || parseUniversalScan(code, employees, inventoryItems, 'auto');
+
+                        // 1. Worker Detection
+                        if (parsed.detectedType === 'worker' || parsed.employee) {
+                            const emp = parsed.employee || findMatchingEmployee(employees, code) || employees.find(e => e.id === code || e.barcode === code || e.idNumber === code);
+                            if (emp) {
+                                if (!formState.assignedPickers.some(p => p.employeeId === emp.id)) {
+                                    handleAddPicker(emp.id);
+                                    toast.success(isKa ? `✓ მუშა დაემატა: ${emp.name}` : `✓ Worker added: ${emp.name}`);
+                                } else {
+                                    toast.info(isKa ? `${emp.name} უკვე სიაშია` : `${emp.name} is already assigned`);
+                                }
+                                return;
+                            }
+                        }
+
+                        // 2. Harvest Box QR (with mapped worker)
+                        if (parsed.detectedType === 'harvest_box' && parsed.harvestBox) {
+                            const workerId = parsed.harvestBox.pickerId;
+                            if (workerId) {
+                                const emp = employees.find(e => e.id === workerId);
+                                if (emp && !formState.assignedPickers.some(p => p.employeeId === emp.id)) {
+                                    handleAddPicker(emp.id);
+                                    toast.success(isKa ? `✓ ყუთიდან დაემატა მუშა: ${emp.name}` : `✓ Worker added from box QR: ${emp.name}`);
+                                    return;
+                                }
+                            }
+                        }
+
+                        // 3. Material Detection
+                        if (parsed.detectedType === 'material' || parsed.material) {
+                            const mat = parsed.material?.item || inventoryItems.find(i => 
+                                i.id === code || (i as any).sku === code || (i as any).barcode === code
+                            );
+                            if (mat) {
+                                const qty = parsed.material?.quantity || 1;
+                                const existingIndex = (formState.materialsUsed || []).findIndex(m => m.inventoryItemId === mat.id);
+                                if (existingIndex >= 0) {
+                                    const updated = [...(formState.materialsUsed || [])];
+                                    updated[existingIndex].quantity = (Number(updated[existingIndex].quantity) || 0) + qty;
+                                    setFormState(p => ({ ...p, materialsUsed: updated }));
+                                    toast.success(isKa ? `✓ +${qty} ${mat.name} დაემატა!` : `✓ +${qty} ${mat.name} added!`);
+                                } else {
+                                    const newMat = { inventoryItemId: mat.id, quantity: qty };
+                                    setFormState(p => ({ ...p, materialsUsed: [...(p.materialsUsed || []), newMat] }));
+                                    toast.success(isKa ? `✓ ${mat.name} (${qty}) დაემატა მასალებში!` : `✓ Added ${mat.name} (${qty}) to materials!`);
+                                }
+                                return;
+                            }
+                        }
+
+                        // Fallback check on employee lookup
+                        const fallbackEmp = employees.find(e => 
+                            e.id === code || e.barcode === code || e.idNumber === code || e.name.toLowerCase().includes(code.toLowerCase())
+                        );
+                        if (fallbackEmp) {
+                            if (!formState.assignedPickers.some(p => p.employeeId === fallbackEmp.id)) {
+                                handleAddPicker(fallbackEmp.id);
+                                toast.success(isKa ? `✓ დაემატა: ${fallbackEmp.name}` : `✓ Added: ${fallbackEmp.name}`);
+                            } else {
+                                toast.info(isKa ? `${fallbackEmp.name} უკვე სიაშია` : `${fallbackEmp.name} already in list`);
+                            }
+                            return;
+                        }
+
+                        toast.warning(isKa ? `კოდი ვერ მოიძებნა: ${code}` : `Unrecognized code: ${code}`);
+                    }}
+                />
+            )}
              <style>{`
                 .input-field { width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem; background-color: white; }
                 .button-primary { padding: 0.5rem 1rem; background-color: #16a34a; color: white; border-radius: 0.375rem; font-weight: 600; }
                 .button-secondary { padding: 0.5rem 1rem; background-color: #e5e7eb; color: #1f2937; border-radius: 0.375rem; font-weight: 600; }
             `}</style>
-        </div>
+        </>
     );
 };
 

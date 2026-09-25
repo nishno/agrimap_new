@@ -9,7 +9,7 @@ import {
     CalendarDaysIcon, ArrowUturnLeftIcon, XCircleIcon, 
     SparklesIcon, EyeIcon 
 } from './Icons';
-import { Leaf, FileText, Eye, History, Stethoscope } from 'lucide-react';
+import { Leaf, FileText, Eye, History, Stethoscope, ScanLine, QrCode } from 'lucide-react';
 import { AiAnalysisSuite } from './AiAnalysisSuite';
 import NutritionPlanModal from './NutritionPlanModal';
 import PlanExecutionModal from './PlanExecutionModal';
@@ -20,6 +20,10 @@ import CalendarView from './Agronomy/CalendarView';
 import ListView from './Agronomy/ListView';
 import SystemFeedingTankMonitor from './Agronomy/SystemFeedingTankMonitor';
 import { AgronomicClinicalLabModal } from '../new_engine/ui/AgronomicClinicalLabModal';
+import QrScannerModal, { ScannerCategory, ParsedScanResult } from './QrScannerModal';
+import MaterialQrGeneratorModal from './MaterialQrGeneratorModal';
+import { parseUniversalScan } from '../utils/universalScannerParser';
+import { toast } from 'sonner';
 
 interface AgronomyViewProps {
     currentUser: User | null;
@@ -66,6 +70,79 @@ const AgronomyView: React.FC<AgronomyViewProps> = (props) => {
     const [aiInitialTool, setAiInitialTool] = useState<'disease' | 'document' | 'agro_image' | 'history'>('disease');
     const [currentDate, setCurrentDate] = useState(new Date());
     const [isClinicalLabOpen, setIsClinicalLabOpen] = useState(false);
+    const [isScanModalOpen, setIsScanModalOpen] = useState(false);
+    const [isQrGenModalOpen, setIsQrGenModalOpen] = useState(false);
+    const [scannerCategory, setScannerCategory] = useState<ScannerCategory>('supplies');
+    const [scannerAction, setScannerAction] = useState<'charge' | 'add'>('charge');
+
+    const handleAgroScan = (rawCode: string, targetCategory?: ScannerCategory, parsed?: ParsedScanResult) => {
+        const scanData = parsed || parseUniversalScan(rawCode, employees, inventoryItems, targetCategory || 'supplies', scannerAction);
+        const isKa = t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka';
+
+        // 1. Worker Identification
+        if (scanData.detectedType === 'worker' || scanData.employee) {
+            const emp = scanData.employee;
+            toast.info(isKa ? `✓ აგრო-თანამშრომელი: ${emp?.name || rawCode}` : `✓ Agronomy Worker: ${emp?.name || rawCode}`);
+            return;
+        }
+
+        // 2. Material / Chemical Scanned
+        const mat = scanData.material;
+        const item = mat?.item || inventoryItems.find(i => 
+            i.id === (mat?.materialId || rawCode) ||
+            (i as any).sku === (mat?.sku || rawCode) ||
+            i.name.toLowerCase() === (mat?.materialName || rawCode).toLowerCase()
+        );
+
+        const qty = mat?.quantity || 1;
+        const action = mat?.action || scannerAction;
+        const unit = mat?.unit || item?.unitOfMeasure || 'კგ';
+        const name = mat?.materialName || item?.name || rawCode;
+
+        if (action === 'add') {
+            if (item && onSetInventoryItems) {
+                const newStock = Math.round(((item.currentStock || 0) + qty) * 100) / 100;
+                onSetInventoryItems(inventoryItems.map(i => i.id === item.id ? { ...i, currentStock: newStock } : i));
+                toast.success(isKa ? `✓ მიღებულია საწყობში: +${qty} ${unit} ${name}` : `✓ Ingested to stock: +${qty} ${unit} ${name}`);
+            } else {
+                toast.info(isKa ? `✓ სკანირებულია: ${name} (+${qty} ${unit})` : `✓ Scanned: ${name} (+${qty} ${unit})`);
+            }
+        } else {
+            // Charge / Apply to treatment & record in Charged Execution List
+            if (item && onSetInventoryItems) {
+                const newStock = Math.max(0, Math.round(((item.currentStock || 0) - qty) * 100) / 100);
+                onSetInventoryItems(inventoryItems.map(i => i.id === item.id ? { ...i, currentStock: newStock } : i));
+            }
+
+            const defaultSectorId = plantationFeatures.find(f => f.type === 'area' || f.type === 'sector')?.id || '';
+            const newExecution: PlanExecution = {
+                id: `exec-scan-${Date.now()}`,
+                planId: nutritionPlans[0]?.id || 'direct-charge',
+                date: new Date().toISOString(),
+                sectorIds: defaultSectorId ? [defaultSectorId] : [],
+                actualWaterLiters: 0,
+                actualElements: [{
+                    inventoryItemId: item?.id || mat?.materialId || `item-${Date.now()}`,
+                    newItemName: name,
+                    quantity: qty,
+                    actualQuantity: qty,
+                    unit: unit,
+                    stockDeduction: qty
+                }],
+                notes: isKa ? `ჩამოწერილია QR სკანერით: ${name} (${qty} ${unit})` : `Charged via QR scan: ${name} (${qty} ${unit})`
+            };
+
+            if (onSetPlanExecutions) {
+                onSetPlanExecutions([newExecution, ...(planExecutions || [])]);
+            }
+
+            toast.success(
+                isKa 
+                    ? `✓ ${name} (-${qty} ${unit}) ჩამოიწერა და დაემატა ჩამოწერილების რეესტრში!` 
+                    : `✓ Charged ${name} (-${qty} ${unit}) and added to charged history list!`
+            );
+        }
+    };
 
     const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 768);
 
@@ -301,6 +378,29 @@ const AgronomyView: React.FC<AgronomyViewProps> = (props) => {
                             >
                                 <PlusCircleIcon size={16} /> Log Treatment / მორწყვის ჩაწერა
                             </button>
+
+                            <div className="grid grid-cols-2 gap-2 pt-1">
+                                <button 
+                                    onClick={() => {
+                                        setScannerCategory('supplies');
+                                        setScannerAction('charge');
+                                        setIsScanModalOpen(true);
+                                    }}
+                                    className="px-3 py-2.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-2xl font-black text-[9px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                                    title="Scan Agro-input QR codes to deduct or receive"
+                                >
+                                    <ScanLine size={14} className="text-emerald-600" />
+                                    <span>სკანერი</span>
+                                </button>
+                                <button 
+                                    onClick={() => setIsQrGenModalOpen(true)}
+                                    className="px-3 py-2.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-800 rounded-2xl font-black text-[9px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                                    title="Generate Quantity-based QR Codes for Agro-inputs"
+                                >
+                                    <QrCode size={14} className="text-indigo-600" />
+                                    <span>QR შექმნა</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -648,6 +748,32 @@ const AgronomyView: React.FC<AgronomyViewProps> = (props) => {
                 isSystemAdmin={Boolean((currentUser as any)?.isSystemAdmin || currentUser?.role === 'system_admin')}
                 isKa={true}
             />
+            
+            {/* Agronomy Universal Scanner Modal */}
+            {isScanModalOpen && (
+                <QrScannerModal
+                    isOpen={isScanModalOpen}
+                    onClose={() => setIsScanModalOpen(false)}
+                    onScan={handleAgroScan}
+                    initialCategory={scannerCategory}
+                    initialAction={scannerAction}
+                    mockEmployees={employees}
+                    inventoryItems={inventoryItems}
+                    onOpenGenerator={() => setIsQrGenModalOpen(true)}
+                    title="აგრონომიის QR / შტრიხკოდის სკანერი"
+                    description="დაასკანერეთ სასუქების, პესტიციდების და აგრო-ინპუტების QR კოდები"
+                />
+            )}
+
+            {/* Agro-Input QR Code Generator Modal */}
+            {isQrGenModalOpen && (
+                <MaterialQrGeneratorModal
+                    isOpen={isQrGenModalOpen}
+                    onClose={() => setIsQrGenModalOpen(false)}
+                    inventoryItems={agronomyMaterials.length > 0 ? agronomyMaterials : inventoryItems}
+                    defaultCategory="supplies"
+                />
+            )}
             
             <style>{`
                 .no-scrollbar::-webkit-scrollbar { display: none; }

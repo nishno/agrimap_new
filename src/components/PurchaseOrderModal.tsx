@@ -2,8 +2,12 @@ import React, { useState, useRef, useEffect } from 'react';
 import type { PurchaseOrder, Supplier, InventoryItem, PurchaseOrderItem, PurchaseDocumentAnalysis, PurchaseDocumentType } from '../types';
 import { PURCHASE_DOCUMENT_TYPES } from '../types';
 import { XCircleIcon, PlusIcon, TrashIcon, SparklesIcon, ArrowUpTrayIcon, DocumentTextIcon, ChevronRightIcon } from './Icons';
+import { ScanLine, Barcode } from 'lucide-react';
 import { analyzePurchaseDocument } from '../services/geminiService';
 import { useLanguage } from '../contexts/LanguageContext';
+import QrScannerModal from './QrScannerModal';
+import { parseUniversalScan } from '../utils/universalScannerParser';
+import { toast } from 'sonner';
 
 interface PurchaseOrderModalProps {
     isOpen: boolean;
@@ -62,6 +66,8 @@ const PurchaseOrderModal: React.FC<PurchaseOrderModalProps> = ({ isOpen, onClose
     const [shouldTranslate, setShouldTranslate] = useState(false);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [analysisError, setAnalysisError] = useState<string | null>(null);
+    const [isScannerOpen, setIsScannerOpen] = useState(false);
+    const [scanningItemIndex, setScanningItemIndex] = useState<number | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
@@ -211,8 +217,9 @@ const PurchaseOrderModal: React.FC<PurchaseOrderModalProps> = ({ isOpen, onClose
     const currentSupplierName = formState.supplierName || suppliers.find(s => s.id === formState.supplierId)?.name || '';
 
     return (
-        <div className="fixed inset-0 bg-black/50 z-[5000] flex items-center justify-center p-4 backdrop-blur-xs" onClick={onClose}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden border border-slate-100" onClick={e => e.stopPropagation()}>
+        <>
+            <div className="fixed inset-0 bg-black/50 z-[5000] flex items-center justify-center p-4 backdrop-blur-xs" onClick={onClose}>
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden border border-slate-100" onClick={e => e.stopPropagation()}>
                 <div className="p-4 border-b border-slate-100 bg-slate-900 text-white flex justify-between items-center">
                     <div>
                         <h2 className="text-lg font-black tracking-tight">
@@ -316,13 +323,27 @@ const PurchaseOrderModal: React.FC<PurchaseOrderModalProps> = ({ isOpen, onClose
                             </div>
 
                             <div className="border-t border-slate-200 pt-3">
-                                <div className="flex justify-between items-center mb-2">
-                                    <h4 className="font-black text-slate-900 uppercase tracking-wide text-xs">
-                                        {isKa ? 'შესყიდული ნივთები' : 'Purchased Line Items'}
-                                    </h4>
-                                    <span className="text-[10px] font-bold text-slate-400">
-                                        {isKa ? 'მონიშნული ნივთები პირდაპირ აისახება საწყობის ნაშთზე' : 'Checked items add directly to warehouse balance'}
-                                    </span>
+                                <div className="flex flex-wrap justify-between items-center gap-2 mb-2">
+                                    <div>
+                                        <h4 className="font-black text-slate-900 uppercase tracking-wide text-xs">
+                                            {isKa ? 'შესყიდული ნივთები' : 'Purchased Line Items'}
+                                        </h4>
+                                        <span className="text-[10px] font-bold text-slate-400">
+                                            {isKa ? 'მონიშნული ნივთები პირდაპირ აისახება საწყობის ნაშთზე' : 'Checked items add directly to warehouse balance'}
+                                        </span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setScanningItemIndex(null);
+                                            setIsScannerOpen(true);
+                                        }}
+                                        className="py-1.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+                                        title={isKa ? "მიღებული საქონლის ან მასალის შტრიხკოდის/QR-ის სკანირება" : "Scan item barcode or QR code on receipt"}
+                                    >
+                                        <ScanLine size={13} className="text-emerald-400" />
+                                        <span>{isKa ? 'შტრიხკოდის / QR სკანირება' : 'Scan Item Barcode / QR'}</span>
+                                    </button>
                                 </div>
                                 
                                 <div className="space-y-2.5">
@@ -339,7 +360,30 @@ const PurchaseOrderModal: React.FC<PurchaseOrderModalProps> = ({ isOpen, onClose
                                                     required
                                                 />
                                             </div>
-                                            <div className="flex-grow min-w-[130px]">
+                                            <div className="w-28">
+                                                <label className="text-[10px] font-bold text-slate-600 block mb-1">{isKa ? 'შტრიხკოდი / QR' : 'Barcode / QR'}</label>
+                                                <div className="relative">
+                                                    <input 
+                                                        type="text" 
+                                                        value={item.barcode || ''} 
+                                                        onChange={e => handleItemChange(index, 'barcode', e.target.value)} 
+                                                        className="input-field pr-6 font-mono text-[10px]" 
+                                                        placeholder="Code" 
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setScanningItemIndex(index);
+                                                            setIsScannerOpen(true);
+                                                        }}
+                                                        className="absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 hover:text-emerald-600 cursor-pointer p-0.5"
+                                                        title="Scan Barcode"
+                                                    >
+                                                        <ScanLine size={12} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="flex-grow min-w-[110px]">
                                                 <label className="text-[10px] font-bold text-slate-600 block mb-1">{isKa ? 'აღწერა' : 'Description'}</label>
                                                 <input type="text" value={item.description || ''} onChange={e => handleItemChange(index, 'description', e.target.value)} className="input-field" placeholder={isKa ? "დამატებითი შენიშვნა" : "Optional notes"} />
                                             </div>
@@ -391,6 +435,75 @@ const PurchaseOrderModal: React.FC<PurchaseOrderModalProps> = ({ isOpen, onClose
                     </div>
                 </form>
             </div>
+            </div>
+
+            {isScannerOpen && (
+                <QrScannerModal
+                    isOpen={isScannerOpen}
+                    onClose={() => {
+                        setIsScannerOpen(false);
+                        setScanningItemIndex(null);
+                    }}
+                    title={isKa ? "შესყიდვის შტრიხკოდის / QR სკანერი" : "Purchase Order Barcode / QR Scanner"}
+                    description={isKa ? "დაასკანერეთ მიღებული საქონლის ან მასალის კოდი" : "Scan barcode on received goods, agro-inputs or materials"}
+                    mockItems={inventoryItems}
+                    onScan={(scannedCode, cat, parsedData) => {
+                        const code = String(scannedCode).trim();
+                        const parsed = parsedData || parseUniversalScan(code, [], inventoryItems, 'supplies', 'add');
+                        setIsScannerOpen(false);
+
+                        // If scanning for a specific existing row
+                        if (scanningItemIndex !== null && scanningItemIndex >= 0 && scanningItemIndex < formState.items.length) {
+                            const newItems = [...formState.items];
+                            newItems[scanningItemIndex].barcode = code;
+                            
+                            // If name is empty and matched an inventory item
+                            if (!newItems[scanningItemIndex].itemName && parsed.material?.item) {
+                                newItems[scanningItemIndex].inventoryItemId = parsed.material.item.id;
+                                newItems[scanningItemIndex].itemName = parsed.material.item.name;
+                                newItems[scanningItemIndex].unitCost = parsed.material.item.unitCost;
+                            }
+                            setFormState(p => ({ ...p, items: newItems }));
+                            toast.success(isKa ? `შტრიხკოდი #${scanningItemIndex + 1} ნივთზე მიება: ${code}` : `Attached barcode to item #${scanningItemIndex + 1}: ${code}`);
+                            setScanningItemIndex(null);
+                            return;
+                        }
+
+                        // Otherwise: append a new line item from scan
+                        const matched = parsed.material?.item || inventoryItems.find(i => 
+                            i.id === code || (i as any).sku === code || (i as any).barcode === code
+                        );
+
+                        if (matched) {
+                            const newItem: PurchaseOrderItem = {
+                                inventoryItemId: matched.id,
+                                itemName: matched.name,
+                                description: matched.description || '',
+                                quantity: parsed.material?.quantity || 1,
+                                unitCost: matched.unitCost || 0,
+                                vat: 0,
+                                addToStock: true,
+                                barcode: code
+                            };
+                            setFormState(p => ({ ...p, items: [...p.items, newItem] }));
+                            toast.success(isKa ? `დაემატა ნივთი: ${matched.name} (${code})` : `Added line item: ${matched.name} (${code})`);
+                        } else {
+                            const newItem: PurchaseOrderItem = {
+                                inventoryItemId: 'new-item',
+                                itemName: parsed.material?.materialName || `Item-${code.substring(0, 10)}`,
+                                description: isKa ? 'მიღებულია შტრიხკოდით' : 'Received via barcode scan',
+                                quantity: parsed.material?.quantity || 1,
+                                unitCost: 0,
+                                vat: 0,
+                                addToStock: true,
+                                barcode: code
+                            };
+                            setFormState(p => ({ ...p, items: [...p.items, newItem] }));
+                            toast.success(isKa ? `ახალი ნივთი შტრიხკოდით: ${code}` : `Added new item with barcode: ${code}`);
+                        }
+                    }}
+                />
+            )}
             <style>{`
                 .input-field { width: 100%; padding: 0.5rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 0.625rem; background-color: white; font-size: 0.75rem; font-weight: 600; outline: none; transition: all 0.2s; }
                 .input-field:focus { border-color: #10b981; box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2); }
@@ -400,7 +513,7 @@ const PurchaseOrderModal: React.FC<PurchaseOrderModalProps> = ({ isOpen, onClose
                 .button-secondary { padding: 0.5rem 1.25rem; background-color: #e2e8f0; color: #334155; border-radius: 0.75rem; font-weight: 700; font-size: 0.75rem; transition: background-color 0.2s; }
                 .button-secondary:hover { background-color: #cbd5e1; }
             `}</style>
-        </div>
+        </>
     );
 };
 

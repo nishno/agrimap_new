@@ -61,6 +61,9 @@ export const ResizableDivider: React.FC<ResizableDividerProps> = ({
 
         newSize = Math.max(effectiveMin, Math.min(newSize, effectiveMax));
         onResize(newSize);
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new Event('resize'));
+        }
     };
 
     const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -80,6 +83,9 @@ export const ResizableDivider: React.FC<ResizableDividerProps> = ({
             safeStorage.setItem(storageKey, String(Math.round(currentSize)));
         }
         onResizeEnd?.(currentSize);
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new Event('resize'));
+        }
     };
 
     return (
@@ -88,7 +94,7 @@ export const ResizableDivider: React.FC<ResizableDividerProps> = ({
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
-            className={`relative group/divider flex items-center justify-center select-none touch-none z-[1003] transition-colors ${
+            className={`relative group/divider flex-shrink-0 flex items-center justify-center select-none touch-none z-[1003] transition-colors ${
                 isHorizontal 
                     ? 'w-3.5 -mx-1.5 cursor-col-resize h-full' 
                     : 'h-3.5 -my-1.5 cursor-row-resize w-full'

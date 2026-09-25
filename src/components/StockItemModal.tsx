@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import type { InventoryItem } from '../types';
 import { XCircleIcon } from './Icons';
+import { QrCode } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import MaterialQrGeneratorModal from './MaterialQrGeneratorModal';
 
 interface StockItemModalProps {
     item: InventoryItem | null;
@@ -13,6 +15,7 @@ const StockItemModal: React.FC<StockItemModalProps> = ({ item, onSave, onClose }
     const { t, language } = useLanguage();
     const isKa = language === 'ka';
 
+    const [isBatchQrOpen, setIsBatchQrOpen] = useState(false);
     const [machineryDetails, setMachineryDetails] = useState(item?.machineryDetails || { ownership: "owned", vehicleCategory: "passenger", passengerCapacity: undefined, cargoPurpose: "", payloadCapacity: undefined, enginePower: "", toolCategory: "", baseCostRate: undefined, foremanId: "" } as any);
     const [formState, setFormState] = useState<Omit<InventoryItem, 'id'>>({
         name: item?.name || '',
@@ -78,8 +81,9 @@ const StockItemModal: React.FC<StockItemModalProps> = ({ item, onSave, onClose }
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 z-[5000] flex items-center justify-center p-4 backdrop-blur-xs" onClick={onClose}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden border border-slate-100" onClick={e => e.stopPropagation()}>
+        <>
+            <div className="fixed inset-0 bg-black/50 z-[5000] flex items-center justify-center p-4 backdrop-blur-xs" onClick={onClose}>
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden border border-slate-100" onClick={e => e.stopPropagation()}>
                 <div className="p-5 border-b border-slate-100 bg-slate-900 text-white flex justify-between items-center">
                     <div>
                         <h2 className="text-base md:text-lg font-black tracking-tight">
@@ -293,18 +297,51 @@ const StockItemModal: React.FC<StockItemModalProps> = ({ item, onSave, onClose }
                         </div>
 
                     </div>
-                    <div className="p-4 bg-slate-50 border-t border-slate-100 rounded-b-2xl flex justify-end gap-3">
-                        <button type="button" onClick={onClose} className="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-bold transition-colors cursor-pointer">
-                            {isKa ? 'გაუქმება' : 'Cancel'}
+                    <div className="p-4 bg-slate-50 border-t border-slate-100 rounded-b-2xl flex flex-wrap justify-between items-center gap-3">
+                        <button 
+                            type="button" 
+                            onClick={() => setIsBatchQrOpen(true)} 
+                            className="px-4 py-2.5 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer"
+                            title={isKa ? "QR კოდების შექმნა პარტიების დაყოფითა და რაოდენობებით" : "Generate QR with Batch Split & Quantity Configuration"}
+                        >
+                            <QrCode size={15} />
+                            <span>{isKa ? 'QR ეტიკეტების გენერირება (პარტია / რაოდენობა)' : 'Generate QR (Batch Split & Qty)'}</span>
                         </button>
-                        <button type="submit" className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black shadow-md transition-all cursor-pointer">
-                            {isKa ? 'შენახვა' : 'Save'}
-                        </button>
+
+                        <div className="flex items-center gap-2">
+                            <button type="button" onClick={onClose} className="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-bold transition-colors cursor-pointer">
+                                {isKa ? 'გაუქმება' : 'Cancel'}
+                            </button>
+                            <button type="submit" className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black shadow-md transition-all cursor-pointer">
+                                {isKa ? 'შენახვა' : 'Save'}
+                            </button>
+                        </div>
                     </div>
                 </form>
             </div>
-             <style>{`.input-field { width: 100%; padding: 0.6rem 0.8rem; border: 1px solid #cbd5e1; border-radius: 0.75rem; background-color: #f8fafc; font-weight: 600; outline: none; transition: all 0.2s; } .input-field:focus { background-color: #ffffff; border-color: #10b981; box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2); }`}</style>
-        </div>
+            </div>
+
+            {isBatchQrOpen && (
+                <MaterialQrGeneratorModal
+                    isOpen={isBatchQrOpen}
+                    onClose={() => setIsBatchQrOpen(false)}
+                    inventoryItems={item ? [item] : []}
+                    selectedItemId={item?.id}
+                    defaultMaterialName={formState.name || ''}
+                    defaultCategory={
+                        ['Fertilizers', 'Pesticides', 'Chemicals', 'Bio-stimulants'].includes(formState.category) ? 'supplies' :
+                        formState.category === 'Seeds' ? 'goods' :
+                        formState.category === 'Machinery' ? 'assets' : 'supplies'
+                    }
+                    onBatchGenerated={(batches) => {
+                        if (batches.length > 0 && !formState.sku) {
+                            setFormState(p => ({ ...p, sku: batches[0].sku || batches[0].id }));
+                        }
+                    }}
+                />
+            )}
+            <style>{`.input-field { width: 100%; padding: 0.6rem 0.8rem; border: 1px solid #cbd5e1; border-radius: 0.75rem; background-color: #f8fafc; font-weight: 600; outline: none; transition: all 0.2s; } .input-field:focus { background-color: #ffffff; border-color: #10b981; box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2); }`}</style>
+        </>
     );
 };
 

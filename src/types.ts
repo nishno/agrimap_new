@@ -233,8 +233,10 @@ export type DrawingTool = FeatureType | 'measure' | 'pencil';
 export interface ActiveDrawingTool {
     tool: DrawingTool | null;
     color?: string;
+    priority?: 'urgent' | 'high' | 'medium' | 'low';
     activeLayerId?: string;
     context?: any;
+    metadata?: any;
 }
 
 export interface Layer {
@@ -1009,6 +1011,25 @@ export interface PurchaseOrderItem {
     unitCost: number;
     vat: number;
     addToStock: boolean;
+    barcode?: string;
+    category?: string;
+}
+
+export interface StockDocument {
+    id: string;
+    title: string;
+    category: 'plantation_photos' | 'invoices' | 'lab_reports' | 'certificates' | 'contracts' | 'other';
+    fileUrl: string;
+    fileType: string;
+    fileSize?: string;
+    date: string;
+    notes?: string;
+    tags?: string[];
+    linkedSectorId?: string;
+    linkedSectorName?: string;
+    linkedItemId?: string;
+    linkedItemName?: string;
+    uploadedAt: number;
 }
 
 export type NutritionPlanPurpose = 'Feeding' | 'Treatment' | 'Irrigation' | 'Other';
@@ -1248,6 +1269,10 @@ export interface HarvestEvent {
     customColor?: 'white' | 'yellow' | 'green' | 'red' | string;
     customNote?: string;
     sortOrder?: number;
+    payrollApproved?: boolean;
+    payrollApprovedAt?: string;
+    payrollApprovedBy?: string;
+    payrollNotes?: string;
 }
 
 export interface BoxScan {

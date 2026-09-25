@@ -15,6 +15,8 @@ import { SparklesIcon, UserGroupIcon, PaperAirplaneIcon, MapPinIcon,
 } from './Icons';
 import { MessageSquare, Users, Video, Link2, ExternalLink, Check, Copy, AlertCircle, Plus, PhoneCall, Globe, WifiOff, Share2, UserPlus, Mail, UserCheck, MessageCircle, UserSearch } from 'lucide-react';
 import MapComponent, { type MapComponentProps } from './MapComponent';
+import ResizableDivider from './common/ResizableDivider';
+import { safeStorage } from '../services/storageService';
 import { initGoogleAuth, googleSignIn, getAccessToken } from '../firebase';
 import { 
     listGoogleChatSpaces, 
@@ -160,6 +162,13 @@ const CommunicationHubPanel: React.FC<CommunicationHubPanelProps> = (props) => {
     const [roleFilter, setRoleFilter] = useState<string>('ALL');
     const [sortByOnline, setSortByOnline] = useState(false);
     const [isOnlineGreen, setIsOnlineGreen] = useState(!isManualOffline);
+
+    // Resizable Edge Handle state
+    const [communicatorPanelWidth, setCommunicatorPanelWidth] = useState<number>(() => {
+        const saved = safeStorage.getItem('communicator_panel_width');
+        const parsed = saved ? parseInt(saved, 10) : 560;
+        return Number.isFinite(parsed) && parsed >= 300 ? parsed : 560;
+    });
 
     // Google Chat & Meet States
     const [chatSpaces, setChatSpaces] = useState<GoogleChatSpace[]>([]);
@@ -630,7 +639,13 @@ const CommunicationHubPanel: React.FC<CommunicationHubPanelProps> = (props) => {
     return (
         <main className="w-full h-full bg-white overflow-hidden flex flex-col md:flex-row min-h-0">
             {/* Left Panel */}
-            <div className="w-full md:w-1/2 flex flex-col border-r h-full bg-white relative z-20 shadow-2xl min-h-0">
+            <div 
+                className="w-full flex flex-col border-r h-full bg-white relative z-20 shadow-2xl min-h-0 flex-shrink-0"
+                style={{
+                    width: typeof window !== 'undefined' && window.innerWidth > 768 ? `${communicatorPanelWidth}px` : undefined,
+                    maxWidth: '85vw'
+                }}
+            >
                 {/* Main Tabs */}
                 <div className="flex border-b border-slate-200 overflow-x-auto scrollbar-hide bg-slate-50/90 shrink-0 min-h-[52px] h-[52px] items-stretch">
                     <button 
@@ -1587,8 +1602,20 @@ const CommunicationHubPanel: React.FC<CommunicationHubPanelProps> = (props) => {
                 </div>
             </div>
 
+            {/* Resizable Divider between Communicator Panel and Map */}
+            <ResizableDivider 
+                direction="horizontal"
+                currentSize={communicatorPanelWidth}
+                onResize={(newWidth) => setCommunicatorPanelWidth(newWidth)}
+                minSize={300}
+                maxSize={typeof window !== 'undefined' ? Math.max(window.innerWidth - 300, 600) : 900}
+                storageKey="communicator_panel_width"
+                isKa={localStorage.getItem('agri-app-lang') === 'ka'}
+                className="hidden md:flex"
+            />
+
             {/* Map Area */}
-            <div className="w-full md:w-1/2 h-full relative overflow-hidden bg-slate-200">
+            <div className="flex-1 h-full relative overflow-hidden bg-slate-200">
                 <MapComponent 
                     {...mapProps} 
                     showSearch={false} 

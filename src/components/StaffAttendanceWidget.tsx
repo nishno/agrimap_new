@@ -1,28 +1,77 @@
-import React, { useState, useMemo } from 'react';
-import type { DailyLogEntry, Employee } from '../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import type { 
+    DailyLogEntry, 
+    Employee, 
+    Role, 
+    WorkAssignment, 
+    HarvestEvent, 
+    HarvestEntry, 
+    PlantationFeature 
+} from '../types';
 import { 
     Users, Briefcase, ChevronRight, CheckCircle2, 
-    XCircle, Clock, ChevronDown, ChevronUp, Sparkles 
+    XCircle, Clock, ChevronDown, ChevronUp, Sparkles,
+    ScanLine, CreditCard, UserCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '../contexts/LanguageContext';
+import QrScannerModal from './QrScannerModal';
+import ScannedIdCardModal from './ScannedIdCardModal';
+import { findMatchingEmployee } from '../utils/employeeMatching';
 
 export interface StaffAttendanceWidgetProps {
     logs?: DailyLogEntry[];
     employees?: Employee[];
+    roles?: Role[];
+    workAssignments?: WorkAssignment[];
+    harvestEvents?: HarvestEvent[];
+    harvestEntries?: HarvestEntry[];
+    plantationFeatures?: PlantationFeature[];
     onSetDailyLogs?: (logs: DailyLogEntry[]) => void;
+    onSetEmployees?: (employees: Employee[]) => void;
     onNavigateMode?: (mode: string) => void;
 }
 
 export const StaffAttendanceWidget: React.FC<StaffAttendanceWidgetProps> = ({
     logs = [],
     employees = [],
+    roles = [],
+    workAssignments = [],
+    harvestEvents = [],
+    harvestEntries = [],
+    plantationFeatures = [],
     onSetDailyLogs,
+    onSetEmployees,
     onNavigateMode
 }) => {
     const { t } = useLanguage();
+    const isKa = t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka';
     const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
     const [isExpanded, setIsExpanded] = useState<boolean>(true);
+    const [isScannerOpen, setIsScannerOpen] = useState(false);
+    const [scannedCardEmployee, setScannedCardEmployee] = useState<Employee | null>(null);
+
+    // Global Hardware Scanner listener for the Dashboard HR widget
+    useEffect(() => {
+        const handleHardwareScan = (evt: any) => {
+            const scanData = evt.detail;
+            if (!scanData || !scanData.code) return;
+            const code = String(scanData.code).trim();
+            const raw = String(scanData.raw || '').trim();
+            const found = findMatchingEmployee(employees, code) || (raw ? findMatchingEmployee(employees, raw) : undefined);
+            if (found) {
+                toast.success(`Worker Identified: ${found.name}`, {
+                    description: `ID: ${found.idNumber || found.id} • Opening Profile & Payroll Card...`
+                });
+                setIsScannerOpen(false);
+                setScannedCardEmployee(found);
+            }
+        };
+        window.addEventListener('agrimap:hardware_scan', handleHardwareScan);
+        return () => {
+            window.removeEventListener('agrimap:hardware_scan', handleHardwareScan);
+        };
+    }, [employees]);
 
     const stats = useMemo(() => {
         const todayLogs = logs.filter(l => l.date && l.date.startsWith(date));
@@ -92,7 +141,18 @@ export const StaffAttendanceWidget: React.FC<StaffAttendanceWidgetProps> = ({
                         </p>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        {/* Quick Scan Button */}
+                        <button
+                            type="button"
+                            onClick={() => setIsScannerOpen(true)}
+                            className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 active:scale-95 text-white border border-slate-700 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shadow-sm group"
+                            title={isKa ? "თანამშრომლის ბარათის სწრაფი სკანირება (QR / შტრიხკოდი)" : "Quick Scan Worker ID (QR / Barcode)"}
+                        >
+                            <ScanLine size={12} className="text-emerald-400 group-hover:scale-110 transition-transform" />
+                            <span>{isKa ? 'სკანირება' : 'Quick Scan'}</span>
+                        </button>
+
                         {/* Quick Access to HR Button */}
                         <button
                             onClick={() => {
@@ -162,12 +222,29 @@ export const StaffAttendanceWidget: React.FC<StaffAttendanceWidgetProps> = ({
                         {displayEmployees.map(emp => {
                             const status = getStatus(emp.id);
                             return (
-                                <div key={emp.id} className="flex justify-between items-center p-2.5 bg-slate-50/80 border border-slate-100 rounded-xl">
+                                <div key={emp.id} className="flex justify-between items-center p-2.5 bg-slate-50/80 border border-slate-100 rounded-xl hover:border-slate-200 transition-all">
                                     <div className="min-w-0 pr-2">
-                                        <span className="text-xs font-black text-slate-800 truncate block">{emp.name}</span>
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="text-xs font-black text-slate-800 truncate block">{emp.name}</span>
+                                            {emp.idNumber && (
+                                                <span className="text-[8px] font-bold text-slate-400 bg-slate-100 px-1 py-0.2 rounded font-mono">
+                                                    #{emp.idNumber}
+                                                </span>
+                                            )}
+                                        </div>
                                         <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider truncate">{emp.employeeType || 'Staff'}</p>
                                     </div>
                                     <div className="flex gap-1 shrink-0 items-center">
+                                        {/* Open ID / Payroll Card button */}
+                                        <button
+                                            type="button"
+                                            onClick={() => setScannedCardEmployee(emp)}
+                                            className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 transition-colors cursor-pointer"
+                                            title={isKa ? "პროფილის და ხელფასის ბარათი" : "View Profile & Payroll Card"}
+                                        >
+                                            <CreditCard size={14} />
+                                        </button>
+
                                         <button
                                             type="button"
                                             onClick={() => handleLog(emp.id, 'Present')}
@@ -206,8 +283,18 @@ export const StaffAttendanceWidget: React.FC<StaffAttendanceWidgetProps> = ({
                 )}
             </div>
 
-            {/* Operational Footer with prominent Open HR Module Action */}
+            {/* Operational Footer with prominent Scan ID + Open HR Module Actions */}
             <div className="pt-4 border-t border-slate-100 mt-4 flex items-center gap-2">
+                <button
+                    type="button"
+                    onClick={() => setIsScannerOpen(true)}
+                    className="py-2.5 px-3.5 bg-slate-900 hover:bg-slate-800 active:scale-95 text-white rounded-xl text-[10px] font-black uppercase tracking-wider shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                    title={isKa ? "თანამშრომლის ბარათის სკანირება" : "Scan Worker Card"}
+                >
+                    <ScanLine size={13} className="text-emerald-400" />
+                    <span>{isKa ? 'სკანირება' : 'Scan ID'}</span>
+                </button>
+
                 <button
                     onClick={() => {
                         if (onNavigateMode) onNavigateMode('tools');
@@ -220,6 +307,42 @@ export const StaffAttendanceWidget: React.FC<StaffAttendanceWidgetProps> = ({
                     <ChevronRight size={13} />
                 </button>
             </div>
+
+            {/* Scanner Pop-up Modal */}
+            {isScannerOpen && (
+                <QrScannerModal
+                    isOpen={isScannerOpen}
+                    onClose={() => setIsScannerOpen(false)}
+                    title={isKa ? "თანამშრომლის ID სკანერი" : "Staff ID Card Scanner"}
+                    description={isKa ? "დაასკანერეთ თანამშრომლის ბარათი, QR ან შტრიხკოდი" : "Scan Employee Badge, QR Code or ID Barcode"}
+                    mockEmployees={displayEmployees}
+                    initialCategory="worker"
+                    onScan={(result, cat, parsed) => {
+                        const code = String(result).trim();
+                        const found = parsed?.employee || findMatchingEmployee(employees, code) || findMatchingEmployee(displayEmployees, code);
+                        setIsScannerOpen(false);
+                        if (found) {
+                            toast.success(`Worker Identified: ${found.name}`);
+                            setScannedCardEmployee(found);
+                        } else {
+                            toast.warning(`Employee not found for scan data: ${code.substring(0, 30)}...`);
+                        }
+                    }}
+                />
+            )}
+
+            {/* Scanned ID Card Modal (Payroll, Attendance, ID Card) */}
+            {scannedCardEmployee && (
+                <ScannedIdCardModal
+                    employee={scannedCardEmployee}
+                    roles={roles}
+                    workAssignments={workAssignments}
+                    harvestEvents={harvestEvents}
+                    harvestEntries={harvestEntries}
+                    plantationFeatures={plantationFeatures}
+                    onClose={() => setScannedCardEmployee(null)}
+                />
+            )}
         </div>
     );
 };

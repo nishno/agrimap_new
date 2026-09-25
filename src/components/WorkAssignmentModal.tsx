@@ -5,6 +5,10 @@ import { XCircleIcon, PlusIcon, TrashIcon, TractorIcon } from './Icons';
 import { useLanguage } from '../contexts/LanguageContext';
 import { toast } from 'sonner';
 import { getTaskEligibleEmployees } from '../utils/employeeFilters';
+import { ScanLine } from 'lucide-react';
+import QrScannerModal from './QrScannerModal';
+import { parseUniversalScan } from '../utils/universalScannerParser';
+import { findMatchingEmployee } from '../utils/employeeMatching';
 
 interface WorkAssignmentModalProps {
     isOpen: boolean;
@@ -18,16 +22,19 @@ interface WorkAssignmentModalProps {
     notesList: Note[];
     checkpoints: Checkpoint[];
     onSetEmployees?: (employees: Employee[]) => void;
+    onSetInventoryItems?: (items: InventoryItem[]) => void;
 }
 
 const WorkAssignmentModal: React.FC<WorkAssignmentModalProps> = ({ 
     isOpen, onClose, onSave, work, employees, sectors, machinery, 
-    inventoryItems, notesList, checkpoints, onSetEmployees
+    inventoryItems, notesList, checkpoints, onSetEmployees, onSetInventoryItems
 }) => {
     const { t } = useLanguage();
+    const isKa = t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka';
     
     const [selectedWorkers, setSelectedWorkers] = useState<Set<string>>(new Set());
     const [showAllWorkers, setShowAllWorkers] = useState(false);
+    const [isScannerOpen, setIsScannerOpen] = useState(false);
     
     const eligibleEmployees = useMemo(() => getTaskEligibleEmployees(employees), [employees]);
     const displayEmployees = useMemo(() => showAllWorkers ? employees : eligibleEmployees, [showAllWorkers, employees, eligibleEmployees]);
@@ -187,12 +194,98 @@ const WorkAssignmentModal: React.FC<WorkAssignmentModalProps> = ({
         return total;
     }, [formState.assignedEmployeeIds, manualHours, employees, formState.assignedVehicles, formState.materialsUsed, inventoryItems]);
 
+    const handleScanResult = (result: string, category?: any, parsedData?: any) => {
+        const code = result.trim();
+        if (!code) return;
+        const parsed = parsedData || parseUniversalScan(code, employees, inventoryItems, 'auto');
+        setIsScannerOpen(false);
+
+        // 1. Worker Identification
+        if (parsed.detectedType === 'worker' || parsed.employee) {
+            const emp = parsed.employee || findMatchingEmployee(employees, code) || employees.find(e => e.id === code || e.barcode === code || e.idNumber === code);
+            if (emp) {
+                setShowAllWorkers(true);
+                if (formState.assignedEmployeeIds.includes(emp.id)) {
+                    toast.info(isKa ? `${emp.name} უკვე დამატებულია` : `${emp.name} is already assigned`);
+                } else {
+                    setFormState(prev => ({
+                        ...prev,
+                        assignedEmployeeIds: [...prev.assignedEmployeeIds, emp.id]
+                    }));
+                    setManualHours(prev => ({ ...prev, [emp.id]: 8 }));
+                    toast.success(isKa ? `✓ მუშაკი დაემატა: ${emp.name}` : `✓ Added worker: ${emp.name}`);
+                }
+                return;
+            }
+        }
+
+        // 2. Harvest Box QR with mapped worker
+        if (parsed.detectedType === 'harvest_box' && parsed.harvestBox?.pickerId) {
+            const emp = findMatchingEmployee(employees, parsed.harvestBox.pickerId);
+            if (emp) {
+                if (!formState.assignedEmployeeIds.includes(emp.id)) {
+                    setFormState(prev => ({
+                        ...prev,
+                        assignedEmployeeIds: [...prev.assignedEmployeeIds, emp.id]
+                    }));
+                    setManualHours(prev => ({ ...prev, [emp.id]: 8 }));
+                    toast.success(isKa ? `✓ ყუთიდან დაემატა: ${emp.name}` : `✓ Added from box QR: ${emp.name}`);
+                }
+                return;
+            }
+        }
+
+        // 3. Material Detection
+        if (parsed.detectedType === 'material' || parsed.material) {
+            const mat = parsed.material?.item || inventoryItems.find(i => 
+                i.id === code || (i as any).sku === code || (i as any).barcode === code
+            );
+            if (mat) {
+                const qty = parsed.material?.quantity || 1;
+                const existingIndex = formState.materialsUsed.findIndex(m => m.inventoryItemId === mat.id);
+                if (existingIndex >= 0) {
+                    const list = [...formState.materialsUsed];
+                    list[existingIndex].quantity = (Number(list[existingIndex].quantity) || 0) + qty;
+                    setFormState(prev => ({ ...prev, materialsUsed: list }));
+                    toast.success(isKa ? `✓ +${qty} ${mat.unitOfMeasure} ${mat.name}` : `✓ +${qty} ${mat.unitOfMeasure} ${mat.name}`);
+                } else {
+                    setFormState(prev => ({
+                        ...prev,
+                        materialsUsed: [...prev.materialsUsed, { inventoryItemId: mat.id, quantity: qty }]
+                    }));
+                    toast.success(isKa ? `✓ დაემატა მასალა: ${mat.name} (${qty} ${mat.unitOfMeasure})` : `✓ Added material: ${mat.name} (${qty} ${mat.unitOfMeasure})`);
+                }
+                return;
+            }
+        }
+
+        toast.warning(isKa ? `კოდი ვერ მოიძებნა: ${code}` : `Unrecognized scan code: ${code}`);
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const payload = formState.assignedEmployeeIds.map(id => ({ 
             employeeId: id, 
             hours: Number(manualHours[id]) || 8 
         }));
+
+        // Deduct materials from stock if completed or assigned with onSetInventoryItems
+        if (onSetInventoryItems && inventoryItems.length > 0 && formState.materialsUsed.length > 0) {
+            let invChanged = false;
+            const updatedInv = inventoryItems.map(item => {
+                const used = formState.materialsUsed.find(m => m.inventoryItemId === item.id);
+                if (used && used.quantity > 0) {
+                    invChanged = true;
+                    return { ...item, currentStock: Math.max(0, item.currentStock - Number(used.quantity)) };
+                }
+                return item;
+            });
+            if (invChanged) {
+                onSetInventoryItems(updatedInv);
+                toast.success(isKa ? "მასალები წარმატებით ჩამოიწერა საწყობიდან!" : "Materials deducted from warehouse stock!");
+            }
+        }
+
         onSave({ 
             id: work?.id || `work-${Date.now()}`, 
             ...formState, 
@@ -204,10 +297,22 @@ const WorkAssignmentModal: React.FC<WorkAssignmentModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4" onClick={onClose}>
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+        <>
+            <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4" onClick={onClose}>
+                <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
                 <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-lg">
-                    <h2 className="text-lg font-bold text-gray-800">{work ? 'Edit Work Assignment' : 'New Work Assignment'}</h2>
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-lg font-bold text-gray-800">{work ? 'Edit Work Assignment' : 'New Work Assignment'}</h2>
+                        <button
+                            type="button"
+                            onClick={() => setIsScannerOpen(true)}
+                            className="py-1.5 px-3 bg-slate-900 hover:bg-slate-800 active:scale-95 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+                            title={isKa ? "მუშაკის ან მასალის QR/შტრიხკოდის სკანირება" : "Scan Worker or Material QR Code"}
+                        >
+                            <ScanLine size={13} className="text-emerald-400" />
+                            <span>{isKa ? 'QR სკანერი (მუშები / მასალები)' : 'Scan QR'}</span>
+                        </button>
+                    </div>
                     <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><XCircleIcon className="h-6 w-6" /></button>
                 </div>
                 
@@ -628,6 +733,21 @@ const WorkAssignmentModal: React.FC<WorkAssignmentModalProps> = ({
                     </div>
                 </form>
             </div>
+            </div>
+
+            {isScannerOpen && (
+                <QrScannerModal
+                    isOpen={isScannerOpen}
+                    onClose={() => setIsScannerOpen(false)}
+                    onScan={handleScanResult}
+                    mockEmployees={employees}
+                    inventoryItems={inventoryItems}
+                    initialCategory="auto"
+                    title={isKa ? "დავალების სკანერი (მუშები / მასალები)" : "Task Scanner (Workers / Materials)"}
+                    description={isKa ? "დაასკანერეთ მუშაკის ID ბარათი ან მასალის QR/შტრიხკოდი" : "Scan employee ID card or material QR/barcode"}
+                />
+            )}
+
             <style>{`
                 .input-field { 
                     width: 100%; 
@@ -643,7 +763,7 @@ const WorkAssignmentModal: React.FC<WorkAssignmentModalProps> = ({
                     box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.1);
                 }
             `}</style>
-        </div>
+        </>
     );
 };
 

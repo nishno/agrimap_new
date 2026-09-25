@@ -125,17 +125,20 @@ const ScannedIdCardModal: React.FC<ScannedIdCardModalProps> = ({
             return { id: wa.id, name: wa.workName, date: wa.date, hours, earnings, taskType: wa.taskType };
         });
 
-        // --- Harvest Events (This Month) ---
+        // --- Harvest Events (This Month: Approved + Live Active Sessions) ---
         const harvestsThisMonth = (harvestEvents || []).filter(he => 
-            he.status === 'completed' && 
+            he.status !== 'deleted' &&
             (he.assignedPickers || []).some(p => p.employeeId === employee.id) &&
-            he.actualEndDate &&
-            new Date(he.actualEndDate) >= firstDayOfMonth &&
-            new Date(he.actualEndDate) <= lastDayOfMonth
+            ((he.actualEndDate && new Date(he.actualEndDate) >= firstDayOfMonth && new Date(he.actualEndDate) <= lastDayOfMonth) ||
+             (he.plannedStartDate && new Date(he.plannedStartDate) >= firstDayOfMonth && new Date(he.plannedStartDate) <= lastDayOfMonth) ||
+             he.status === 'active' || he.payrollApproved)
         );
         
         let monthHarvestEarnings = 0;
         let monthHarvestKg = 0;
+        let approvedHarvestEarnings = 0;
+        let draftHarvestEarnings = 0;
+
         const harvestBreakdown = harvestsThisMonth.map(he => {
             const pickerInfo = (he.assignedPickers || []).find(p => p.employeeId === employee.id);
             if (!pickerInfo) return null;
@@ -156,16 +159,26 @@ const ScannedIdCardModal: React.FC<ScannedIdCardModalProps> = ({
             }
             monthHarvestEarnings += earnings;
             monthHarvestKg += finalWeight;
+
+            const isApproved = Boolean(he.payrollApproved || he.status === 'completed');
+            if (isApproved) {
+                approvedHarvestEarnings += earnings;
+            } else {
+                draftHarvestEarnings += earnings;
+            }
+
             return { 
                 id: he.id, 
                 name: he.name, 
-                date: he.actualEndDate!, 
+                date: he.actualEndDate || he.plannedStartDate || new Date().toISOString(), 
                 earnings, 
-                weight: finalWeight, 
+                weight: Number(finalWeight.toFixed(2)), 
                 hours: finalHours,
                 crates: pickerEntries.length,
                 paymentModel: pickerInfo.paymentModel,
-                rate: pickerInfo.rate
+                rate: pickerInfo.rate,
+                isApproved,
+                status: he.status
             };
         }).filter((item): item is NonNullable<typeof item> => item !== null);
 
@@ -329,7 +342,7 @@ const ScannedIdCardModal: React.FC<ScannedIdCardModalProps> = ({
     };
 
     return (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[5000] flex items-center justify-center p-4 sm:p-6" onClick={onClose}>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 sm:p-6" onClick={onClose}>
             <div 
                 className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden border border-slate-100 animate-in fade-in zoom-in-95 duration-150"
                 onClick={e => e.stopPropagation()}

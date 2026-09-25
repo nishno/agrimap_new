@@ -1546,8 +1546,8 @@ const AccountingView: React.FC<AccountingViewProps> = (props) => {
                                                                                 </tr>
                                                                             </thead>
                                                                             <tbody className="divide-y divide-slate-100 text-xs">
-                                                                                {ev.pickersDetail.map(p => (
-                                                                                    <tr key={p.employeeId} className="hover:bg-slate-50/40">
+                                                                                {ev.pickersDetail.map((p, pIdx) => (
+                                                                                    <tr key={`${p.employeeId || 'picker'}-${pIdx}`} className="hover:bg-slate-50/40">
                                                                                         <td className="px-6 py-4 font-black text-slate-800 uppercase">{p.employeeName}</td>
                                                                                         <td className="px-6 py-4 text-right font-black text-slate-600">{formatCurrency(p.earned)}</td>
                                                                                         <td className="px-6 py-4 text-right font-black text-emerald-600">{formatCurrency(p.paid)}</td>

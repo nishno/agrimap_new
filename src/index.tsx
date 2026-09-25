@@ -78,6 +78,7 @@ const isSuppressedStr = (str: string) => {
     lower.includes('quota') ||
     lower.includes('exceeded') ||
     lower.includes('resizeobserver') ||
+    lower.includes('clearrect') ||
     lower.includes('watchchangeaggregator') ||
     lower.includes('persistentlistenstream')
   );

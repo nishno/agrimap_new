@@ -44,6 +44,39 @@ function calculateChecksum(prevChecksum: string, seq: number, payloadStr: string
 
 let currentSequenceId = 0;
 let lastChecksum = 'GENESIS_0';
+let isInitialized = false;
+let initPromise: Promise<void> | null = null;
+let appendQueue: Promise<any> = Promise.resolve();
+
+async function ensureSequenceInitialized(): Promise<void> {
+  if (isInitialized) return;
+  if (!initPromise) {
+    initPromise = (async () => {
+      try {
+        const logs = await EngineIDB.getAll<DeltaLogEntry>('delta_logs');
+        if (logs && logs.length > 0) {
+          let maxSeq = 0;
+          let latestEntry: DeltaLogEntry | null = null;
+          for (const log of logs) {
+            if (typeof log.sequenceId === 'number' && log.sequenceId > maxSeq) {
+              maxSeq = log.sequenceId;
+              latestEntry = log;
+            }
+          }
+          currentSequenceId = Math.max(currentSequenceId, maxSeq);
+          if (latestEntry?.checksum) {
+            lastChecksum = latestEntry.checksum;
+          }
+        }
+      } catch (err) {
+        console.warn('[log.worker] Failed to load initial sequenceId from IDB:', err);
+      } finally {
+        isInitialized = true;
+      }
+    })();
+  }
+  return initPromise;
+}
 
 // Worker Event Handler
 self.onmessage = async (event: MessageEvent<LogWorkerMessage>) => {
@@ -53,28 +86,42 @@ self.onmessage = async (event: MessageEvent<LogWorkerMessage>) => {
     switch (command) {
       case 'APPEND_DELTA': {
         const { actionType, harvestEventId, payloadData, authorId, deviceId } = payload;
-        currentSequenceId++;
+        await ensureSequenceInitialized();
 
-        const payloadString = JSON.stringify(payloadData || {});
-        const newChecksum = calculateChecksum(lastChecksum, currentSequenceId, payloadString);
+        // Process append operation sequentially through appendQueue to prevent concurrency race conditions
+        const deltaEntry = await new Promise<DeltaLogEntry>((resolve, reject) => {
+          appendQueue = appendQueue.then(async () => {
+            try {
+              currentSequenceId++;
 
-        const deltaEntry: DeltaLogEntry = {
-          id: `delta_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-          sequenceId: currentSequenceId,
-          actionType,
-          harvestEventId: harvestEventId || 'global',
-          payload: payloadData,
-          timestamp: Date.now(),
-          authorId: authorId || 'system',
-          deviceId: deviceId || 'tablet_worker',
-          checksum: newChecksum,
-          previousChecksum: lastChecksum,
-        };
+              const payloadString = JSON.stringify(payloadData || {});
+              const newChecksum = calculateChecksum(lastChecksum, currentSequenceId, payloadString);
 
-        lastChecksum = newChecksum;
+              const entry: DeltaLogEntry = {
+                id: `delta_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                sequenceId: currentSequenceId,
+                actionType,
+                harvestEventId: harvestEventId || 'global',
+                payload: payloadData,
+                timestamp: Date.now(),
+                authorId: authorId || 'system',
+                deviceId: deviceId || 'tablet_worker',
+                checksum: newChecksum,
+                previousChecksum: lastChecksum,
+              };
 
-        // Persist to IndexedDB off the main thread
-        await EngineIDB.put('delta_logs', deltaEntry);
+              lastChecksum = newChecksum;
+
+              // Persist to IndexedDB off the main thread
+              await EngineIDB.put('delta_logs', entry);
+              resolve(entry);
+            } catch (err) {
+              reject(err);
+            }
+          }).catch(err => {
+            reject(err);
+          });
+        });
 
         self.postMessage({
           id,
@@ -211,6 +258,15 @@ self.onmessage = async (event: MessageEvent<LogWorkerMessage>) => {
         const lastLog = logs[logs.length - 1];
         await EngineIDB.delete('delta_logs', lastLog.id);
 
+        if (logs.length > 1) {
+          const prevLog = logs[logs.length - 2];
+          currentSequenceId = prevLog.sequenceId;
+          lastChecksum = prevLog.checksum;
+        } else {
+          currentSequenceId = 0;
+          lastChecksum = 'GENESIS_0';
+        }
+
         self.postMessage({
           id,
           command,
@@ -238,6 +294,8 @@ self.onmessage = async (event: MessageEvent<LogWorkerMessage>) => {
         await EngineIDB.clear('delta_logs');
         currentSequenceId = 0;
         lastChecksum = 'GENESIS_0';
+        isInitialized = true;
+        initPromise = Promise.resolve();
 
         self.postMessage({
           id,

@@ -5,8 +5,32 @@ import jsQR from 'jsqr';
 import { useLanguage } from '../contexts/LanguageContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
-import { Scale, RotateCcw, PenTool, Keyboard, Eraser, QrCode, Camera, ShieldCheck, Settings, Eye, EyeOff, ArrowUp, ArrowDown, Sparkles, GripVertical, X, Pencil, Users, Check, Trash2, ListFilter, Plus } from 'lucide-react';
+import { Scale, RotateCcw, PenTool, Keyboard, Eraser, QrCode, Camera, ShieldCheck, Settings, Eye, EyeOff, ArrowUp, ArrowDown, Sparkles, GripVertical, X, Pencil, Users, Check, Trash2, ListFilter, Plus, ScanLine, CheckCircle2, UserCheck, CornerDownRight, Clock, ArrowRight, Package, Calendar } from 'lucide-react';
 import { getStoredActiveUser, ActiveUsersPresenceBar } from '../utils/userPresence';
+import QrScannerModal from './QrScannerModal';
+import { findMatchingEmployee } from '../utils/employeeMatching';
+import { parseUniversalScan } from '../utils/universalScannerParser';
+import { playScannerBeep, initGlobalHardwareScannerListener, parseBarcodePayload } from '../utils/hardwareScannerBus';
+
+export interface AutoScanReceipt {
+    id: string;
+    rawCode: string;
+    timestamp: string;
+    worker?: Employee | null;
+    workerName?: string;
+    workerId?: string;
+    workerBadge?: string;
+    crateCode?: string;
+    isHarvestBox?: boolean;
+    autoSavedPrevious?: {
+        workerName: string;
+        netWeightKg: number;
+        boxCount: number;
+    } | null;
+    eventName?: string;
+    sectorName?: string;
+    actionDescription?: string;
+}
 
 interface GroupWeighItem {
     id: string;
@@ -200,6 +224,7 @@ interface WorkerSearchBlockProps {
     onSetHarvestEvents?: (events: HarvestEvent[]) => void;
     harvestEvents?: HarvestEvent[];
     eventId?: string;
+    onOpenScannerModal?: () => void;
 }
 
 const WorkerSearchBlock: React.FC<WorkerSearchBlockProps> = React.memo(({
@@ -219,7 +244,8 @@ const WorkerSearchBlock: React.FC<WorkerSearchBlockProps> = React.memo(({
     onSetEmployees,
     onSetHarvestEvents,
     harvestEvents = [],
-    eventId
+    eventId,
+    onOpenScannerModal
 }) => {
     const [localQuery, setLocalQuery] = useState(employeeSearch);
     const [showPickerList, setShowPickerList] = useState(false);
@@ -233,7 +259,10 @@ const WorkerSearchBlock: React.FC<WorkerSearchBlockProps> = React.memo(({
     // Keep local query in sync if parent clears it (e.g., after save) or scanner sets it
     useEffect(() => {
         setLocalQuery(employeeSearch);
-    }, [employeeSearch]);
+        if (employeeId) {
+            setShowPickerList(false);
+        }
+    }, [employeeSearch, employeeId]);
 
     // Handle click outside to close dropdown list
     useEffect(() => {
@@ -420,7 +449,14 @@ const WorkerSearchBlock: React.FC<WorkerSearchBlockProps> = React.memo(({
     return (
         <div className="space-y-2 relative" ref={containerRef}>
             <div className="relative group">
-                <SearchIcon className="h-4 w-4 text-slate-300 absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-indigo-500 transition-colors" />
+                {employeeId ? (
+                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none z-10">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-emerald-600 font-black text-xs">👤</span>
+                    </div>
+                ) : (
+                    <SearchIcon className="h-4 w-4 text-slate-300 absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-indigo-500 transition-colors" />
+                )}
                 <input
                     type="text"
                     value={localQuery}
@@ -430,34 +466,10 @@ const WorkerSearchBlock: React.FC<WorkerSearchBlockProps> = React.memo(({
                         if (e.key === 'Enter') {
                             e.preventDefault();
                             e.stopPropagation();
-                            const query = localQuery.trim().toLowerCase();
-                            if (showPickerList && filteredPickers.length > 0) {
-                                const exact = filteredPickers.find(p => 
-                                    p.barcode?.toLowerCase() === query || 
-                                    p.idNumber?.toLowerCase() === query || 
-                                    p.employeeCodeOverride?.toLowerCase() === query ||
-                                    p.id === query
-                                );
-                                const choice = exact || filteredPickers[0];
-                                setEmployeeId(choice.id);
-                                setEmployeeSearch(choice.name);
-                                setLocalQuery(choice.name);
+                            const query = localQuery.trim();
+                            if (query) {
                                 setShowPickerList(false);
-                                toast.info(`SELECTED: ${choice.name}`);
-                            } else if (showPickerList && additionalHrWorkers.length > 0) {
-                                const exactHr = additionalHrWorkers.find(p => 
-                                    p.barcode?.toLowerCase() === query || 
-                                    p.idNumber?.toLowerCase() === query || 
-                                    p.employeeCodeOverride?.toLowerCase() === query ||
-                                    p.id === query
-                                );
-                                const choiceHr = exactHr || additionalHrWorkers[0];
-                                handleAddWorkerToEvent(choiceHr);
-                                setEmployeeId(choiceHr.id);
-                                setEmployeeSearch(choiceHr.name);
-                                setLocalQuery(choiceHr.name);
-                                setShowPickerList(false);
-                                toast.success(isKa ? `დაემატა ღონისძიებაში: ${choiceHr.name}` : `Added to Event: ${choiceHr.name}`);
+                                processScanCode(query);
                             } else if (employeeId) {
                                 window.dispatchEvent(new CustomEvent('weigh-station-commit'));
                             } else {
@@ -465,10 +477,41 @@ const WorkerSearchBlock: React.FC<WorkerSearchBlockProps> = React.memo(({
                             }
                         }
                     }}
-                    className="w-full pl-12 pr-32 py-4 bg-slate-50 border border-slate-200 rounded-[1rem] focus:border-indigo-500 focus:bg-white outline-none font-bold transition-all text-sm text-left"
+                    className={`w-full pl-12 pr-48 sm:pr-56 py-4 rounded-[1rem] outline-none font-bold transition-all text-sm text-left ${
+                        employeeId 
+                            ? 'bg-emerald-50/40 border-2 border-emerald-400 text-slate-900 shadow-xs' 
+                            : 'bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white'
+                    }`}
                     placeholder={t('weigh.search_name')}
                 />
-                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {localQuery && (
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setLocalQuery('');
+                            setEmployeeSearch('');
+                            setEmployeeId('');
+                        }}
+                        className="absolute right-44 sm:right-52 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded-full transition-colors cursor-pointer"
+                        title={isKa ? "გასუფთავება" : "Clear"}
+                    >
+                        <X size={14} />
+                    </button>
+                )}
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                    {onOpenScannerModal && (
+                        <button
+                            type="button"
+                            onClick={onOpenScannerModal}
+                            className="p-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl transition-all flex items-center gap-1.5 px-2.5 sm:px-3 border border-slate-700 shadow-sm cursor-pointer"
+                            title={isKa ? "სკანერის ფანჯრის გახსნა (USB / კამერა / ტესტი)" : "Open Scanner Pop-up (USB / Camera / Test)"}
+                        >
+                            <ScanLine className="h-4 w-4 text-emerald-400" />
+                            <span className="text-[9px] font-black uppercase tracking-widest hidden sm:inline">
+                                {isKa ? "სკანერი" : "Scanner"}
+                            </span>
+                        </button>
+                    )}
                     <label 
                         className="p-2 bg-white text-slate-600 rounded-xl hover:bg-slate-100 transition-colors flex items-center justify-center cursor-pointer border border-slate-200"
                         title="Upload QR Photo"
@@ -1523,6 +1566,52 @@ const WeighStationModal: React.FC<WeighStationModalProps> = React.memo(({
     const isScanningRef = useRef(false);
     const scanBuffer = useRef<string>('');
     const scannedQRCodesRef = useRef<Set<string>>(new Set());
+    const [isScannerModalOpen, setIsScannerModalOpen] = useState(false);
+    const [activeScanReceipt, setActiveScanReceipt] = useState<AutoScanReceipt | null>(null);
+    const [isScanReceiptOpen, setIsScanReceiptOpen] = useState(false);
+    const isScanReceiptOpenRef = useRef(false);
+    useEffect(() => {
+        isScanReceiptOpenRef.current = isScanReceiptOpen;
+    }, [isScanReceiptOpen]);
+    const autoCloseReceiptTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+    // References to triggerSave and current weigh state for auto-saving previous entry upon scan
+    const triggerSaveRef = useRef<() => void>(() => {});
+    const currentWeighStateRef = useRef({
+        employeeId: '',
+        employeeSearch: '',
+        grossWeightKg: '' as number | '',
+        directNetWeightKg: '' as number | '',
+        isReverseMode: false,
+        operatingMode: 'weigh',
+        boxQuantity: 1 as number | '',
+        defaultBoxWeightKg: 0,
+        netWeight: 0,
+        calculatedBoxCount: 1,
+        tareWeight: 0.4
+    });
+
+    const handleAddWorkerToEvent = useCallback((emp: Employee) => {
+        if (!eventId || !harvestEvents || !onSetHarvestEvents) return;
+        const currentEvent = harvestEvents.find(e => e.id === eventId);
+        if (!currentEvent) return;
+
+        const alreadyAssigned = currentEvent.assignedPickers?.some(ap => ap.employeeId === emp.id);
+        if (alreadyAssigned) return;
+
+        const newAssignedPicker: AssignedPicker = {
+            employeeId: emp.id,
+            paymentModel: emp.paymentType === 'hourly' ? 'hourly' : 'per_weight',
+            rate: emp.paymentRate || 0.4,
+        };
+
+        const updatedEvent: HarvestEvent = {
+            ...currentEvent,
+            assignedPickers: [...(currentEvent.assignedPickers || []), newAssignedPicker],
+        };
+
+        onSetHarvestEvents(harvestEvents.map(e => e.id === eventId ? updatedEvent : e));
+    }, [eventId, harvestEvents, onSetHarvestEvents]);
 
     const processScanCode = useCallback((code: string) => {
         if (!code || typeof code !== 'string') return;
@@ -1530,139 +1619,261 @@ const WeighStationModal: React.FC<WeighStationModalProps> = React.memo(({
         const upperCode = normalizedCode.toUpperCase();
 
         const now = Date.now();
-        // Precision Cooldown Window (Debounce Check)
-        if (normalizedCode === lastScanRef.current.code && (now - lastScanRef.current.timestamp) < 2000) {
+        // Precision Cooldown Window (Debounce Check - 600ms prevents bounce while allowing rapid next scan)
+        if (normalizedCode === lastScanRef.current.code && (now - lastScanRef.current.timestamp) < 600) {
             console.log("Duplicate scan debounced:", normalizedCode);
             return;
         }
         lastScanRef.current = { code: normalizedCode, timestamp: now };
 
-        // Duplicate QR scan check (for QR codes/crates/RFIDs - excluding manual entries)
-        const isWorkerCode = pickers.some(p => p.id === normalizedCode || p.barcode === normalizedCode || p.idNumber === normalizedCode || (p.employeeCodeOverride && p.employeeCodeOverride === normalizedCode));
+        // 1. Auto-save last entry if previous worker had weight entered / registered on scale
+        let autoSavedPrevious: AutoScanReceipt['autoSavedPrevious'] = null;
+        const {
+            employeeId: prevEmpId,
+            employeeSearch: prevEmpSearch,
+            grossWeightKg: prevGross,
+            directNetWeightKg: prevDirectNet,
+            isReverseMode: prevReverse,
+            operatingMode: prevMode,
+            boxQuantity: prevQty,
+            defaultBoxWeightKg: prevDefaultBox,
+            netWeight: prevNet,
+            calculatedBoxCount: prevBoxCount,
+            tareWeight: prevTare
+        } = currentWeighStateRef.current;
+
+        if (prevEmpId) {
+            const qty = prevQty === '' ? 1 : prevQty;
+            const finalNet = prevMode === 'box'
+                ? ((typeof prevGross === 'number' ? prevGross : (prevDefaultBox || 0)) * qty)
+                : (prevReverse
+                    ? (typeof prevDirectNet === 'number' ? prevDirectNet : 0)
+                    : prevNet
+                  );
+
+            if (typeof finalNet === 'number' && finalNet > 0) {
+                const prevWorker = (pickers || []).find(p => p.id === prevEmpId) || (allEmployees || []).find(e => e.id === prevEmpId);
+                autoSavedPrevious = {
+                    workerName: prevWorker?.name || prevEmpSearch || 'Worker',
+                    netWeightKg: finalNet,
+                    boxCount: typeof prevBoxCount === 'number' ? prevBoxCount : 1
+                };
+                try {
+                    triggerSaveRef.current();
+                    toast.success(
+                        isKa 
+                            ? `💾 წინა ჩანაწერი შენახულია: ${autoSavedPrevious.workerName} (${finalNet.toFixed(2)} კგ)`
+                            : `💾 Last entry saved: ${autoSavedPrevious.workerName} (${finalNet.toFixed(2)} kg)`
+                    );
+                } catch (err) {
+                    console.error('Auto-save last entry error:', err);
+                }
+            }
+        }
+
+        const universalParsed = parseUniversalScan(normalizedCode, allEmployees, [], 'auto');
+
+        // Check if harvest box QR is scanned
+        const isHarvestBox = universalParsed.detectedType === 'harvest_box' && Boolean(universalParsed.harvestBox);
+        const boxCode = isHarvestBox 
+            ? (universalParsed.harvestBox!.uniqueCode || universalParsed.harvestBox!.crateCode || normalizedCode).toUpperCase()
+            : upperCode;
+
+        // Duplicate QR scan check (for QR codes/crates/RFIDs - excluding worker cards)
+        const isWorkerCode = !isHarvestBox && Boolean(universalParsed.detectedType === 'worker' || universalParsed.employee || findMatchingEmployee(pickers, normalizedCode) || findMatchingEmployee(allEmployees, normalizedCode));
         
-        if (!isWorkerCode && (scannedQRCodesRef.current.has(upperCode) || (entries || []).some(e => e.crateCode?.toUpperCase() === upperCode || e.ticketId?.toUpperCase() === upperCode))) {
-            toast.warning(isKa ? `⚠️ QR კოდი უკვე დასკანერებულია! (${normalizedCode})` : `⚠️ QR Code already scanned! (${normalizedCode})`, {
-                description: isKa ? 'მითითებული კოდი უკვე დარეგისტრირებულია ბაზაში.' : 'This QR crate code is already registered.'
+        if (!isWorkerCode && (scannedQRCodesRef.current.has(boxCode) || (entries || []).some(e => e.crateCode?.toUpperCase() === boxCode || e.ticketId?.toUpperCase() === boxCode))) {
+            toast.warning(isKa ? `⚠️ QR კოდი უკვე დასკანერებულია! (${boxCode})` : `⚠️ QR Code already scanned! (${boxCode})`, {
+                description: isKa ? 'მითითებული ყუთის კოდი უკვე დარეგისტრირებულია ბაზაში (დუბლიკატი დაბლოკილია).' : 'This crate QR code is already registered in database (duplicate prevented).'
             });
             return;
         }
 
+        // Mapped worker from harvest box QR
+        const mappedWorker = isHarvestBox
+            ? (universalParsed.employee || (universalParsed.harvestBox?.pickerId
+                ? (findMatchingEmployee(pickers, universalParsed.harvestBox.pickerId) || findMatchingEmployee(allEmployees, universalParsed.harvestBox.pickerId))
+                : null))
+            : null;
+
+        // Determine target worker from mapping, parsed result, or fuzzy search
+        const { cleanCode } = parseBarcodePayload(normalizedCode);
+        let targetWorker: Employee | undefined = mappedWorker || universalParsed.employee;
+        if (!targetWorker) {
+            targetWorker = findMatchingEmployee(pickers, normalizedCode) || 
+                           findMatchingEmployee(allEmployees, normalizedCode) ||
+                           findMatchingEmployee(pickers, cleanCode) || 
+                           findMatchingEmployee(allEmployees, cleanCode);
+        }
+        if (!targetWorker && normalizedCode.startsWith('PRE_BIND_')) {
+            const bindId = normalizedCode.replace('PRE_BIND_', '');
+            targetWorker = findMatchingEmployee(pickers, bindId) || findMatchingEmployee(allEmployees, bindId);
+        }
+
+        // If employee is found, ensure registered in allEmployees & event, and drop into search field!
+        if (targetWorker) {
+            if (onSetEmployees && allEmployees && !allEmployees.some(e => e.id === targetWorker!.id)) {
+                onSetEmployees([...allEmployees, targetWorker!]);
+            }
+            handleAddWorkerToEvent(targetWorker);
+            setEmployeeId(targetWorker.id);
+            setEmployeeSearch(targetWorker.name);
+        }
+
         if (operatingMode === 'group') {
-            // Check if it's a worker from pickers
-            const picker = pickers.find(p => p.id === code || p.barcode === code || p.idNumber === code || (p.employeeCodeOverride && p.employeeCodeOverride === code));
-            if (picker) {
+            if (targetWorker && !isHarvestBox) {
                 // Try to assign worker name to the first slot that has no picker assigned
-                let updatedSlot = false;
                 setGroupItems(prev => {
                     const idx = prev.findIndex(item => !item.employeeId);
                     if (idx !== -1) {
                         const copy = [...prev];
                         copy[idx] = {
                             ...copy[idx],
-                            employeeId: picker.id,
-                            employeeName: picker.name
+                            employeeId: targetWorker!.id,
+                            employeeName: targetWorker!.name
                         };
-                        updatedSlot = true;
                         return copy;
                     }
-                    // Else append a new card
                     return [
                         ...prev,
                         {
                             id: Math.random().toString(),
-                            employeeId: picker.id,
-                            employeeName: picker.name,
+                            employeeId: targetWorker!.id,
+                            employeeName: targetWorker!.name,
                             crateCode: '',
                             variety: selectedVariety || varieties?.[0] || '',
                             calculatedWeight: Number(groupStandardBoxWeight) || 0
                         }
                     ];
                 });
-                playChime();
-                const isKa = t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka';
-                toast.success(isKa ? `დაემატა მუშა: ${picker.name}` : `Worker Added: ${picker.name}`);
-                return;
-            }
-
-            if (code.startsWith('PRE_BIND_')) {
-                const bindId = code.replace('PRE_BIND_', '');
-                const pickerBind = pickers.find(p => p.id === bindId || p.idNumber === bindId);
-                if (pickerBind) {
-                    setGroupItems(prev => [
+            } else if (isHarvestBox) {
+                setGroupItems(prev => {
+                    const idx = prev.findIndex(item => !item.crateCode);
+                    if (idx !== -1) {
+                        const copy = [...prev];
+                        copy[idx] = { 
+                            ...copy[idx], 
+                            crateCode: boxCode,
+                            ...(targetWorker ? { employeeId: targetWorker.id, employeeName: targetWorker.name } : {}),
+                            ...(universalParsed.harvestBox?.weight ? { calculatedWeight: universalParsed.harvestBox.weight } : {})
+                        };
+                        return copy;
+                    }
+                    return [
                         ...prev,
                         {
                             id: Math.random().toString(),
-                            employeeId: pickerBind.id,
-                            employeeName: pickerBind.name,
-                            crateCode: '',
+                            employeeId: targetWorker ? targetWorker.id : '',
+                            employeeName: targetWorker ? targetWorker.name : '',
+                            crateCode: boxCode,
+                            variety: selectedVariety || varieties?.[0] || '',
+                            calculatedWeight: universalParsed.harvestBox?.weight || Number(groupStandardBoxWeight) || 0
+                        }
+                    ];
+                });
+                scannedQRCodesRef.current.add(boxCode);
+            } else {
+                setGroupItems(prev => {
+                    const idx = prev.findIndex(item => !item.crateCode);
+                    if (idx !== -1) {
+                        const copy = [...prev];
+                        copy[idx] = { ...copy[idx], crateCode: code };
+                        return copy;
+                    }
+                    return [
+                        ...prev,
+                        {
+                            id: Math.random().toString(),
+                            employeeId: '',
+                            employeeName: '',
+                            crateCode: code,
                             variety: selectedVariety || varieties?.[0] || '',
                             calculatedWeight: Number(groupStandardBoxWeight) || 0
                         }
-                    ]);
-                    playChime();
-                    toast.success(`LINKED: ${pickerBind.name}`);
-                    return;
-                }
+                    ];
+                });
+                scannedQRCodesRef.current.add(upperCode);
             }
-
-            // Assign crateCode to the first item that doesn't have one, or create an unassigned slot
-            setGroupItems(prev => {
-                const idx = prev.findIndex(item => !item.crateCode);
-                if (idx !== -1) {
-                    const copy = [...prev];
-                    copy[idx] = { ...copy[idx], crateCode: code };
-                    return copy;
-                }
-                return [
-                    ...prev,
-                    {
-                        id: Math.random().toString(),
-                        employeeId: '',
-                        employeeName: '',
-                        crateCode: code,
-                        variety: selectedVariety || varieties?.[0] || '',
-                        calculatedWeight: Number(groupStandardBoxWeight) || 0
+        } else {
+            // --- Single Weigh Mode ---
+            if (isHarvestBox) {
+                setCrateCode(boxCode);
+                scannedQRCodesRef.current.add(boxCode);
+                if (universalParsed.harvestBox?.weight && universalParsed.harvestBox.weight > 0) {
+                    if (isReverseMode) {
+                        setDirectNetWeightKg(universalParsed.harvestBox.weight);
+                    } else {
+                        setGrossWeightKg(universalParsed.harvestBox.weight);
                     }
-                ];
-            });
-            playChime();
-            toast.success(`Crate Registered: ${code}`);
-            return;
-        }
-
-        // Try to identify as a worker first
-        const picker = pickers.find(p => p.id === code || p.barcode === code || p.idNumber === code || (p.employeeCodeOverride && p.employeeCodeOverride === code));
-        
-        if (picker) {
-            setEmployeeId(picker.id);
-            setEmployeeSearch(picker.name);
-            toast.info(`IDENTIFIED: ${picker.name}`);
-            const currentW = isReverseMode ? (typeof directNetWeightKg === 'number' ? directNetWeightKg : 0) : (typeof grossWeightKg === 'number' ? grossWeightKg : 0);
-            if (currentW > 0) {
-                setStabilityCounter(2);
-            }
-            return;
-        }
-
-        if (code.startsWith('PRE_BIND_')) {
-            const bindId = code.replace('PRE_BIND_', '');
-            const pickerBind = pickers.find(p => p.id === bindId || p.idNumber === bindId);
-            if (pickerBind) {
-                setEmployeeId(pickerBind.id);
-                setEmployeeSearch(pickerBind.name);
-                toast.success(`BOX LINKED TO: ${pickerBind.name}`);
-                const currentW = isReverseMode ? (typeof directNetWeightKg === 'number' ? directNetWeightKg : 0) : (typeof grossWeightKg === 'number' ? grossWeightKg : 0);
-                if (currentW > 0) {
                     setStabilityCounter(2);
                 }
-                return;
+            } else if (!targetWorker) {
+                // Unrecognized code captured as crate code
+                setCrateCode(normalizedCode);
+                scannedQRCodesRef.current.add(upperCode);
             }
         }
 
-        // Unrecognized code is captured as Unique Crate QR / Crate Serial
-        setCrateCode(code);
-        toast.success(`CRATE REGISTERED: ${code}`);
-    }, [pickers, onSave, operatingMode, groupItems, groupStandardBoxWeight, selectedVariety, varieties, t]);
+        // Construct Receipt Data for the automatic pop-up window
+        const currentEvent = (harvestEvents || []).find(e => e.id === eventId);
+        const currentSector = (sectors || []).find(s => s.id === selectedSectorId);
+        const evName = universalParsed.harvestBox?.harvestEventName || currentEvent?.name || (isKa ? 'ივლისის მოსავალი' : 'July Harvesting');
+        const badge = targetWorker?.barcode || targetWorker?.idNumber || targetWorker?.employeeCodeOverride || (targetWorker?.id ? targetWorker.id.replace(/^emp-/i, '') : '122');
+        const role = (targetWorker as any)?.roleId || targetWorker?.employeeType || 'picker';
+
+        const receipt: AutoScanReceipt = {
+            id: `receipt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            rawCode: normalizedCode,
+            timestamp: new Date().toLocaleTimeString(),
+            worker: targetWorker || null,
+            workerName: targetWorker?.name || (isHarvestBox ? (universalParsed.harvestBox?.pickerName || (isKa ? 'დაუკავშირებელი ყუთი' : 'Unmapped Box')) : normalizedCode),
+            workerId: targetWorker?.id || '',
+            workerBadge: badge,
+            crateCode: isHarvestBox || !targetWorker ? boxCode : undefined,
+            isHarvestBox: isHarvestBox,
+            autoSavedPrevious: autoSavedPrevious,
+            eventName: evName,
+            sectorName: currentSector?.name,
+            actionDescription: targetWorker
+                ? (isKa ? `ჩასმულია ძებნის ველში & არჩეულია: ${targetWorker.name}` : `Dropped into search field & selected: ${targetWorker.name}`)
+                : (isKa ? `დარეგისტრირდა ყუთი: ${boxCode}` : `Registered crate: ${boxCode}`)
+        };
+
+        playScannerBeep('success');
+
+        // Automatically open pop-up window; if old one is already open, close old and open new!
+        if (autoCloseReceiptTimerRef.current) {
+            clearTimeout(autoCloseReceiptTimerRef.current);
+        }
+
+        if (isScanReceiptOpen) {
+            setIsScanReceiptOpen(false);
+            setTimeout(() => {
+                setActiveScanReceipt(receipt);
+                setIsScanReceiptOpen(true);
+            }, 120);
+        } else {
+            setActiveScanReceipt(receipt);
+            setIsScanReceiptOpen(true);
+        }
+
+        // Auto-close countdown (4.5 seconds)
+        autoCloseReceiptTimerRef.current = setTimeout(() => {
+            setIsScanReceiptOpen(false);
+        }, 4500);
+
+        if (targetWorker) {
+            toast.success(
+                isKa 
+                    ? `✓ სკანირებულია: ${targetWorker.name} (${badge} ${role})` 
+                    : `✓ Scanned: ${targetWorker.name} (${badge} ${role})`
+            );
+        } else if (isHarvestBox) {
+            toast.success(isKa ? `✓ ყუთი დარეგისტრირდა: ${boxCode}` : `✓ Crate Registered: ${boxCode}`);
+        } else {
+            toast.success(`Crate / Tag: ${normalizedCode}`);
+        }
+    }, [pickers, allEmployees, onSetEmployees, handleAddWorkerToEvent, onSave, operatingMode, groupItems, groupStandardBoxWeight, selectedVariety, varieties, t, isKa, isReverseMode, directNetWeightKg, grossWeightKg, entries, eventId, harvestEvents, sectors, selectedSectorId, isScanReceiptOpen]);
 
     const calculatedBoxCount = useMemo(() => {
         if (operatingMode === 'box') {
@@ -1712,6 +1923,22 @@ const WeighStationModal: React.FC<WeighStationModalProps> = React.memo(({
         const gross = typeof grossWeightKg === 'number' ? grossWeightKg : 0;
         return Math.max(0, gross - (tareWeight * calculatedBoxCount));
     }, [grossWeightKg, directNetWeightKg, tareWeight, operatingMode, boxQuantity, defaultBoxWeightKg, calculatedBoxCount, isReverseMode]);
+
+    useEffect(() => {
+        currentWeighStateRef.current = {
+            employeeId,
+            employeeSearch,
+            grossWeightKg,
+            directNetWeightKg,
+            isReverseMode,
+            operatingMode,
+            boxQuantity,
+            defaultBoxWeightKg,
+            netWeight,
+            calculatedBoxCount,
+            tareWeight
+        };
+    }, [employeeId, employeeSearch, grossWeightKg, directNetWeightKg, isReverseMode, operatingMode, boxQuantity, defaultBoxWeightKg, netWeight, calculatedBoxCount, tareWeight]);
 
     // Internal save handler
     const triggerSave = useCallback(() => {
@@ -1834,6 +2061,8 @@ const WeighStationModal: React.FC<WeighStationModalProps> = React.memo(({
         setStabilityCounter(0);
         setCrateCode('');
     }, [employeeId, packagingItemId, grossWeightKg, directNetWeightKg, isReverseMode, eventId, netWeight, tareWeight, ticketId, selectedVariety, onSave, operatingMode, boxQuantity, standardWeightPerBox, defaultBoxWeightKg, clearWorkerAfterSave, calculatedBoxCount, isHalfBox, crateCode, manualBoxCount]);
+
+    triggerSaveRef.current = triggerSave;
 
     const updateGroupItem = useCallback((id: string, updates: Partial<GroupWeighItem>) => {
         setGroupItems(prev => prev.map(item => {
@@ -1981,15 +2210,23 @@ const WeighStationModal: React.FC<WeighStationModalProps> = React.memo(({
 
     // Bluetooth / HID Scanner & Global Enter Keyboard Listener
     useEffect(() => {
+        initGlobalHardwareScannerListener();
+
         const handleKeyDown = (e: KeyboardEvent) => {
             if (!isOpen) return;
+
+            if (e.key === 'Escape' && isScanReceiptOpenRef.current) {
+                if (autoCloseReceiptTimerRef.current) clearTimeout(autoCloseReceiptTimerRef.current);
+                setIsScanReceiptOpen(false);
+                return;
+            }
             
             if (e.key === 'Enter') {
                 const code = scanBuffer.current.trim();
+                scanBuffer.current = '';
+                if (kbTimeoutRef.current) clearTimeout(kbTimeoutRef.current);
                 if (code) {
                     processScanCode(code);
-                    scanBuffer.current = '';
-                    if (kbTimeoutRef.current) clearTimeout(kbTimeoutRef.current);
                     return;
                 }
 
@@ -1997,10 +2234,15 @@ const WeighStationModal: React.FC<WeighStationModalProps> = React.memo(({
                     return;
                 }
 
-                // If user is typing inside worker search, crate code, ticket ID, etc. do NOT trigger triggerSave
+                // If user is inside an input/textarea (other than weight input) that has text, process on Enter
                 const target = e.target as HTMLElement;
                 if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
                     const input = target as HTMLInputElement;
+                    const val = input.value?.trim();
+                    if (val && !input.classList.contains('weight-main-input')) {
+                        processScanCode(val);
+                        return;
+                    }
                     if (!input.classList.contains('weight-main-input') && input.type !== 'number') {
                         return;
                     }
@@ -2013,13 +2255,12 @@ const WeighStationModal: React.FC<WeighStationModalProps> = React.memo(({
                 } else {
                     triggerSave();
                 }
-            } else if (e.key.length === 1 && !isScanning && scannerType !== 'manual') {
-                // Ignore scanner buffer accumulation when user is typing inside an input
+            } else if (e.key.length === 1 && !isScanning) {
+                // Buffer printable keys regardless of manual/hardware tab selection
                 const target = e.target as HTMLElement;
-                if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
-                    return;
+                if (!target || (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA')) {
+                    scanBuffer.current += e.key;
                 }
-                scanBuffer.current += e.key;
             }
             
             if (kbTimeoutRef.current) {
@@ -2027,11 +2268,12 @@ const WeighStationModal: React.FC<WeighStationModalProps> = React.memo(({
             }
             kbTimeoutRef.current = setTimeout(() => {
                 scanBuffer.current = '';
-            }, 500);
+            }, 600);
         };
 
         const handleHardwareScan = (e: any) => {
-            const code = e.detail?.code;
+            // Prioritize raw code so unstripped full JSON payloads and strings remain intact
+            const code = e.detail?.raw || e.detail?.code;
             if (code) {
                 processScanCode(code);
             }
@@ -2762,20 +3004,53 @@ const WeighStationModal: React.FC<WeighStationModalProps> = React.memo(({
                                                     initial={{ opacity: 0, y: -5 }}
                                                     animate={{ opacity: 1, y: 0 }}
                                                     exit={{ opacity: 0, y: -5 }}
-                                                    className="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-3 flex items-start gap-2.5 text-left"
+                                                    className="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left"
                                                 >
-                                                    <div className="p-1.5 bg-indigo-100 text-indigo-600 rounded-xl shrink-0 relative">
-                                                        <QrCodeIcon className="w-3.5 h-3.5" />
-                                                        <span className="absolute top-0 right-0 w-1.5 h-1.5 bg-indigo-500 rounded-full animate-ping" />
+                                                    <div className="flex items-start gap-2.5">
+                                                        <div className="p-1.5 bg-indigo-100 text-indigo-600 rounded-xl shrink-0 relative">
+                                                            <QrCodeIcon className="w-3.5 h-3.5" />
+                                                            <span className="absolute top-0 right-0 w-1.5 h-1.5 bg-indigo-500 rounded-full animate-ping" />
+                                                        </div>
+                                                        <div>
+                                                            <h5 className="font-black text-slate-700 text-[10px] uppercase tracking-wider">
+                                                                {isKa ? 'ფიზიკური QR სკანერი აქტიურია' : 'External Hardware Scanner Listening'}
+                                                            </h5>
+                                                            <p className="text-[8px] text-slate-500 font-bold uppercase mt-0.5 leading-normal">
+                                                                {isKa ? 'დააკავშირეთ ფიზიკური სკანერი USB/Bluetooth-ით. ის ავტომატურად ჩაწერს QR-ს.' : 'Connect a physical scanner via USB/Bluetooth. Keyboard wedge is fully supported.'}
+                                                            </p>
+                                                        </div>
                                                     </div>
-                                                    <div>
-                                                        <h5 className="font-black text-slate-700 text-[10px] uppercase tracking-wider">
-                                                            {isKa ? 'ფიზიკური QR სკანერი აქტიურია' : 'External Hardware Scanner Listening'}
-                                                        </h5>
-                                                        <p className="text-[8px] text-slate-500 font-bold uppercase mt-0.5 leading-normal">
-                                                            {isKa ? 'დააკავშირეთ ფიზიკური სკანერი USB/Bluetooth-ით. ის ავტომატურად ჩაწერს QR-ს.' : 'Connect a physical scanner via USB/Bluetooth. Keyboard wedge is fully supported.'}
-                                                        </p>
-                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            if (activeScanReceipt) {
+                                                                setIsScanReceiptOpen(true);
+                                                            } else {
+                                                                const currentEvent = (harvestEvents || []).find(e => e.id === eventId);
+                                                                const currentSector = (sectors || []).find(s => s.id === selectedSectorId);
+                                                                const activeEmp = (pickers || []).find(p => p.id === employeeId) || (allEmployees || []).find(e => e.id === employeeId);
+                                                                const readyReceipt: AutoScanReceipt = {
+                                                                    id: `manual-${Date.now()}`,
+                                                                    rawCode: activeEmp?.barcode || activeEmp?.idNumber || 'SCAN-READY',
+                                                                    timestamp: new Date().toLocaleTimeString(),
+                                                                    worker: activeEmp || null,
+                                                                    workerName: activeEmp?.name || (isKa ? 'მზადაა სკანირებისთვის' : 'Ready for Scan'),
+                                                                    workerId: activeEmp?.id || '',
+                                                                    workerBadge: activeEmp?.barcode || activeEmp?.idNumber || '122',
+                                                                    crateCode: crateCode || undefined,
+                                                                    eventName: currentEvent?.name || (isKa ? 'ივლისის მოსავალი' : 'July Harvesting'),
+                                                                    sectorName: currentSector?.name,
+                                                                    actionDescription: isKa ? 'Bluetooth / USB სკანერი აქტიურია' : 'Bluetooth / USB Scanner Active'
+                                                                };
+                                                                setActiveScanReceipt(readyReceipt);
+                                                                setIsScanReceiptOpen(true);
+                                                            }
+                                                        }}
+                                                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl text-[9px] font-black uppercase tracking-wider shadow-sm flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                                                    >
+                                                        <ScanLine size={13} />
+                                                        <span>{isKa ? 'სკანერის ფანჯარა' : 'Scanner Pop-up'}</span>
+                                                    </button>
                                                 </motion.div>
                                             )}
                                             {scannerType === 'camera' && (
@@ -2931,6 +3206,30 @@ const WeighStationModal: React.FC<WeighStationModalProps> = React.memo(({
                                         onSetHarvestEvents={onSetHarvestEvents}
                                         harvestEvents={harvestEvents}
                                         eventId={eventId}
+                                        onOpenScannerModal={() => {
+                                            if (activeScanReceipt) {
+                                                setIsScanReceiptOpen(true);
+                                            } else {
+                                                const currentEvent = (harvestEvents || []).find(e => e.id === eventId);
+                                                const currentSector = (sectors || []).find(s => s.id === selectedSectorId);
+                                                const activeEmp = (pickers || []).find(p => p.id === employeeId) || (allEmployees || []).find(e => e.id === employeeId);
+                                                const readyReceipt: AutoScanReceipt = {
+                                                    id: `manual-${Date.now()}`,
+                                                    rawCode: activeEmp?.barcode || activeEmp?.idNumber || 'SCAN-READY',
+                                                    timestamp: new Date().toLocaleTimeString(),
+                                                    worker: activeEmp || null,
+                                                    workerName: activeEmp?.name || (isKa ? 'მზადაა სკანირებისთვის' : 'Ready for Scan'),
+                                                    workerId: activeEmp?.id || '',
+                                                    workerBadge: activeEmp?.barcode || activeEmp?.idNumber || '122',
+                                                    crateCode: crateCode || undefined,
+                                                    eventName: currentEvent?.name || (isKa ? 'ივლისის მოსავალი' : 'July Harvesting'),
+                                                    sectorName: currentSector?.name,
+                                                    actionDescription: isKa ? 'Bluetooth / USB სკანერი აქტიურია' : 'Bluetooth / USB Scanner Active'
+                                                };
+                                                setActiveScanReceipt(readyReceipt);
+                                                setIsScanReceiptOpen(true);
+                                            }
+                                        }}
                                     />
                                 </InteractiveBlock>
                             );
@@ -4135,6 +4434,279 @@ const WeighStationModal: React.FC<WeighStationModalProps> = React.memo(({
                         </motion.div>
                     );
                 })()}
+            </AnimatePresence>
+
+            {isScannerModalOpen && (
+                <QrScannerModal
+                    isOpen={isScannerModalOpen}
+                    onClose={() => setIsScannerModalOpen(false)}
+                    title={isKa ? "მოსავლის აღების QR / შტრიხკოდის სკანერი" : "Harvest Weigh Station Scanner"}
+                    description={isKa ? "დაასკანერეთ მუშის ბარათი, ყუთის QR ან ტარის კოდი" : "Scan Worker ID Badge, Crate Barcode or Container Tag"}
+                    mockEmployees={pickers.length > 0 ? pickers : allEmployees}
+                    onScan={(scannedCode) => {
+                        setIsScannerModalOpen(false);
+                        processScanCode(scannedCode);
+                    }}
+                />
+            )}
+
+            {/* Hardware / Barcode Gun Auto-Scan Receipt Pop-up Window */}
+            <AnimatePresence>
+                {isScanReceiptOpen && activeScanReceipt && (
+                    <div className="fixed inset-0 z-[1300] flex items-center justify-center p-3 sm:p-5 bg-slate-950/75 backdrop-blur-md">
+                        {/* Backdrop Click Dismiss */}
+                        <div 
+                            className="absolute inset-0 cursor-pointer" 
+                            onClick={() => {
+                                if (autoCloseReceiptTimerRef.current) clearTimeout(autoCloseReceiptTimerRef.current);
+                                setIsScanReceiptOpen(false);
+                            }}
+                        />
+
+                        <motion.div
+                            key={activeScanReceipt.id}
+                            initial={{ opacity: 0, scale: 0.92, y: 16 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.92, y: 16 }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+                            className="relative w-full max-w-xl bg-white border-2 border-emerald-500 rounded-3xl shadow-[0_25px_60px_-15px_rgba(16,185,129,0.35)] overflow-hidden z-10 text-slate-900"
+                        >
+                            {/* Top Device Status Bar */}
+                            <div className="bg-slate-900 text-white px-5 py-3 flex items-center justify-between border-b border-slate-800">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 relative">
+                                        <ScanLine size={18} className="animate-pulse" />
+                                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full animate-ping" />
+                                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full" />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-black tracking-wider uppercase text-emerald-400">
+                                                {isKa ? 'სკანირება წარმატებულია' : 'QR Scan Recognized & Mapped'}
+                                            </span>
+                                            <span className="px-1.5 py-0.5 rounded-md bg-emerald-950 text-emerald-300 text-[10px] font-mono font-bold border border-emerald-800">
+                                                USB/BT SCANNER
+                                            </span>
+                                        </div>
+                                        <p className="text-[10px] text-slate-400 font-medium">
+                                            {isKa ? 'Bluetooth / USB შტრიხკოდის წამკითხველი' : 'Hardware POS Barcode Reader Gun'} • {activeScanReceipt.timestamp}
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (autoCloseReceiptTimerRef.current) clearTimeout(autoCloseReceiptTimerRef.current);
+                                        setIsScanReceiptOpen(false);
+                                    }}
+                                    className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                                    title={isKa ? 'დახურვა (ESC)' : 'Close (ESC)'}
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+
+                            {/* Primary Recognized Banner */}
+                            <div className="bg-emerald-50/95 border-b border-emerald-200/90 px-6 py-4">
+                                <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 mb-1 flex items-center gap-1.5">
+                                    <CheckCircle2 size={15} className="text-emerald-600" />
+                                    <span>{isKa ? 'ამოცნობილი ჩანაწერი & მიბმა' : 'Recognized Item & Event Mapping'}</span>
+                                </div>
+                                <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-snug">
+                                    {isKa ? (
+                                        <>
+                                            სკანირებულია: <span className="text-emerald-700 underline decoration-emerald-400 underline-offset-4">{activeScanReceipt.workerName}</span> {activeScanReceipt.workerBadge && <span className="font-mono bg-emerald-200/70 px-1.5 py-0.5 rounded text-emerald-950 text-sm font-bold">{activeScanReceipt.workerBadge}</span>} <span className="text-slate-600 text-sm font-semibold">{activeScanReceipt.worker?.employeeType || 'picker'}</span>, ღონისძიება: <span className="text-indigo-700">{activeScanReceipt.eventName}</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            Scanned: <span className="text-emerald-700 underline decoration-emerald-400 underline-offset-4">{activeScanReceipt.workerName}</span> {activeScanReceipt.workerBadge && <span className="font-mono bg-emerald-200/70 px-1.5 py-0.5 rounded text-emerald-950 text-sm font-bold">{activeScanReceipt.workerBadge}</span>} <span className="text-slate-600 text-sm font-semibold">{activeScanReceipt.worker?.employeeType || 'picker'}</span>, harvest event: <span className="text-indigo-700">{activeScanReceipt.eventName}</span>
+                                        </>
+                                    )}
+                                </h3>
+                            </div>
+
+                            {/* Details Grid */}
+                            <div className="p-5 sm:p-6 space-y-3.5">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    {/* Worker Card */}
+                                    <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl flex items-start gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-black text-base shrink-0 border border-indigo-200">
+                                            {activeScanReceipt.workerName ? activeScanReceipt.workerName.charAt(0).toUpperCase() : '👤'}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                                                {isKa ? 'მუშაკი (ძებნის ველში)' : 'Worker (In Search Field)'}
+                                            </div>
+                                            <div className="font-black text-slate-900 text-sm truncate">
+                                                {activeScanReceipt.workerName}
+                                            </div>
+                                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                                <span className="text-[10px] font-mono font-bold bg-slate-200/80 text-slate-700 px-1.5 py-0.5 rounded">
+                                                    ID #{activeScanReceipt.workerBadge || activeScanReceipt.workerId}
+                                                </span>
+                                                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-1.5 py-0.5 rounded">
+                                                    ✓ {isKa ? 'ჩასმულია' : 'Dropped in field'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Harvest Event */}
+                                    <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl flex items-start gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0 border border-purple-200">
+                                            <Calendar size={18} />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                                                {isKa ? 'მოსავლის ღონისძიება' : 'Harvest Event'}
+                                            </div>
+                                            <div className="font-black text-slate-900 text-sm truncate">
+                                                {activeScanReceipt.eventName}
+                                            </div>
+                                            <div className="text-[10px] font-bold text-purple-700 mt-1">
+                                                {activeScanReceipt.sectorName ? `📍 ${activeScanReceipt.sectorName}` : '🌾 Active Field Session'}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Crate / QR Code */}
+                                    <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl flex items-start gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 border border-amber-200">
+                                            <Package size={18} />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                                                {isKa ? 'ყუთის QR / შტრიხკოდი' : 'Crate / Barcode Tag'}
+                                            </div>
+                                            <div className="font-mono font-black text-slate-900 text-sm truncate">
+                                                {activeScanReceipt.crateCode || activeScanReceipt.rawCode}
+                                            </div>
+                                            <div className="text-[10px] font-semibold text-slate-500 mt-1">
+                                                {activeScanReceipt.isHarvestBox 
+                                                    ? (isKa ? '📦 ყუთი მიბმულია მუშაკზე' : '📦 Crate mapped to worker') 
+                                                    : (isKa ? '🪪 მუშაკის ბარათი' : '🪪 Worker badge tag')}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Scale & Weigh Status */}
+                                    <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl flex items-start gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200">
+                                            <Scale size={18} />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                                                {isKa ? 'სასწორის სტატუსი' : 'Weigh Station Status'}
+                                            </div>
+                                            <div className="font-bold text-slate-900 text-sm">
+                                                {isKa ? 'მზადაა ასაწონად' : 'Ready to Weigh Box'}
+                                            </div>
+                                            <div className="text-[10px] font-semibold text-emerald-700 mt-1">
+                                                {isKa ? 'დაამატეთ ყუთის წმინდა წონა (Net)' : 'Add net weight to crate'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Auto-saved previous entry notification */}
+                                {activeScanReceipt.autoSavedPrevious && (
+                                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-3">
+                                        <div className="p-1.5 bg-emerald-600 text-white rounded-lg shrink-0">
+                                            <SaveIcon className="w-4 h-4" />
+                                        </div>
+                                        <div className="text-xs text-emerald-950 font-bold">
+                                            <span className="font-black text-emerald-800">
+                                                {isKa ? '💾 წინა ჩანაწერი ავტომატურად შენახულია:' : '💾 Last entry auto-saved:'}
+                                            </span>{' '}
+                                            {activeScanReceipt.autoSavedPrevious.workerName} •{' '}
+                                            <span className="font-mono underline">
+                                                {activeScanReceipt.autoSavedPrevious.netWeightKg.toFixed(2)} kg
+                                            </span>{' '}
+                                            ({activeScanReceipt.autoSavedPrevious.boxCount} {isKa ? 'ყუთი' : 'box'})
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Auto-closing progress countdown bar */}
+                                <div className="bg-slate-100 rounded-xl p-2.5 text-center">
+                                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 mb-1.5">
+                                        <span className="flex items-center gap-1">
+                                            <Clock size={12} className="text-slate-500" />
+                                            {isKa ? 'ავტომატური დახურვა 4 წამში' : 'Auto-closing in 4s'}
+                                        </span>
+                                        <span className="text-[10px] text-slate-500 font-semibold">
+                                            {isKa ? 'შემდეგი QR-ის სკანირება ავტომატურად დახურავს და გახსნის ახალს' : 'Next QR scan will auto-close & open new'}
+                                        </span>
+                                    </div>
+                                    <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                        <motion.div
+                                            initial={{ width: '100%' }}
+                                            animate={{ width: '0%' }}
+                                            transition={{ duration: 4.5, ease: 'linear' }}
+                                            className="h-full bg-emerald-500 rounded-full"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Quick-test & Manual Scan Bar */}
+                                <div className="pt-1 flex items-center gap-2">
+                                    <input
+                                        type="text"
+                                        placeholder={isKa ? "ტესტი ან შტრიხკოდი (მაგ: 122 ან მახარაძე მელანო 122 picker)..." : "Test or barcode (e.g. 122 or Makharadze Melano 122)..."}
+                                        className="flex-1 px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-800 outline-none focus:border-indigo-500 focus:bg-white"
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                const val = (e.target as HTMLInputElement).value.trim();
+                                                if (val) {
+                                                    processScanCode(val);
+                                                    (e.target as HTMLInputElement).value = '';
+                                                }
+                                            }
+                                        }}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            processScanCode("scaned მახარაძე მელანო 122 picker, harvest event july harvesting");
+                                        }}
+                                        className="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-[10px] font-bold uppercase transition-colors shrink-0 cursor-pointer"
+                                        title={isKa ? "მახარაძე მელანო 122-ის ტესტირება" : "Test Melano Makharadze 122"}
+                                    >
+                                        🧪 Test 122
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Action Buttons Footer */}
+                            <div className="bg-slate-50 border-t border-slate-200 px-5 py-3 flex items-center justify-between gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (autoCloseReceiptTimerRef.current) clearTimeout(autoCloseReceiptTimerRef.current);
+                                        setIsScanReceiptOpen(false);
+                                        setIsScannerModalOpen(true);
+                                    }}
+                                    className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 transition-colors flex items-center gap-2 cursor-pointer"
+                                >
+                                    <Camera size={14} className="text-slate-500" />
+                                    <span>{isKa ? 'კამერით სკანირება' : 'Camera Scanner'}</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (autoCloseReceiptTimerRef.current) clearTimeout(autoCloseReceiptTimerRef.current);
+                                        setIsScanReceiptOpen(false);
+                                    }}
+                                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md shadow-emerald-600/20 flex items-center gap-2 cursor-pointer"
+                                >
+                                    <Check size={14} />
+                                    <span>{isKa ? 'გასაგებია / დახურვა (ESC)' : 'OK / Close (ESC)'}</span>
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
             </AnimatePresence>
 
             <style>{`

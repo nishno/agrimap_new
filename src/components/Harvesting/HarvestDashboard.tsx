@@ -9,11 +9,13 @@ import { DailyPaidHarvestCard, HarvestStatsGrid, calculateNetDurationHours, Pick
 import { OperationLogModal } from './OperationLogModal';
 import jsQR from 'jsqr';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { HarvestEvent, HarvestEntry, Pallet, PlantationFeature, AreaPlantationFeature, InventoryItem, Employee, EmployeeGroup, HarvestStatus, HarvestLog, YieldByVariety, PostHarvestAction, DashboardWidget, HarvestSaleDetails, ActiveDrawingTool, Machinery, LinePlantationFeature, Layer, Crop, HARVEST_METHODS, Account, Transaction, StockTransaction, User, Role, Permission } from '../../types';
+import { HarvestEvent, HarvestEntry, Pallet, PlantationFeature, AreaPlantationFeature, InventoryItem, Employee, EmployeeGroup, HarvestStatus, HarvestLog, YieldByVariety, PostHarvestAction, DashboardWidget, HarvestSaleDetails, ActiveDrawingTool, Machinery, LinePlantationFeature, Layer, Crop, HARVEST_METHODS, Account, Transaction, StockTransaction, User, Role, Permission, AssignedPicker } from '../../types';
 import { isValidCoordinate } from '../../types';
 import type { MapComponentProps } from '../MapComponent';
-import { Fingerprint, QrCode, RefreshCcw, Boxes, Scale, Wifi, WifiOff, CloudUpload, HardDrive, MapPin, Database, ChevronDown, ListFilter, ShieldCheck, Play as PlayIcon, Share2, History, Users } from 'lucide-react';
+import { Fingerprint, QrCode, RefreshCcw, Boxes, Scale, Wifi, WifiOff, CloudUpload, HardDrive, MapPin, Database, ChevronDown, ListFilter, ShieldCheck, Play as PlayIcon, Share2, History, Users, ScanLine } from 'lucide-react';
 import { toast } from 'sonner';
+import QrScannerModal from '../QrScannerModal';
+import { findMatchingEmployee } from '../../utils/employeeMatching';
 import { getDetailedSyncQueue, SyncLogEntry, auth } from '../../firebase';
 import { syncManager } from '../../services/SyncManager';
 import { syncBroker } from '../../services/SyncBroker';
@@ -21,6 +23,7 @@ import { PresenceEngine } from '../../../new_engine/PresenceEngine';
 import { PresenceUser } from '../../../new_engine/types';
 import HarvestEventHistoryModal from './HarvestEventHistoryModal';
 import ShareHarvestEventModal from './ShareHarvestEventModal';
+import HarvestBoxQrModal from './HarvestBoxQrModal';
 import OnlineUsersModal from './OnlineUsersModal';
 import { LogisticsSummaryWidget } from './LogisticsSummaryWidget';
 import { LogisticsTransportWidget } from './LogisticsTransportWidget';
@@ -29,6 +32,8 @@ import { WorkerLog } from '../../../new_engine/WorkerLogBridge';
 import { getStoredActiveUser } from '../../utils/userPresence';
 import '../../lib/leafletSafety';
 import { extractSafePoints } from '../../lib/leafletSafety';
+import ResizableDivider from '../common/ResizableDivider';
+import { safeStorage } from '../../services/storageService';
 
 const parseSafeGeometry = (geom: any): [number, number][] => {
     return extractSafePoints(geom);
@@ -324,6 +329,7 @@ const DailyHarvestModal: React.FC<{
 }> = ({ isOpen, initialTab = 'stats', onClose, event, employees, entries, onSetHarvestEvents, harvestEvents, onLogActivity, inventoryItems, onSetInventoryItems, onSetEmployees, roles, crops, cropVarieties, employeeGroups, onSetEmployeeGroups, allHarvestEntries, onSetHarvestEntries, machinery, onSetMachinery, onOpenFleetManager }) => {
     const { t } = useLanguage();
     const [activeTab, setActiveTab] = useState<'stats' | 'statistics' | 'logistics' | 'management'>(initialTab as any || 'stats');
+    const [isHarvestBoxQrOpen, setIsHarvestBoxQrOpen] = useState(false);
 
     useEffect(() => {
         if (isOpen && initialTab) {
@@ -366,6 +372,15 @@ const DailyHarvestModal: React.FC<{
                                 <span>Management & Other Tools</span>
                             </button>
                         </div>
+                        <button
+                            type="button"
+                            onClick={() => setIsHarvestBoxQrOpen(true)}
+                            className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 active:scale-95 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+                            title={t('language') === 'ka' ? "მოსავლის ყუთების QR კოდების გენერირება & ბეჭდვა" : "Generate & Print Harvest Box QR Codes"}
+                        >
+                            <QrCode size={14} className="text-emerald-400" />
+                            <span>{t('language') === 'ka' ? 'ყუთების QR' : 'Box QRs'}</span>
+                        </button>
                     </div>
                     <button onClick={onClose} className="p-2 min-w-[40px] min-h-[40px] hover:bg-gray-100 rounded-full transition-colors flex items-center justify-center active:scale-95">
                         <XIcon className="h-6 w-6 text-gray-400 hover:text-gray-600" />
@@ -460,6 +475,14 @@ const DailyHarvestModal: React.FC<{
                     )}
                 </div>
             </div>
+            {isHarvestBoxQrOpen && (
+                <HarvestBoxQrModal
+                    isOpen={isHarvestBoxQrOpen}
+                    onClose={() => setIsHarvestBoxQrOpen(false)}
+                    harvestEvent={event}
+                    employees={employees}
+                />
+            )}
         </div>
     );
 };
@@ -1138,6 +1161,7 @@ interface HarvestDashboardProps {
 const HarvestDashboard: React.FC<HarvestDashboardProps> = (props) => {
     const { event, plantationFeatures, harvestEntries, onSetHarvestEntries, inventoryItems, onSetInventoryItems, employees, harvestLogs, onSetHarvestLogs, harvestEvents, onBack, machinery, onSetMachinery, onSetHarvestEvents, transactions, onSetTransactions, onLogActivity, currentUser, onSetEmployees, roles, crops, cropVarieties, employeeGroups, onSetEmployeeGroups } = props;
     const { t, currency, formatCurrency } = useLanguage();
+    const isKa = t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka';
 
     const isWeigher = useMemo(() => {
         if (!currentUser) return false;
@@ -1158,6 +1182,7 @@ const HarvestDashboard: React.FC<HarvestDashboardProps> = (props) => {
     const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const [isOnlineUsersModalOpen, setIsOnlineUsersModalOpen] = useState(false);
+    const [isHarvestBoxQrOpen, setIsHarvestBoxQrOpen] = useState(false);
 
     useEffect(() => {
         if (!event?.id) return;
@@ -2122,34 +2147,56 @@ const HarvestDashboard: React.FC<HarvestDashboardProps> = (props) => {
         });
     };
 
+    const [activePickerIdForScan, setActivePickerIdForScan] = useState<string | null>(null);
+
     const handleBoxScan = (scannedData: string) => {
-        // Find if this is a picker ID or a box ID
-        const picker = employees.find(e => e.barcode === scannedData || e.idNumber === scannedData || e.id === scannedData);
+        const normalized = String(scannedData).trim();
+        // Find if this is a picker ID or a box ID using robust matching
+        const picker = findMatchingEmployee(employees, normalized);
         
-        if (!picker && (event.protocol === 1 || event.protocol === 4)) {
-            // In QR Traceability or Full Station, we might be scanning the BOX QR after the picker
-            toast.info(`Box QR Registered: ${scannedData}`);
-            // Proceed with entry
+        if (picker) {
+            // Auto-assign to harvest event if not already assigned
+            const isAssigned = event.assignedPickers?.some(ap => ap.employeeId === picker.id);
+            if (!isAssigned && onSetHarvestEvents) {
+                const newAssigned: AssignedPicker = {
+                    employeeId: picker.id,
+                    paymentModel: picker.paymentType === 'hourly' ? 'hourly' : 'per_weight',
+                    rate: picker.paymentRate || 0.4
+                };
+                const updatedEvt = {
+                    ...event,
+                    assignedPickers: [...(event.assignedPickers || []), newAssigned]
+                };
+                onSetHarvestEvents(harvestEvents.map(e => e.id === event.id ? updatedEvt : e));
+            }
+            setActivePickerIdForScan(picker.id);
+            toast.success(isKa ? `✓ მუშაკი გააქტიურდა: ${picker.name}. ახლა დაასკანერეთ ყუთები!` : `✓ Active picker set: ${picker.name}. Now scan crates/boxes!`);
+            return;
         }
 
+        // It is a Box QR / Barcode
         const boxWeight = event.defaultBoxWeightKg || 5.9;
         const variety = selectedVarieties[0] || 'Standard';
+        const assignedPickerId = activePickerIdForScan || event.assignedPickers?.[0]?.employeeId || 'unknown';
+        const matchedPicker = employees.find(e => e.id === assignedPickerId);
+        const pickerName = matchedPicker?.name || 'Worker';
 
         const entryData: Omit<HarvestEntry, 'id'> = {
             harvestEventId: event.id,
-            employeeId: picker?.id || 'unknown',
+            employeeId: assignedPickerId,
             scannedAt: new Date().toISOString(),
             grossWeightKg: boxWeight,
             tareWeightKg: 0,
             netWeightKg: boxWeight,
             estimatedWeightKg: boxWeight,
             packagingItemId: '',
-            variety: variety
+            variety: variety,
+            crateCode: normalized
         };
 
         handleAddEntry(entryData);
-        setIsBoxScannerOpen(false);
-        toast.success(`Entry logged for ${picker?.name || 'Box ' + scannedData}`);
+        // Keep modal open for continuous scanning of 10+ boxes
+        toast.success(isKa ? `✓ ყუთი #${normalized} (${boxWeight} კგ) მიმაგრდა: ${pickerName}` : `✓ Box #${normalized} (${boxWeight}kg) logged for ${pickerName}`);
     };
 
     const handleToggleStatus = () => {
@@ -2166,6 +2213,11 @@ const HarvestDashboard: React.FC<HarvestDashboardProps> = (props) => {
     };
 
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+    const [panelWidth, setPanelWidth] = useState<number>(() => {
+        const saved = safeStorage.getItem('harvest_monitoring_panel_width');
+        const parsed = saved ? parseInt(saved, 10) : 450;
+        return Number.isFinite(parsed) && parsed >= 280 ? parsed : 450;
+    });
 
     const handleLogOnMap = () => {
         setActiveDrawingTool({ tool: 'area', context: { harvestEventId: event.id } });
@@ -2591,7 +2643,13 @@ const HarvestDashboard: React.FC<HarvestDashboardProps> = (props) => {
                 {isSidebarOpen ? <XIcon size={20} /> : <ListFilter size={20} />}
             </button>
 
-            <div className={`fixed inset-0 md:relative md:inset-auto z-[2004] md:z-10 w-full md:w-[400px] lg:w-[450px] flex-shrink-0 flex flex-col bg-white border-r border-slate-200 h-full ${!isSidebarOpen ? 'hidden md:flex' : 'flex'}`}>
+            <div 
+                className={`fixed inset-0 md:relative md:inset-auto z-[2004] md:z-10 w-full flex-shrink-0 flex flex-col bg-white border-r border-slate-200 h-full ${!isSidebarOpen ? 'hidden md:flex' : 'flex'}`}
+                style={{
+                    width: typeof window !== 'undefined' && window.innerWidth > 768 ? `${panelWidth}px` : undefined,
+                    maxWidth: '85vw'
+                }}
+            >
                 <div className="p-4 border-b flex-shrink-0 flex items-center gap-3">
                     <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition-all">
                         <ChevronLeftIcon className="h-6 w-6 text-slate-800" />
@@ -2637,6 +2695,15 @@ const HarvestDashboard: React.FC<HarvestDashboardProps> = (props) => {
                         >
                             <History size={13} />
                             <span className="hidden sm:inline">{t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka' ? 'ისტორია' : 'History'}</span>
+                        </button>
+                        <button 
+                            type="button" 
+                            onClick={() => setIsHarvestBoxQrOpen(true)}
+                            className="p-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-[10px] font-black uppercase flex items-center gap-1 transition-colors cursor-pointer shadow-xs active:scale-95"
+                            title={t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka' ? "მოსავლის ყუთების QR კოდების გენერირება & ბეჭდვა" : "Generate Box QR Codes"}
+                        >
+                            <QrCode size={13} className="text-emerald-400" />
+                            <span className="hidden sm:inline">{t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka' ? 'ყუთების QR' : 'Box QRs'}</span>
                         </button>
                         <div className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${event.status === 'active' ? 'bg-blue-100 text-blue-700' : (event.status === 'completed' || event.status === 'partially_sold') ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>{renderSafeString(event.status).replace('_', ' ')}</div>
                     </div>
@@ -3083,24 +3150,38 @@ const HarvestDashboard: React.FC<HarvestDashboardProps> = (props) => {
 
                     <YieldByVarietyWidget yields={filteredTotals.yieldByVariety} totalWeight={filteredTotals.totalWeight} />
                     
-                    {event.status !== 'completed' && event.status !== 'partially_sold' && (event.type === 'box_counting' || event.protocol === 5 || event.protocol === 6 ? (
-                        <button 
-                            onClick={() => {
-                                // Requirement: even scan box /TICK must open weigh station by with smar NFC reader button in it
-                                setIsWeighModalOpen(true);
-                            }} 
-                            className="w-full py-6 bg-orange-600 text-white rounded-2xl font-black text-xl flex items-center justify-center gap-3 shadow-xl hover:bg-orange-700 transition-all animate-pulse"
-                        >
-                            <span className="p-3 bg-white/20 rounded-xl">
-                                {event.protocol === 6 ? <Fingerprint size={32} /> : <ArchiveBoxIcon className="h-4 w-4"/>}
-                            </span>
-                            {event.protocol === 6 ? t('harvest.identify_smart_crate') : (event.protocol === 5 ? t('harvest.count_bulk_batch') : t('harvest.scan_box_tick'))}
-                        </button>
-                    ) : (
-                        <button onClick={() => setIsWeighModalOpen(true)} className="w-full py-4 bg-green-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-green-700 transition-all">
-                            {event.protocol === 2 ? t('harvest.identify_weigh') : t('harvest.weigh_crate_add_entry')}
-                        </button>
-                    ))}
+                    {event.status !== 'completed' && event.status !== 'partially_sold' && (
+                        <div className="flex gap-2">
+                            {event.type === 'box_counting' || event.protocol === 5 || event.protocol === 6 ? (
+                                <button 
+                                    onClick={() => {
+                                        setIsWeighModalOpen(true);
+                                    }} 
+                                    className="flex-1 py-4 sm:py-5 bg-orange-600 text-white rounded-2xl font-black text-lg sm:text-xl flex items-center justify-center gap-3 shadow-xl hover:bg-orange-700 transition-all cursor-pointer"
+                                >
+                                    <span className="p-2 sm:p-3 bg-white/20 rounded-xl">
+                                        {event.protocol === 6 ? <Fingerprint size={24} /> : <ArchiveBoxIcon className="h-4 w-4"/>}
+                                    </span>
+                                    <span>{event.protocol === 6 ? t('harvest.identify_smart_crate') : (event.protocol === 5 ? t('harvest.count_bulk_batch') : t('harvest.scan_box_tick'))}</span>
+                                </button>
+                            ) : (
+                                <button onClick={() => setIsWeighModalOpen(true)} className="flex-1 py-4 bg-green-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-green-700 transition-all cursor-pointer">
+                                    <Scale size={20} />
+                                    <span>{event.protocol === 2 ? t('harvest.identify_weigh') : t('harvest.weigh_crate_add_entry')}</span>
+                                </button>
+                            )}
+
+                            <button
+                                type="button"
+                                onClick={() => setIsBoxScannerOpen(true)}
+                                className="px-4 py-4 bg-slate-900 hover:bg-slate-800 active:scale-95 text-white rounded-xl font-black uppercase text-xs tracking-wider flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer shrink-0 border border-slate-700 group"
+                                title={t('language') === 'ka' ? "სკანერის ფანჯრის გახსნა (USB / კამერა / QR)" : "Open Scanner Pop-up (USB / Camera / QR)"}
+                            >
+                                <ScanLine size={18} className="text-emerald-400 group-hover:scale-110 transition-transform" />
+                                <span className="hidden sm:inline">{t('language') === 'ka' ? 'სკანერი' : 'Scanner'}</span>
+                            </button>
+                        </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-3">
                         {event.status !== 'completed' && event.status !== 'partially_sold' ? (
@@ -3186,6 +3267,20 @@ const HarvestDashboard: React.FC<HarvestDashboardProps> = (props) => {
                     )}
                 </div>
             </div>
+
+            {/* Live Resizing Tool between Harvest Panel and Map */}
+            {isSidebarOpen && (
+                <ResizableDivider 
+                    direction="horizontal"
+                    currentSize={panelWidth}
+                    onResize={(newWidth) => setPanelWidth(newWidth)}
+                    minSize={280}
+                    maxSize={typeof window !== 'undefined' ? Math.max(window.innerWidth - 300, 600) : 850}
+                    storageKey="harvest_monitoring_panel_width"
+                    isKa={t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka'}
+                    className="hidden md:flex"
+                />
+            )}
 
             <div className="flex-1 flex flex-col relative overflow-hidden bg-slate-200 h-full">
                  {memoizedMap}
@@ -3292,11 +3387,13 @@ const HarvestDashboard: React.FC<HarvestDashboardProps> = (props) => {
                 />
             )}
             {isBoxScannerOpen && (
-                <BoxScannerOverlay 
+                <QrScannerModal 
                     isOpen={isBoxScannerOpen} 
                     onClose={() => setIsBoxScannerOpen(false)} 
                     onScan={handleBoxScan} 
-                    defaultBoxWeightKg={event.defaultBoxWeightKg}
+                    title={t('language') === 'ka' ? "მოსავლის სკანერი (QR / შტრიხკოდი)" : "Harvest Box & Worker Scanner"}
+                    description={t('language') === 'ka' ? "დაასკანერეთ მუშის ბარათი ან ყუთის შტრიხკოდი" : "Scan Worker ID Badge or Crate Barcode for instant registration"}
+                    mockEmployees={employees}
                 />
             )}
             {isHistoryModalOpen && (
@@ -3391,6 +3488,14 @@ const HarvestDashboard: React.FC<HarvestDashboardProps> = (props) => {
                         />
                     </div>
                 </div>
+            )}
+            {isHarvestBoxQrOpen && (
+                <HarvestBoxQrModal
+                    isOpen={isHarvestBoxQrOpen}
+                    onClose={() => setIsHarvestBoxQrOpen(false)}
+                    harvestEvent={event}
+                    employees={employees}
+                />
             )}
         </div>
     );

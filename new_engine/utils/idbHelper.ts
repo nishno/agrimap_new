@@ -5,7 +5,7 @@
  */
 
 const DB_NAME = 'agrimap_engine_db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export interface IDBStores {
   delta_logs: 'delta_logs';
@@ -41,9 +41,23 @@ export class EngineIDB {
         // Store 1: Immutable Delta Logs
         if (!db.objectStoreNames.contains('delta_logs')) {
           const logStore = db.createObjectStore('delta_logs', { keyPath: 'id' });
-          logStore.createIndex('sequenceId', 'sequenceId', { unique: true });
+          logStore.createIndex('sequenceId', 'sequenceId', { unique: false });
           logStore.createIndex('harvestEventId', 'harvestEventId', { unique: false });
           logStore.createIndex('timestamp', 'timestamp', { unique: false });
+        } else {
+          // If upgrading from DB_VERSION 1 where sequenceId had { unique: true }, recreate without unique constraint
+          const tx = request.transaction;
+          if (tx) {
+            try {
+              const logStore = tx.objectStore('delta_logs');
+              if (logStore.indexNames.contains('sequenceId')) {
+                logStore.deleteIndex('sequenceId');
+              }
+              logStore.createIndex('sequenceId', 'sequenceId', { unique: false });
+            } catch (err) {
+              console.warn('[EngineIDB] Error re-indexing sequenceId on upgrade:', err);
+            }
+          }
         }
 
         // Store 2: Offline Outbox Queue

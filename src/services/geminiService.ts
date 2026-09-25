@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-export const PRIMARY_GEMINI_MODEL = "gemini-2.5-flash";
-export const FALLBACK_GEMINI_MODEL = "gemini-2.0-flash";
+export const PRIMARY_GEMINI_MODEL = "gemini-3.8-flash";
+export const FALLBACK_GEMINI_MODEL = "gemini-flash-latest";
 
 let genAIInstance: GoogleGenAI | null = null;
 let currentKeyUsed: string = "";
@@ -856,5 +856,129 @@ Return a structured JSON object representing this audit.` },
     } catch (e) {
         console.warn("Failed to parse AI harvest reconciliation audit:", e, response?.text);
         throw new Error("Invalid AI response format");
+    }
+};
+
+export interface MicroclimateAnalysisRequest {
+    locationName?: string;
+    coordinates?: [number, number];
+    monthlyTemps?: { month: string; maxTemp: number; minTemp: number; avgTemp: number; rainMm: number }[];
+    historicalFreezeEvents?: { date: string; minTemp: number; durationHours: number }[];
+    soilPh?: number;
+    soilEc?: number;
+    targetCrops?: string[];
+}
+
+export interface MicroclimateAnalysisResult {
+    summary: string;
+    hardinessZoneEstimate: string;
+    chillingHoursEstimate: number;
+    growingDegreeDaysEstimate: number;
+    frostFreezeAnalysis: {
+        riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+        averageLastSpringFrost: string;
+        averageFirstFallFrost: string;
+        freezingAdvisory: string;
+        frostProtectionRecommendations: string[];
+    };
+    recommendedVarieties: {
+        crop: string;
+        variety: string;
+        suitabilityScore: number;
+        rationale: string;
+        chillingRequirement: string;
+    }[];
+    irrigationAndWaterAdvice: string;
+    soilAndFertigationAdvice: string;
+}
+
+export const analyzeMicroclimateAndCropSuitability = async (
+    data: MicroclimateAnalysisRequest
+): Promise<MicroclimateAnalysisResult> => {
+    const ai = getGenAI();
+    const prompt = `You are a world-class senior agronomist and microclimate specialist analyzing weather station and sensor data for a precision agriculture plantation.
+Plantation Details:
+- Location / Region: ${data.locationName || 'Field Coordinates: ' + (data.coordinates ? data.coordinates.join(', ') : 'Temperate Zone')}
+- Monthly Climate Summary: ${JSON.stringify(data.monthlyTemps || [])}
+- Historical Freezing Events Log: ${JSON.stringify(data.historicalFreezeEvents || [])}
+- Soil pH: ${data.soilPh || 'Not measured (Assume 5.5 - 6.5)'}
+- Soil EC (Electrical Conductivity): ${data.soilEc || 'Not measured (Assume 1.2 - 1.8 dS/m)'}
+- Target Crop Consideration: ${data.targetCrops?.join(', ') || 'Blueberry (Vaccinium corymbosum), Hazelnuts, High-value orchard/berry crops'}
+
+Task:
+1. Compare monthly and yearly temperature and rainfall variations.
+2. Estimate Chilling Hours (< 7.2°C) and Growing Degree Days (GDD Base 10°C).
+3. Evaluate freezing and frost patterns (timing, cold snaps, freeze defense readiness).
+4. Recommend specific proven crop varieties (especially blueberry, fruit or nut varieties suited to these chill units and freeze hazards).
+5. Provide actionable frost defense, irrigation, and soil management recommendations.
+
+Respond strictly with valid JSON conforming to the requested schema.`;
+
+    const response = await ai.models.generateContent({
+        model: PRIMARY_GEMINI_MODEL,
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    summary: { type: Type.STRING },
+                    hardinessZoneEstimate: { type: Type.STRING },
+                    chillingHoursEstimate: { type: Type.NUMBER },
+                    growingDegreeDaysEstimate: { type: Type.NUMBER },
+                    frostFreezeAnalysis: {
+                        type: Type.OBJECT,
+                        properties: {
+                            riskLevel: { type: Type.STRING },
+                            averageLastSpringFrost: { type: Type.STRING },
+                            averageFirstFallFrost: { type: Type.STRING },
+                            freezingAdvisory: { type: Type.STRING },
+                            frostProtectionRecommendations: {
+                                type: Type.ARRAY,
+                                items: { type: Type.STRING }
+                            }
+                        },
+                        required: ["riskLevel", "freezingAdvisory", "frostProtectionRecommendations"]
+                    },
+                    recommendedVarieties: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                crop: { type: Type.STRING },
+                                variety: { type: Type.STRING },
+                                suitabilityScore: { type: Type.NUMBER },
+                                rationale: { type: Type.STRING },
+                                chillingRequirement: { type: Type.STRING }
+                            },
+                            required: ["crop", "variety", "suitabilityScore", "rationale"]
+                        }
+                    },
+                    irrigationAndWaterAdvice: { type: Type.STRING },
+                    soilAndFertigationAdvice: { type: Type.STRING }
+                },
+                required: [
+                    "summary", 
+                    "hardinessZoneEstimate", 
+                    "frostFreezeAnalysis", 
+                    "recommendedVarieties", 
+                    "irrigationAndWaterAdvice", 
+                    "soilAndFertigationAdvice"
+                ]
+            }
+        }
+    });
+
+    try {
+        let text = response.text || "";
+        if (text.includes("```json")) {
+            text = text.split("```json")[1].split("```")[0];
+        } else if (text.includes("```")) {
+            text = text.split("```")[1].split("```")[0];
+        }
+        return JSON.parse(text.trim());
+    } catch (e) {
+        console.warn("Failed to parse AI microclimate analysis response:", e, response?.text);
+        throw new Error("Invalid AI microclimate response format");
     }
 };

@@ -34,6 +34,7 @@ import HardwareLabs from './components/SystemManagement/HardwareLabs';
 import RootAdminView from './components/RootAdminView';
 import { MapComponentProps } from './components/MapComponent';
 import { safeStorage } from './services/storageService';
+import { initGlobalHardwareScannerListener } from './utils/hardwareScannerBus';
 import { checkModuleAccess, User, Organization, Membership, AppMode, SystemLog, InventoryItem, InventoryTransaction, HarvestEvent, HarvestEntry, Pallet, HarvestLog, Account, Transaction, Role, Employee, DailyLogEntry, WorkAssignment, Machinery, EmployeeGroup, ForumPost, Listing, Bid, Review, Alert, Project, ProjectData, PlantationFeature, Layer, AreaPlantationFeature, NutritionPlan, PlanExecution, DashboardWidget, ActiveDrawingTool, FeatureType, LinePlantationFeature, SeedlingPlantationFeature, VarietyRule, AiReport, SoilAnalysisResult, UploadedDocument, PlantDiseaseAnalysis, SoilData, AnalysisResult, GroundingSource, AssistantMessage, NotePlantationFeature, Permission, ALL_PERMISSIONS, Supplier, PurchaseOrder, OperationalLog, Note, UserRole, OrganizationTicket, WorkExperience, Crop, isValidCoordinate, LocalServerConfig, MaterialUsed, AssignedVehicle, StockTransaction, HarvestedProduce } from './types';
 import { useLanguage } from './contexts/LanguageContext';
 import { Toaster, toast } from 'sonner';
@@ -179,7 +180,7 @@ const App: React.FC = () => {
         const saved = localStorage.getItem('agri-planter-mode');
         return (saved as AppMode) || 'dashboard';
     });
-    const [labTab, setLabTab] = useState<'theme' | 'letters' | 'hardware' | 'analytics'>('theme');
+    const [labTab, setLabTab] = useState<'hardware' | 'theme' | 'letters' | 'analytics'>('hardware');
     const { 
         currentUser, 
         setCurrentUser, 
@@ -210,6 +211,7 @@ const App: React.FC = () => {
     const [operationalTaskToLog, setOperationalTaskToLog] = useState<string | null>(null);
 
     useEffect(() => {
+        initGlobalHardwareScannerListener();
         const handleOpenReg = () => setIsRegisterModalOpen(true);
         const handleOpenLogin = () => setIsLoginModalOpen(true);
         window.addEventListener('open-registration-modal', handleOpenReg);
@@ -2460,6 +2462,11 @@ const App: React.FC = () => {
         console.log(`[App] handleFeatureDrawn: type=${type}, tool=${activeDrawingTool.tool}, isRegistering=${isRegisteringOnMap}, points=${geometry?.length}`);
         
         // Rigorous geometry validation
+        if (!geometry) {
+            setActiveDrawingTool({ tool: null });
+            return;
+        }
+
         const isValid = (g: any): boolean => {
             if (isValidCoordinate(g)) return true;
             if (Array.isArray(g) && g.length > 0) {
@@ -2470,10 +2477,11 @@ const App: React.FC = () => {
         };
 
         if (!isValid(geometry)) {
-            console.error("[App] handleFeatureDrawn caught invalid geometry:", geometry);
             if (activeDrawingTool.tool) {
+                console.warn("[App] handleFeatureDrawn received invalid geometry:", geometry);
                 toast.error("Invalid geometry data. Mapping failed.");
             }
+            setActiveDrawingTool({ tool: null });
             return;
         }
 
@@ -6363,6 +6371,17 @@ const App: React.FC = () => {
                                 {/* Labs Tab Switcher */}
                                 <div className="flex flex-wrap items-center p-1.5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-inner gap-1">
                                     <button
+                                        onClick={() => setLabTab('hardware')}
+                                        data-active={labTab === 'hardware' ? "true" : "false"}
+                                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all standing-light standing-beam ${
+                                            labTab === 'hardware'
+                                                ? 'bg-blue-600 text-white shadow-md underglow-box-active active'
+                                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                                        }`}
+                                    >
+                                        🔌 Hardware Labs & Integrations
+                                    </button>
+                                    <button
                                         onClick={() => setLabTab('theme')}
                                         data-active={labTab === 'theme' ? "true" : "false"}
                                         className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all standing-light standing-beam ${
@@ -6383,17 +6402,6 @@ const App: React.FC = () => {
                                         }`}
                                     >
                                         🔤 All Letters & Menubars Color
-                                    </button>
-                                    <button
-                                        onClick={() => setLabTab('hardware')}
-                                        data-active={labTab === 'hardware' ? "true" : "false"}
-                                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all standing-light standing-beam ${
-                                            labTab === 'hardware'
-                                                ? 'bg-blue-600 text-white shadow-md underglow-box-active active'
-                                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-                                        }`}
-                                    >
-                                        🔌 Hardware Labs
                                     </button>
                                     <button
                                         onClick={() => setLabTab('analytics')}

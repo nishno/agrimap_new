@@ -22,6 +22,7 @@ import {
 } from './Icons';
 import { useLanguage } from '../contexts/LanguageContext';
 import ScannedIdCardModal from './ScannedIdCardModal';
+import { findMatchingEmployee } from '../utils/employeeMatching';
 import type { MapComponentProps } from './MapComponent';
 import { GoogleSheetsModal, GoogleSheetsModuleType } from './GoogleSheetsModal';
 import { FileSpreadsheet } from 'lucide-react';
@@ -263,24 +264,14 @@ const HrManager: React.FC<ToolsViewProps> = (props) => {
             const code = String(scanData.code).trim();
             const raw = String(scanData.raw || '').trim();
 
-            const found = employees.find(e => 
-                e.id === code || 
-                e.barcode === code || 
-                e.idNumber === code ||
-                (e.barcode && e.barcode.toLowerCase() === code.toLowerCase()) ||
-                (e.idNumber && e.idNumber.toLowerCase() === code.toLowerCase()) ||
-                (e.id && e.id.toLowerCase() === code.toLowerCase()) ||
-                (e.id && raw.includes(e.id)) ||
-                (e.barcode && raw.includes(e.barcode)) ||
-                (e.idNumber && raw.includes(e.idNumber))
-            );
+            const found = findMatchingEmployee(employees, code) || (raw ? findMatchingEmployee(employees, raw) : undefined);
 
             if (found) {
                 toast.success(`Worker Identified via ${scanData.source || 'Hardware Scanner'}: ${found.name}`, {
                     description: `ID: ${found.idNumber || found.id} • Role: ${roles.find(r => r.id === found.roleId)?.name || 'Employee'}`
                 });
-                setScannedCardEmployee(found);
                 setIsScannerOpen(false);
+                setScannedCardEmployee(found);
             } else {
                 toast.warning(`Scanned code: "${code}"`, {
                     description: "No registered worker found matching this barcode/ID."
@@ -1291,23 +1282,21 @@ const HrManager: React.FC<ToolsViewProps> = (props) => {
                 isOpen={isScannerOpen} 
                 onClose={() => setIsScannerOpen(false)} 
                 mockEmployees={employees}
-                onScan={(result) => {
+                initialCategory="worker"
+                title={translate('harvest.scan_id') || "Scan Worker ID Card"}
+                description="დაასკანერეთ თანამშრომლის ID ბარათი, QR ან შტრიხკოდი"
+                onScan={(result, category, parsed) => {
                     const code = String(result).trim();
-                    const found = employees.find(e => 
-                        e.id === code || 
-                        e.barcode === code || 
-                        e.idNumber === code ||
-                        (e.barcode && e.barcode.toLowerCase() === code.toLowerCase()) ||
-                        (e.idNumber && e.idNumber.toLowerCase() === code.toLowerCase()) ||
-                        (e.id && e.id.toLowerCase() === code.toLowerCase())
+                    const found = parsed?.employee || findMatchingEmployee(employees, code) || employees.find(e => 
+                        e.id === code || e.barcode === code || e.idNumber === code || (e.name && code.toLowerCase().includes(e.name.toLowerCase()))
                     );
+                    setIsScannerOpen(false);
                     if (found) {
                         toast.success(`Worker Identified: ${found.name}`);
                         setScannedCardEmployee(found);
                     } else {
                         toast.warning(`Employee not found for scan data: ${code.substring(0, 25)}...`);
                     }
-                    setIsScannerOpen(false);
                 }}
             />
             {employeeToDelete && (

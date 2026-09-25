@@ -22,13 +22,17 @@ import HarvestCommercialModal from './HarvestCommercialModal';
 import RefrigeratorView from './RefrigeratorView';
 import { HarvestProduceList } from './HarvestProduceList';
 import { HarvestSalesList } from './HarvestSalesList';
-import { Brain, Sparkles, Snowflake, FileSpreadsheet } from 'lucide-react';
+import { Brain, Sparkles, Snowflake, FileSpreadsheet, ScanLine, QrCode, Folder } from 'lucide-react';
+import StockDocumentsFolder from './StockDocumentsFolder';
 import { toast } from 'sonner';
 import { useLanguage } from '../contexts/LanguageContext';
 import { calculatePickerEarnings, calculateNetDurationHours } from './HarvestingStats';
 import { exportToExcel } from '../utils/excelExporter';
 import { GoogleSheetsModal, GoogleSheetsModuleType } from './GoogleSheetsModal';
 import MachineryManager from './SystemManagement/MachineryManager';
+import QrScannerModal, { ScannerCategory, ParsedScanResult } from './QrScannerModal';
+import MaterialQrGeneratorModal from './MaterialQrGeneratorModal';
+import { parseUniversalScan } from '../utils/universalScannerParser';
 
 
 export interface StockViewProps {
@@ -318,7 +322,7 @@ const LockedProduceView: React.FC = () => (
 
 const StockView: React.FC<StockViewProps> = (props) => {
     const { onAddToDashboard, currentUserPermissions, currentUser, inventoryItems = [], harvestEvents = [], plantationFeatures = [], machinery = [], harvestEntries = [], employees = [] } = props;
-    const [activeTab, setActiveTab] = useState<'produce' | 'sales' | 'refrigerator' | 'archive' | 'ledger' | 'agroinputs' | 'machinery' | 'supplies' | 'charges' | 'purchases' | 'suppliers'>('produce');
+    const [activeTab, setActiveTab] = useState<'produce' | 'sales' | 'refrigerator' | 'archive' | 'ledger' | 'agroinputs' | 'machinery' | 'supplies' | 'charges' | 'purchases' | 'suppliers' | 'documents'>('produce');
     const [machinerySubTab, setMachinerySubTab] = useState<'fleet' | 'stock'>('fleet');
     const { t, formatCurrency, currency } = useLanguage();
     const [selectedSectorId, setSelectedSectorId] = useState<string>('all');
@@ -326,6 +330,10 @@ const StockView: React.FC<StockViewProps> = (props) => {
     const [globalChargeItem, setGlobalChargeItem] = useState<InventoryItem | null>(null);
     const [isGoogleSheetsModalOpen, setIsGoogleSheetsModalOpen] = useState(false);
     const [googleSheetsInitialModule, setGoogleSheetsInitialModule] = useState<GoogleSheetsModuleType>('stock');
+    const [isScanModalOpen, setIsScanModalOpen] = useState(false);
+    const [isQrGenModalOpen, setIsQrGenModalOpen] = useState(false);
+    const [scannerCategory, setScannerCategory] = useState<ScannerCategory>('auto');
+    const [scannerAction, setScannerAction] = useState<'charge' | 'add'>('charge');
 
     const mapTabToSheetModule = (tab: typeof activeTab): GoogleSheetsModuleType => {
         switch (tab) {
@@ -571,6 +579,114 @@ const StockView: React.FC<StockViewProps> = (props) => {
         setGlobalChargeItem(null);
     };
 
+    const handleStockScan = (rawCode: string, targetCategory?: ScannerCategory, parsed?: ParsedScanResult) => {
+        const scanData = parsed || parseUniversalScan(rawCode, employees, inventoryItems, targetCategory || 'auto', scannerAction);
+        const isKa = t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka';
+
+        // 1. Worker Identification
+        if (scanData.detectedType === 'worker' || scanData.employee) {
+            const emp = scanData.employee;
+            toast.info(isKa ? `✓ თანამშრომელი ამოცნობილია: ${emp?.name || rawCode}` : `✓ Worker identified: ${emp?.name || rawCode}`, {
+                description: isKa ? `ID: ${emp?.idNumber || emp?.id}` : `ID: ${emp?.idNumber || emp?.id}`
+            });
+            return;
+        }
+
+        // 2. Material / Agro-input / Goods Scanned
+        const mat = scanData.material;
+        const item = mat?.item || inventoryItems.find(i => 
+            i.id === (mat?.materialId || rawCode) ||
+            (i as any).sku === (mat?.sku || rawCode) ||
+            (i as any).barcode === (mat?.sku || rawCode) ||
+            i.name.toLowerCase() === (mat?.materialName || rawCode).toLowerCase()
+        );
+
+        const qty = mat?.quantity || 1;
+        const action = mat?.action || scannerAction;
+        const nowIso = new Date().toISOString();
+        const userName = currentUser?.name || currentUser?.email?.split('@')[0] || 'Administrator';
+        const userId = currentUser?.id || 'admin';
+
+        if (action === 'add') {
+            // Receive / Add to stock
+            if (item) {
+                const newStock = Math.round(((item.currentStock || 0) + qty) * 100) / 100;
+                const updatedItems = inventoryItems.map(i => i.id === item.id ? { ...i, currentStock: newStock } : i);
+                props.onSetInventoryItems(updatedItems);
+
+                const newStockTx: StockTransaction = {
+                    id: `tx-stk-add-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+                    organizationId: '',
+                    date: nowIso,
+                    itemId: item.id,
+                    type: 'ADDITION',
+                    quantity: qty,
+                    sourceModule: 'MANUAL',
+                    reason: `[QR Intake / მიღება] ${mat?.batchId ? 'Batch: ' + mat.batchId : ''} (${mat?.category || 'supplies'})`,
+                    chargedByUserId: userId,
+                    chargedByUserName: userName,
+                    stockBeforeCharge: item.currentStock,
+                    stockAfterCharge: newStock,
+                    unitOfMeasure: item.unitOfMeasure
+                };
+                if (props.onSetStockTransactions && props.stockTransactions) {
+                    props.onSetStockTransactions([newStockTx, ...props.stockTransactions]);
+                }
+
+                toast.success(isKa 
+                    ? `✓ მიღებულია საწყობში: +${qty} ${item.unitOfMeasure || 'კგ'} ${item.name}` 
+                    : `✓ Received into stock: +${qty} ${item.unitOfMeasure || 'kg'} ${item.name}`);
+            } else {
+                const newItem: InventoryItem = {
+                    id: mat?.materialId || `item-${Date.now()}`,
+                    name: mat?.materialName || rawCode,
+                    category: (mat?.category === 'assets' ? 'Fixed Assets' : mat?.category === 'goods' ? 'Produce' : 'Fertilizers') as any,
+                    currentStock: qty,
+                    minStockThreshold: 5,
+                    unitCost: 0,
+                    unitOfMeasure: mat?.unit || 'kg',
+                    supplierId: 'QR_INTAKE'
+                };
+                props.onSetInventoryItems([...inventoryItems, newItem]);
+                toast.success(isKa 
+                    ? `✓ ახალი მასალა შეიქმნა და მიიღო: ${newItem.name} (+${qty} ${newItem.unitOfMeasure})` 
+                    : `✓ Created & received new item: ${newItem.name} (+${qty} ${newItem.unitOfMeasure})`);
+            }
+        } else {
+            // Charge / Deduct from stock
+            if (item) {
+                const newStock = Math.max(0, Math.round(((item.currentStock || 0) - qty) * 100) / 100);
+                const updatedItems = inventoryItems.map(i => i.id === item.id ? { ...i, currentStock: newStock } : i);
+                props.onSetInventoryItems(updatedItems);
+
+                const newStockTx: StockTransaction = {
+                    id: `tx-stk-ded-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+                    organizationId: '',
+                    date: nowIso,
+                    itemId: item.id,
+                    type: 'DEDUCTION',
+                    quantity: qty,
+                    sourceModule: 'DIRECT_CHARGE',
+                    reason: `[QR Direct Charge / ჩამოწერა] ${mat?.batchId ? 'Batch: ' + mat.batchId : ''} (${mat?.category || 'supplies'})`,
+                    chargedByUserId: userId,
+                    chargedByUserName: userName,
+                    stockBeforeCharge: item.currentStock,
+                    stockAfterCharge: newStock,
+                    unitOfMeasure: item.unitOfMeasure
+                };
+                if (props.onSetStockTransactions && props.stockTransactions) {
+                    props.onSetStockTransactions([newStockTx, ...props.stockTransactions]);
+                }
+
+                toast.success(isKa 
+                    ? `✓ ჩამოწერილია საწყობიდან: -${qty} ${item.unitOfMeasure || 'კგ'} ${item.name}` 
+                    : `✓ Charged from stock: -${qty} ${item.unitOfMeasure || 'kg'} ${item.name}`);
+            } else {
+                toast.error(isKa ? `მასალა ვერ მოიძებნა საწყობში: ${rawCode}` : `Item not found in stock: ${rawCode}`);
+            }
+        }
+    };
+
     return (
         <div className="flex-grow space-y-6">
             {activeTab === 'produce' && (
@@ -649,9 +765,37 @@ const StockView: React.FC<StockViewProps> = (props) => {
                     <TabButton active={activeTab === 'purchases'} onClick={() => setActiveTab('purchases')} label={t('stock.tab.purchases') || "P. Orders"} icon={<ShoppingBagIcon className="h-4 w-4"/>} />
                     <TabButton active={activeTab === 'suppliers'} onClick={() => setActiveTab('suppliers')} label={t('stock.tab.suppliers') || "Directory"} icon={<BuildingStorefrontIcon className="h-4 w-4"/>} />
                     <TabButton active={activeTab === 'charges'} onClick={() => setActiveTab('charges')} label="Direct Charges" icon={<Sparkles className="h-4 w-4 text-rose-500"/>} />
+                    <TabButton active={activeTab === 'documents'} onClick={() => setActiveTab('documents')} label={t('language') === 'ka' ? "დოკუმენტები & მედია" : "Documents & Media"} icon={<Folder className="h-4 w-4 text-amber-500"/>} />
                 </div>
 
                 <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-auto mb-1">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setScannerCategory(
+                                activeTab === 'agroinputs' ? 'supplies' :
+                                activeTab === 'machinery' ? 'assets' :
+                                activeTab === 'produce' ? 'goods' : 'auto'
+                            );
+                            setIsScanModalOpen(true);
+                        }}
+                        className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs uppercase tracking-wider flex items-center gap-2 shadow-sm transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
+                        title={t('language') === 'ka' ? "QR / შტრიხკოდის სკანერის გახსნა (მიღება / ხარჯვა)" : "Open QR/Barcode Scanner to receive or charge materials"}
+                    >
+                        <ScanLine size={15} className="text-emerald-400" />
+                        <span>{t('language') === 'ka' ? 'სკანერი' : 'QR Scanner'}</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setIsQrGenModalOpen(true)}
+                        className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider flex items-center gap-2 shadow-sm shadow-indigo-200 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
+                        title={t('language') === 'ka' ? "აგრო-ინპუტების & მასალების QR ეტიკეტების გენერატორი" : "Generate Quantity-based QR Code Labels for materials"}
+                    >
+                        <QrCode size={15} />
+                        <span>{t('language') === 'ka' ? 'QR შექმნა' : 'Generate QR'}</span>
+                    </button>
+
                     <button
                         onClick={() => {
                             setGoogleSheetsInitialModule(mapTabToSheetModule(activeTab));
@@ -756,6 +900,13 @@ const StockView: React.FC<StockViewProps> = (props) => {
                         }} 
                     />
                 )}
+                {activeTab === 'documents' && (
+                    <StockDocumentsFolder 
+                        sectors={props.plantationFeatures?.filter((f: any) => f.type === 'area' || f.type === 'sector') as any} 
+                        inventoryItems={props.inventoryItems} 
+                        currentUser={currentUser} 
+                    />
+                )}
             </div>
 
             {isGlobalChargeOpen && (
@@ -794,6 +945,32 @@ const StockView: React.FC<StockViewProps> = (props) => {
                     transactions={props.transactions}
                     onSetTransactions={props.onSetTransactions}
                     currentUser={props.currentUser}
+                />
+            )}
+
+            {/* Stock Universal QR & Barcode Scanner */}
+            {isScanModalOpen && (
+                <QrScannerModal
+                    isOpen={isScanModalOpen}
+                    onClose={() => setIsScanModalOpen(false)}
+                    onScan={handleStockScan}
+                    initialCategory={scannerCategory}
+                    initialAction={scannerAction}
+                    mockEmployees={employees}
+                    inventoryItems={inventoryItems}
+                    onOpenGenerator={() => setIsQrGenModalOpen(true)}
+                    title={t('language') === 'ka' ? "საწყობის QR / შტრიხკოდის სკანერი" : "Stock QR & Barcode Scanner"}
+                    description={t('language') === 'ka' ? "მიიღეთ ან ჩამოწერეთ მასალები, სასუქები, აქტივები და მოსავალი" : "Receive or charge supplies, agro-inputs, assets and produce"}
+                />
+            )}
+
+            {/* Material & Agro-input Batch QR Generator */}
+            {isQrGenModalOpen && (
+                <MaterialQrGeneratorModal
+                    isOpen={isQrGenModalOpen}
+                    onClose={() => setIsQrGenModalOpen(false)}
+                    inventoryItems={inventoryItems}
+                    defaultCategory={scannerCategory === 'assets' ? 'assets' : scannerCategory === 'goods' ? 'goods' : 'supplies'}
                 />
             )}
         </div>

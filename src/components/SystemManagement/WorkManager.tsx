@@ -380,7 +380,7 @@ const WorkManager: React.FC<WorkManagerProps> = ({
                 )}
             </div>
             
-            {isModalOpen && <WorkAssignmentModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleSave} work={editingWork} employees={employees} sectors={sectors} machinery={machinery} inventoryItems={inventoryItems} notesList={notes} checkpoints={checkpoints} onSetEmployees={onSetEmployees} />}
+            {isModalOpen && <WorkAssignmentModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleSave} work={editingWork} employees={employees} sectors={sectors} machinery={machinery} inventoryItems={inventoryItems} notesList={notes} checkpoints={checkpoints} onSetEmployees={onSetEmployees} onSetInventoryItems={onSetInventoryItems} />}
             {viewDetails && (
                 <WorkDetailsModal 
                     isOpen={!!viewDetails} 

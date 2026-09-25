@@ -24,13 +24,15 @@ import { getSphericalPolygonArea } from '../services/geospatialService';
 import { Popup } from 'react-leaflet';
 import L from 'leaflet';
 import { BriefcaseIcon, XIcon, CalendarDaysIcon, TractorIcon, XCircleIcon, ChevronRightIcon, PlusIcon, RefreshCwIcon, ClipboardDocumentIcon } from './Icons';
-import { SlidersHorizontal, Layers, FileSpreadsheet, MapPin, Tag, Sparkles, Calculator, CheckSquare, Square, DollarSign, Users, Clock, Download, ExternalLink } from 'lucide-react';
+import { SlidersHorizontal, Layers, FileSpreadsheet, MapPin, Tag, Sparkles, Calculator, CheckSquare, Square, DollarSign, Users, Clock, Download, ExternalLink, ScanLine } from 'lucide-react';
 import { exportToExcel, exportToGoogleSheetsClipboard, exportToCsv } from '../utils/excelExporter';
 import { useAiAssistant } from '../hooks/useAiAssistant';
 import { useLanguage } from '../contexts/LanguageContext';
 import { safeStorage } from '../services/storageService';
 import ModuleAiAssistant from './ModuleAiAssistant';
 import QrScannerModal from './QrScannerModal';
+import { parseUniversalScan } from '../utils/universalScannerParser';
+import { findMatchingEmployee } from '../utils/employeeMatching';
 import ResizableDivider from './common/ResizableDivider';
 import OperationalAreaLogModal from './OperationalAreaLogModal';
 import WorkDetailsModal from './WorkDetailsModal';
@@ -832,6 +834,15 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
                                 <div className="flex items-center gap-1.5 flex-shrink-0">
                                     <button
                                         type="button"
+                                        onClick={() => setIsScannerOpen(true)}
+                                        className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[9.5px] font-black uppercase tracking-wider shadow-sm flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                                        title={isKa ? "QR სკანერი (მუშები / მასალები)" : "QR Scanner (Workers / Materials)"}
+                                    >
+                                        <ScanLine size={13} className="text-emerald-400" />
+                                        <span>{isKa ? "QR სკანერი" : "Scan QR"}</span>
+                                    </button>
+                                    <button
+                                        type="button"
                                         onClick={() => {
                                             if (standingWork) {
                                                 setSelectedWorkForYieldModal(standingWork);
@@ -962,9 +973,95 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
             <QrScannerModal 
                 isOpen={isScannerOpen} 
                 onClose={() => setIsScannerOpen(false)} 
-                onScan={(result) => {
-                    toast.success(`Scanned: ${result}`);
-                    setIsScannerOpen(false);
+                mockEmployees={systemProps.employees}
+                inventoryItems={systemProps.inventoryItems}
+                initialCategory="auto"
+                title={isKa ? "სამუშაო რეესტრის QR სკანერი" : "Work Registry QR Scanner"}
+                description={isKa ? "დაასკანერეთ მუშაკის ID ბარათი ან მასალის QR/შტრიხკოდი" : "Scan worker badge or material barcode"}
+                onScan={(result, cat, parsedData) => {
+                    const code = String(result).trim();
+                    const parsed = parsedData || parseUniversalScan(code, systemProps.employees, systemProps.inventoryItems, 'auto');
+
+                    // 1. Worker Identification
+                    if (parsed.detectedType === 'worker' || parsed.employee) {
+                        const emp = parsed.employee || findMatchingEmployee(systemProps.employees, code) || systemProps.employees.find(e => e.id === code || e.barcode === code || e.idNumber === code);
+                        if (emp) {
+                            let targetWork = standingWork;
+                            if (!targetWork) {
+                                targetWork = {
+                                    id: `work-reg-${Date.now()}`,
+                                    workName: isKa ? 'მიმდინარე საველე ოპერაცია' : 'Active Field Operation',
+                                    date: new Date().toISOString().split('T')[0],
+                                    status: 'in-progress',
+                                    taskType: 'Other',
+                                    employeeHours: [{ employeeId: emp.id, hours: 8 }],
+                                    sectorIds: [],
+                                    assignedEmployeeIds: [emp.id],
+                                    assignedVehicles: [],
+                                    materialsUsed: []
+                                };
+                                systemProps.onSetWorkAssignments([targetWork, ...systemProps.workAssignments]);
+                                setStandingWorkId(targetWork.id);
+                            } else {
+                                const alreadyAssigned = (targetWork.assignedEmployeeIds || []).includes(emp.id);
+                                if (!alreadyAssigned) {
+                                    const updated: WorkAssignment = {
+                                        ...targetWork,
+                                        assignedEmployeeIds: [...(targetWork.assignedEmployeeIds || []), emp.id],
+                                        employeeHours: [...(targetWork.employeeHours || []), { employeeId: emp.id, hours: 8 }]
+                                    };
+                                    systemProps.onSetWorkAssignments(
+                                        systemProps.workAssignments.map(w => w.id === targetWork.id ? updated : w)
+                                    );
+                                }
+                            }
+                            toast.success(isKa ? `✓ მუშაკი ${emp.name} დაემატა რეესტრში!` : `✓ Worker ${emp.name} assigned to registry!`);
+                            return;
+                        }
+                    }
+
+                    // 2. Material Identification
+                    if (parsed.detectedType === 'material' || parsed.material) {
+                        const mat = parsed.material?.item || systemProps.inventoryItems.find(i => 
+                            i.id === code || (i as any).sku === code || (i as any).barcode === code
+                        );
+                        if (mat) {
+                            const qty = parsed.material?.quantity || 1;
+                            let targetWork = standingWork;
+                            if (!targetWork) {
+                                targetWork = {
+                                    id: `work-reg-${Date.now()}`,
+                                    workName: isKa ? 'მიმდინარე საველე ოპერაცია' : 'Active Field Operation',
+                                    date: new Date().toISOString().split('T')[0],
+                                    status: 'in-progress',
+                                    taskType: 'Other',
+                                    employeeHours: [],
+                                    sectorIds: [],
+                                    assignedEmployeeIds: [],
+                                    assignedVehicles: [],
+                                    materialsUsed: [{ inventoryItemId: mat.id, quantity: qty }]
+                                };
+                                systemProps.onSetWorkAssignments([targetWork, ...systemProps.workAssignments]);
+                                setStandingWorkId(targetWork.id);
+                            } else {
+                                const existingIdx = (targetWork.materialsUsed || []).findIndex(m => m.inventoryItemId === mat.id);
+                                let updatedMaterials = [...(targetWork.materialsUsed || [])];
+                                if (existingIdx >= 0) {
+                                    updatedMaterials[existingIdx].quantity = (Number(updatedMaterials[existingIdx].quantity) || 0) + qty;
+                                } else {
+                                    updatedMaterials.push({ inventoryItemId: mat.id, quantity: qty });
+                                }
+                                const updated: WorkAssignment = { ...targetWork, materialsUsed: updatedMaterials };
+                                systemProps.onSetWorkAssignments(
+                                    systemProps.workAssignments.map(w => w.id === targetWork.id ? updated : w)
+                                );
+                            }
+                            toast.success(isKa ? `✓ მასალა ${mat.name} (${qty}) დაემატა რეესტრში!` : `✓ Material ${mat.name} (${qty}) added to registry!`);
+                            return;
+                        }
+                    }
+
+                    toast.warning(isKa ? `კოდი ვერ მოიძებნა: ${code}` : `Unrecognized code: ${code}`);
                 }}
             />
 

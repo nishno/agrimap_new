@@ -93,9 +93,21 @@ export class LogEngine {
 
   private async executeFallbackCommand<T>(command: string, payload?: any): Promise<T> {
     if (command === 'APPEND_DELTA') {
+      let maxSeq = 0;
+      try {
+        const logs = await EngineIDB.getAll<DeltaLogEntry>('delta_logs');
+        for (const l of logs) {
+          if (typeof l.sequenceId === 'number' && l.sequenceId > maxSeq) {
+            maxSeq = l.sequenceId;
+          }
+        }
+      } catch (err) {
+        maxSeq = 0;
+      }
+
       const entry: DeltaLogEntry = {
         id: `delta_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        sequenceId: Date.now(),
+        sequenceId: maxSeq + 1,
         actionType: payload.actionType,
         harvestEventId: payload.harvestEventId || 'global',
         payload: payload.payloadData,

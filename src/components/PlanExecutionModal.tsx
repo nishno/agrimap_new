@@ -4,6 +4,11 @@ import { XCircleIcon, BeakerIcon, AlertTriangleIcon, ChartBarIcon } from './Icon
 import { getSphericalPolygonArea } from '../services/geospatialService';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getAgronomyEligibleEmployees } from '../utils/employeeFilters';
+import { ScanLine } from 'lucide-react';
+import QrScannerModal from './QrScannerModal';
+import { parseUniversalScan } from '../utils/universalScannerParser';
+import { findMatchingEmployee } from '../utils/employeeMatching';
+import { toast } from 'sonner';
 
 interface PlanExecutionModalProps {
     isOpen: boolean;
@@ -20,6 +25,8 @@ const PlanExecutionModal: React.FC<PlanExecutionModalProps> = ({ isOpen, onClose
     const { formatCurrency, language } = useLanguage();
     const isKa = language === 'ka';
 
+    const [isScannerOpen, setIsScannerOpen] = useState(false);
+
     const [formState, setFormState] = useState<Omit<PlanExecution, 'id'>>({
         planId: execution?.planId || '',
         date: execution?.date ? new Date(execution.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
@@ -29,6 +36,58 @@ const PlanExecutionModal: React.FC<PlanExecutionModalProps> = ({ isOpen, onClose
         actualWaterLiters: execution?.actualWaterLiters || 0,
         notes: execution?.notes || '',
     });
+
+    const handleScanResult = (result: string, category?: any, parsedData?: any) => {
+        const code = result.trim();
+        if (!code) return;
+        const parsed = parsedData || parseUniversalScan(code, employees, inventoryItems, 'supplies', 'charge');
+        setIsScannerOpen(false);
+
+        // 1. Material detected
+        if (parsed.detectedType === 'material' || parsed.material) {
+            const mat = parsed.material?.item || inventoryItems.find(i => 
+                i.id === code || (i as any).sku === code || (i as any).barcode === code
+            );
+            if (mat) {
+                const qty = parsed.material?.quantity || 1;
+                const existingIdx = (formState.actualElements || []).findIndex(el => el.inventoryItemId === mat.id);
+                if (existingIdx >= 0) {
+                    const list = [...formState.actualElements];
+                    const currentActual = list[existingIdx].actualQuantity !== undefined ? list[existingIdx].actualQuantity! : list[existingIdx].quantity;
+                    list[existingIdx] = {
+                        ...list[existingIdx],
+                        actualQuantity: currentActual + qty
+                    };
+                    setFormState(prev => ({ ...prev, actualElements: list }));
+                    toast.success(isKa ? `✓ დოზა გაიზარდა: +${qty} (${mat.name})` : `✓ Added dose: +${qty} (${mat.name})`);
+                } else {
+                    const defaultUnit = (mat.unitOfMeasure === 'L' || mat.unitOfMeasure === 'liter' || mat.unitOfMeasure === 'litre') ? 'L/ha' : 'kg/ha';
+                    const newEl: PlanExecutionElement = {
+                        inventoryItemId: mat.id,
+                        newItemName: mat.name,
+                        quantity: qty,
+                        actualQuantity: qty,
+                        unit: defaultUnit
+                    };
+                    setFormState(prev => ({ ...prev, actualElements: [...(prev.actualElements || []), newEl] }));
+                    toast.success(isKa ? `✓ დაემატა აგრო-ინპუტი: ${mat.name}` : `✓ Added agro-input: ${mat.name}`);
+                }
+                return;
+            }
+        }
+
+        // 2. Personnel / Agronomist detected
+        if (parsed.detectedType === 'worker' || parsed.employee) {
+            const emp = parsed.employee || findMatchingEmployee(employees, code);
+            if (emp) {
+                setFormState(prev => ({ ...prev, executedByEmployeeId: emp.id }));
+                toast.success(isKa ? `✓ შემსრულებელი: ${emp.name}` : `✓ Agronomist: ${emp.name}`);
+                return;
+            }
+        }
+
+        toast.warning(isKa ? `კოდი ვერ მოიძებნა: ${code}` : `Unrecognized scan code: ${code}`);
+    };
 
     useEffect(() => {
         if (formState.planId && !execution) {
@@ -185,9 +244,20 @@ const PlanExecutionModal: React.FC<PlanExecutionModalProps> = ({ isOpen, onClose
                         </p>
                     </div>
                 </div>
-                <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors cursor-pointer">
-                    <XCircleIcon className="h-8 w-8 md:h-6 md:w-6" />
-                </button>
+                <div className="flex items-center gap-3">
+                    <button
+                        type="button"
+                        onClick={() => setIsScannerOpen(true)}
+                        className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-sm transition-all cursor-pointer"
+                        title={isKa ? "აგრო-ინპუტის QR / შტრიხკოდის სკანირება" : "Scan Agro-Input QR / Barcode"}
+                    >
+                        <ScanLine className="h-3.5 w-3.5 text-emerald-400" />
+                        <span>{isKa ? 'QR სკანერი' : 'Scan QR'}</span>
+                    </button>
+                    <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors cursor-pointer">
+                        <XCircleIcon className="h-8 w-8 md:h-6 md:w-6" />
+                    </button>
+                </div>
             </div>
 
             <div className="flex-1 overflow-y-auto md:overflow-hidden flex flex-col md:flex-row min-h-0">
@@ -218,7 +288,7 @@ const PlanExecutionModal: React.FC<PlanExecutionModalProps> = ({ isOpen, onClose
                                 </label>
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2 border border-slate-200 p-3 rounded-xl bg-slate-50 max-h-40 overflow-y-auto">
                                     {sectors.map(s => (
-                                        <label key={s.id} className="flex items-center gap-2 cursor-pointer p-1.5 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 transition-colors">
+                                         <label key={s.id} className="flex items-center gap-2 cursor-pointer p-1.5 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 transition-colors">
                                             <input 
                                                 type="checkbox" 
                                                 checked={formState.sectorIds.includes(s.id)} 
@@ -246,9 +316,20 @@ const PlanExecutionModal: React.FC<PlanExecutionModalProps> = ({ isOpen, onClose
                     </section>
 
                     <section>
-                        <h3 className="text-sm font-black text-slate-900 mb-4 pb-2 border-b uppercase tracking-wider">
-                            {isKa ? '2. დოზები და ინგრედიენტები' : '2. Doses & Ingredients'}
-                        </h3>
+                        <div className="flex items-center justify-between mb-4 pb-2 border-b">
+                            <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">
+                                {isKa ? '2. დოზები და ინგრედიენტები' : '2. Doses & Ingredients'}
+                            </h3>
+                            <button
+                                type="button"
+                                onClick={() => setIsScannerOpen(true)}
+                                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 active:scale-95 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                                title={isKa ? "აგრო-ინპუტის QR / შტრიხკოდის სკანირება" : "Scan Agro-Input QR / Barcode"}
+                            >
+                                <ScanLine className="h-3.5 w-3.5 text-emerald-400" />
+                                <span>{isKa ? 'Scan Agro-Input QR / შტრიხკოდი' : 'Scan Agro-Input QR'}</span>
+                            </button>
+                        </div>
                         <div className="space-y-4">
                             {(formState.actualElements || []).map((el, index) => {
                                 const material = inventoryItems.find(i => i.id === el.inventoryItemId);
@@ -367,6 +448,20 @@ const PlanExecutionModal: React.FC<PlanExecutionModalProps> = ({ isOpen, onClose
                     </div>
                 </div>
             </div>
+
+            {isScannerOpen && (
+                <QrScannerModal
+                    isOpen={isScannerOpen}
+                    onClose={() => setIsScannerOpen(false)}
+                    onScan={handleScanResult}
+                    mockEmployees={employees}
+                    inventoryItems={inventoryItems}
+                    initialCategory="supplies"
+                    title={isKa ? "აგრო-ინპუტების სკანერი (სასუქები, პრეპარატები)" : "Agro-Input Scanner (Fertilizers, Chemicals)"}
+                    description={isKa ? "დაასკანირეთ აგრო-ინპუტის შეფუთვის QR ან შტრიხკოდი" : "Scan agro-input container QR or barcode to log dosage"}
+                />
+            )}
+
             <style>{`
                 .custom-scrollbar::-webkit-scrollbar { width: 4px; }
                 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }

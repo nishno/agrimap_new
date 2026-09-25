@@ -94,15 +94,32 @@ export const parseBarcodePayload = (raw: string): { cleanCode: string; parsedId?
         } catch (e) {}
     }
 
-    // 3. Prefix stripping (e.g. ID: EMP-101 or PRE_BIND_EMP-101)
-    if (trimmed.toUpperCase().startsWith('ID:')) {
-        const clean = trimmed.substring(3).trim();
-        return { cleanCode: clean, parsedId: clean };
+    // 3. Prefix stripping (e.g. WORKER ID: 16, ID: 16, PRE_BIND_EMP-101, etc.)
+    let clean = trimmed;
+    const prefixes = [
+        'WORKER ID:', 'WORKER ID ', 'WORKER ID-', 'WORKER ID',
+        'WORKER:', 'WORKER ', 'WORKER-',
+        'ID:', 'ID ', 'ID-',
+        'BC:', 'BC ', 'BC-',
+        'EMP:', 'EMP ', 'EMP-',
+        'QR:', 'QR ', 'QR-',
+        'PRE_BIND_'
+    ];
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (const prefix of prefixes) {
+            if (clean.toUpperCase().startsWith(prefix.toUpperCase())) {
+                clean = clean.substring(prefix.length).trim();
+                changed = true;
+                break;
+            }
+        }
     }
 
     return {
-        cleanCode: trimmed,
-        parsedId: trimmed,
+        cleanCode: clean,
+        parsedId: clean,
     };
 };
 
@@ -165,60 +182,109 @@ export const initGlobalHardwareScannerListener = () => {
     let buffer = '';
     let lastKeyTime = 0;
     let keyIntervals: number[] = [];
+    let endOfScanTimer: any = null;
+    let activeInputTarget: HTMLInputElement | HTMLTextAreaElement | null = null;
+    let inputPreScanValue = '';
+
+    const finalizeAndDispatch = (reason: string) => {
+        if (endOfScanTimer) {
+            clearTimeout(endOfScanTimer);
+            endOfScanTimer = null;
+        }
+
+        const scannedText = buffer.trim();
+        buffer = '';
+        keyIntervals = [];
+
+        if (scannedText && scannedText.length >= 1) {
+            // If the barcode gun typed directly into an input field, revert the raw typed text
+            // so the application can cleanly set the recognized employee or crate without garbage
+            if (activeInputTarget && activeInputTarget.value) {
+                // If the input value ends with the scanned text or contains it, clean it up
+                if (activeInputTarget.value.includes(scannedText)) {
+                    activeInputTarget.value = inputPreScanValue;
+                    // Trigger input change so React state reconciles
+                    activeInputTarget.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            }
+            activeInputTarget = null;
+            inputPreScanValue = '';
+
+            dispatchHardwareScan(scannedText);
+        }
+    };
 
     window.addEventListener('keydown', (e: KeyboardEvent) => {
         const now = performance.now();
-        const interval = now - lastKeyTime;
+        const interval = lastKeyTime > 0 ? (now - lastKeyTime) : 0;
         lastKeyTime = now;
 
-        // Enter or Tab typically terminates a barcode scan from physical wedge scanners
-        if (e.key === 'Enter' || e.key === 'Tab') {
-            // Check if characters were typed rapidly (average interval < 60ms) or buffer length >= 3
-            const avgInterval = keyIntervals.length > 0 
-                ? keyIntervals.reduce((a, b) => a + b, 0) / keyIntervals.length 
-                : 999;
-            
-            const isRapidTyping = (avgInterval < 60 && buffer.length >= 3) || buffer.length >= 6;
-
-            if (buffer.length >= 3 && (isRapidTyping || !isInsideInteractiveInput(e.target))) {
-                const scannedText = buffer.trim();
-                buffer = '';
-                keyIntervals = [];
-
-                if (scannedText) {
-                    // Suppress enter event from submitting unrelated forms
-                    e.preventDefault();
-                    e.stopPropagation();
-                    dispatchHardwareScan(scannedText);
-                }
-                return;
-            }
-
-            // Reset
+        // If it has been more than 250ms since last key, this is a fresh user interaction
+        if (interval > 250 && buffer.length > 0) {
             buffer = '';
             keyIntervals = [];
+            activeInputTarget = null;
+        }
+
+        // Enter or Tab typically terminates a barcode scan from physical wedge scanners
+        if (e.key === 'Enter' || e.key === 'Tab' || e.keyCode === 13 || e.keyCode === 9) {
+            if (buffer.length >= 1) {
+                const avgInterval = keyIntervals.length > 0 
+                    ? keyIntervals.reduce((a, b) => a + b, 0) / keyIntervals.length 
+                    : 0;
+                const insideInput = isInsideInteractiveInput(e.target);
+                // Barcode scanners type rapidly (< 90ms average per key) or has code
+                const isRapidTyping = avgInterval < 90 || buffer.length >= 2;
+
+                if (isRapidTyping || !insideInput) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    finalizeAndDispatch('enter_key');
+                    return;
+                }
+            }
+
+            buffer = '';
+            keyIntervals = [];
+            activeInputTarget = null;
             return;
         }
 
-        // Only single printable characters
-        if (e.key && e.key.length === 1) {
-            // If typing into an input very slowly, do not accumulate as scanner wedge
-            if (isInsideInteractiveInput(e.target) && interval > 150) {
-                buffer = '';
-                keyIntervals = [];
-                return;
+        // Only single printable characters (including Georgian Unicode, symbols, etc.)
+        if (e.key && e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+            // Track if typing started inside an interactive input
+            if (buffer.length === 0 && isInsideInteractiveInput(e.target)) {
+                activeInputTarget = e.target as HTMLInputElement;
+                inputPreScanValue = activeInputTarget.value || '';
             }
 
             buffer += e.key;
-            keyIntervals.push(interval);
+            if (interval > 0 && interval < 300) {
+                keyIntervals.push(interval);
+            }
 
-            // Cap buffer to avoid memory leaks
-            if (buffer.length > 256) {
-                buffer = buffer.slice(-128);
-                keyIntervals = keyIntervals.slice(-128);
+            // Cap buffer to a generous 8192 characters (handles large QR payloads)
+            if (buffer.length > 8192) {
+                buffer = buffer.slice(-4096);
+            }
+
+            // Burst Inactivity Finalizer (Handles scanners configured WITHOUT Enter suffix)
+            // If >= 3 characters arrive in rapid succession (< 80ms avg) and pause for 75ms:
+            if (endOfScanTimer) {
+                clearTimeout(endOfScanTimer);
+            }
+
+            const currentAvg = keyIntervals.length >= 2
+                ? keyIntervals.reduce((a, b) => a + b, 0) / keyIntervals.length
+                : 999;
+
+            if (buffer.length >= 3 && currentAvg < 80) {
+                endOfScanTimer = setTimeout(() => {
+                    finalizeAndDispatch('inactivity_burst_timeout');
+                }, 75);
             }
         }
-    }, true); // Capture phase to intercept wedge input before form handlers
+    }, true); // Capture phase ensures we intercept physical wedge input before form submission
 };
 
 const isInsideInteractiveInput = (target: EventTarget | null): boolean => {

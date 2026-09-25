@@ -4,10 +4,11 @@ import type { HarvestEvent, Employee, HarvestEntry, AssignedPicker, InventoryIte
 import { ArrowDownTrayIcon, SearchIcon, PlusIcon, TrashIcon } from './Icons';
 import { useLanguage } from '../contexts/LanguageContext';
 import { toast } from 'sonner';
-import { Share2, History, Users } from 'lucide-react';
+import { Share2, History, Users, CheckCheck, QrCode, ShieldCheck } from 'lucide-react';
 import ExportExcelModal from './Harvesting/ExportExcelModal';
 import HarvestEventHistoryModal from './Harvesting/HarvestEventHistoryModal';
 import ShareHarvestEventModal from './Harvesting/ShareHarvestEventModal';
+import HarvestBoxQrModal from './Harvesting/HarvestBoxQrModal';
 import { ActiveUsersPresenceBar, getStoredActiveUser } from '../utils/userPresence';
 
 export const calculateNetDurationHours = (event: HarvestEvent): number => {
@@ -1480,6 +1481,7 @@ export const PickerStats: React.FC<{
     const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
     const [isHistoryModalOpen, setIsHistoryModalOpen] = useState<boolean>(false);
     const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
+    const [isBoxQrOpen, setIsBoxQrOpen] = useState<boolean>(false);
 
     const loadedEventIdRef = useRef<string | null>(null);
     const lastUnassignedHashRef = useRef<string>('');
@@ -1857,6 +1859,24 @@ export const PickerStats: React.FC<{
         toast.success((t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka') 
             ? (syncToCloud ? "სინქრონიზაცია წარმატებულია!" : "ლოკალურად შენახულია!") 
             : (syncToCloud ? "Synced to Cloud Successfully!" : "Saved Offline Locally!"));
+    };
+
+    const handleTogglePayrollApproval = (approved: boolean) => {
+        const nowIso = new Date().toISOString();
+        const activeUser = getStoredActiveUser();
+        const updatedEvent: HarvestEvent = {
+            ...event,
+            payrollApproved: approved,
+            payrollApprovedAt: approved ? nowIso : undefined,
+            payrollApprovedBy: approved ? activeUser.name : undefined
+        };
+        onSetHarvestEvents((harvestEvents || []).map(e => e.id === event.id ? updatedEvent : e));
+        handleSave(true);
+        if (approved) {
+            toast.success(isKa ? "✓ მოსავლის ხელფასი დამტკიცებულია და სინქრონიზებულია HR ბარათებთან!" : "✓ Harvest payroll approved & sealed to HR ID cards!");
+        } else {
+            toast.info(isKa ? "ხელფასის დამტკიცება მოხსნილია (რედაქტირებადი მონახაზი)" : "Payroll approval unlocked (editable draft preview)");
+        }
     };
     
     const availableWorkerRoles = useMemo(() => {
@@ -2386,6 +2406,37 @@ export const PickerStats: React.FC<{
                         >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
                             {isKa ? 'ატვირთვა (Update All)' : 'Sync to Cloud (Update All)'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleTogglePayrollApproval(!event.payrollApproved)}
+                            className={`px-4 py-2 rounded-2xl font-black text-xs tracking-wide flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-xs ${
+                                event.payrollApproved 
+                                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200' 
+                                    : 'bg-gradient-to-r from-emerald-600 to-indigo-600 hover:from-emerald-700 hover:to-indigo-700 text-white shadow-indigo-200 animate-pulse'
+                            }`}
+                            title={isKa ? "ხელფასის დამტკიცება და HR ID ბარათებთან სინქრონიზაცია" : "Approve & Seal Harvest Payroll to HR Cards"}
+                        >
+                            {event.payrollApproved ? (
+                                <>
+                                    <CheckCheck className="h-4 w-4 text-emerald-200" />
+                                    <span>{isKa ? '✓ ხელფასი დამტკიცებულია' : '✓ Payroll Approved'}</span>
+                                </>
+                            ) : (
+                                <>
+                                    <ShieldCheck className="h-4 w-4 text-emerald-300" />
+                                    <span>{isKa ? 'ხელფასის დამტკიცება (HR სინქრონი)' : 'Approve Payroll & Sync to HR'}</span>
+                                </>
+                            )}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setIsBoxQrOpen(true)}
+                            className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-xs tracking-wide flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-xs"
+                            title={isKa ? "მოსავლის ყუთების უნიკალური QR კოდების გენერირება" : "Generate Unique Non-duplicate Box QR codes"}
+                        >
+                            <QrCode className="h-4 w-4 text-emerald-400" />
+                            <span>{isKa ? 'ყუთების QR' : 'Box QRs'}</span>
                         </button>
                     </div>
 
@@ -3788,7 +3839,7 @@ export const PickerStats: React.FC<{
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-sm">
-                            {filteredPickers.map((picker) => {
+                            {filteredPickers.map((picker, pIdx) => {
                                 const employee = pickerDataMap.empMap.get(picker.employeeId);
                                 const stats = pickerDataMap.entriesByWorker.get(picker.employeeId);
                                 
@@ -3811,7 +3862,7 @@ export const PickerStats: React.FC<{
                                 const isCombinedMode = picker.paymentModel === 'combined';
                                 
                                 return (
-                                    <tr key={picker.employeeId} className={`hover:bg-slate-50/80 transition-colors ${!employee ? 'bg-amber-50/40' : ''}`}>
+                                    <tr key={`${picker.employeeId || 'picker'}-${pIdx}`} className={`hover:bg-slate-50/80 transition-colors ${!employee ? 'bg-amber-50/40' : ''}`}>
                                         <td style={{ width: `${colWidths.select}px` }} className="px-3 py-2 text-center">
                                             <input 
                                                 type="checkbox" 
@@ -4786,6 +4837,15 @@ export const PickerStats: React.FC<{
                     onClose={() => setIsShareModalOpen(false)}
                     event={event}
                     entries={entries}
+                />
+            )}
+
+            {isBoxQrOpen && (
+                <HarvestBoxQrModal
+                    isOpen={isBoxQrOpen}
+                    onClose={() => setIsBoxQrOpen(false)}
+                    harvestEvent={event}
+                    employees={employees}
                 />
             )}
 

@@ -8,8 +8,12 @@ import {
     CalendarDaysIcon, CheckIcon, SparklesIcon,
     ShieldCheckIcon, TagIcon, BanknotesIcon
 } from './Icons';
+import { ScanLine } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { getInventoryEligibleEmployees } from '../utils/employeeFilters';
+import QrScannerModal from './QrScannerModal';
+import { parseUniversalScan } from '../utils/universalScannerParser';
+import { toast } from 'sonner';
 
 export interface DirectStockChargeData {
     itemId: string;
@@ -124,6 +128,7 @@ export const DirectStockChargeModal: React.FC<DirectStockChargeModalProps> = ({
     // Selected item state
     const [selectedItemId, setSelectedItemId] = useState<string>(preselectedItem?.id || (inventoryItems[0]?.id || ''));
     const [searchQuery, setSearchQuery] = useState('');
+    const [isScannerOpen, setIsScannerOpen] = useState(false);
 
     const [inputMode, setInputMode] = useState<'PACKAGES' | 'MASS_VOLUME'>('PACKAGES');
     const [enteredQty, setEnteredQty] = useState<number | ''>(1);
@@ -305,8 +310,8 @@ export const DirectStockChargeModal: React.FC<DirectStockChargeModalProps> = ({
                         </div>
 
                         {/* Search / Select Dropdown */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <div className="sm:col-span-2">
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                            <div className="flex-1">
                                 <select
                                     value={selectedItemId}
                                     onChange={e => {
@@ -323,7 +328,7 @@ export const DirectStockChargeModal: React.FC<DirectStockChargeModalProps> = ({
                                     ))}
                                 </select>
                             </div>
-                            <div>
+                            <div className="w-full sm:w-48">
                                 <input
                                     type="text"
                                     placeholder={isKa ? "ნივთების გაფილტვრა..." : "Filter items..."}
@@ -332,6 +337,15 @@ export const DirectStockChargeModal: React.FC<DirectStockChargeModalProps> = ({
                                     className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-3 py-3 text-xs font-bold focus:bg-white focus:ring-2 focus:ring-rose-500 focus:outline-none shadow-sm"
                                 />
                             </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsScannerOpen(true)}
+                                className="px-4 py-3 bg-slate-900 hover:bg-slate-800 active:scale-95 text-white rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shrink-0 shadow-sm"
+                                title={isKa ? "მასალის / აგროინპუტის QR სკანირება ჩამოსაწერად" : "Scan Material QR Code to charge"}
+                            >
+                                <ScanLine size={16} className="text-emerald-400" />
+                                <span>{isKa ? 'QR სკანირება' : 'Scan QR'}</span>
+                            </button>
                         </div>
 
                         {/* Item Current Details Card */}
@@ -599,6 +613,52 @@ export const DirectStockChargeModal: React.FC<DirectStockChargeModalProps> = ({
                     </div>
                 </form>
             </div>
+
+            {isScannerOpen && (
+                <QrScannerModal
+                    isOpen={isScannerOpen}
+                    onClose={() => setIsScannerOpen(false)}
+                    title={isKa ? "მასალის QR სკანერი (საწყობიდან ჩამოწერა)" : "Material QR Scanner (Direct Stock Charge)"}
+                    description={isKa ? "დაასკანერეთ მასალის, სასუქის ან აგრო-ინპუტის QR კოდი" : "Scan material, fertilizer or agro-input batch QR code"}
+                    mockItems={inventoryItems}
+                    onScan={(scannedResult) => {
+                        const parsed = parseUniversalScan(scannedResult, employees, inventoryItems, 'supplies', 'charge');
+                        setIsScannerOpen(false);
+
+                        if (parsed.material && parsed.material.materialId) {
+                            const matched = inventoryItems.find(i => 
+                                i.id === parsed.material?.materialId || 
+                                (i.sku && i.sku === parsed.material?.sku) ||
+                                (i.name && parsed.material?.materialName && i.name.toLowerCase() === parsed.material.materialName.toLowerCase())
+                            );
+
+                            if (matched) {
+                                setSelectedItemId(matched.id);
+                                if (parsed.material.quantity && parsed.material.quantity > 0) {
+                                    setEnteredQty(parsed.material.quantity);
+                                }
+                                setDetailedNote(isKa ? `ჩამოწერილია QR სკანირებით (${parsed.material.batchId || 'პარტია'})` : `Charged via QR scan (${parsed.material.batchId || 'batch'})`);
+                                toast.success(isKa ? `არჩეულია: ${matched.name}` : `Selected: ${matched.name}`);
+                                return;
+                            }
+                        }
+
+                        // Try direct lookup
+                        const directMatch = inventoryItems.find(i => 
+                            i.id === scannedResult || 
+                            i.sku === scannedResult || 
+                            (i.name && scannedResult.toLowerCase().includes(i.name.toLowerCase()))
+                        );
+
+                        if (directMatch) {
+                            setSelectedItemId(directMatch.id);
+                            toast.success(isKa ? `არჩეულია: ${directMatch.name}` : `Selected: ${directMatch.name}`);
+                        } else {
+                            toast.warning(isKa ? `ნივთი ვერ მოიძებნა: ${scannedResult}` : `Item not found for code: ${scannedResult}`);
+                        }
+                    }}
+                />
+            )}
         </div>
     );
 };

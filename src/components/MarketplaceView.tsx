@@ -9,6 +9,8 @@ import { BuildingStorefrontIcon, PlusCircleIcon, SearchIcon, CurrencyDollarIcon,
 import CreateListingModal from './CreateListingModal';
 import { getRoute } from '../services/osrmService';
 import { useLanguage } from '../contexts/LanguageContext';
+import ResizableDivider from './common/ResizableDivider';
+import { safeStorage } from '../services/storageService';
 
 const MapMarker = Marker as any;
 
@@ -116,6 +118,13 @@ const MarketplaceView: React.FC<MarketplaceViewProps> = (props) => {
     const [typeFilter, setTypeFilter] = useState<ListingType | 'all'>('all');
     const [isRouting, setIsRouting] = useState(false);
 
+    // Resizable Edge Handle state
+    const [marketPanelWidth, setMarketPanelWidth] = useState<number>(() => {
+        const saved = safeStorage.getItem('marketplace_panel_width');
+        const parsed = saved ? parseInt(saved, 10) : 420;
+        return Number.isFinite(parsed) && parsed >= 280 ? parsed : 420;
+    });
+
     useEffect(() => {
         if (initialListing && currentUser) {
             setIsCreateModalOpen(true);
@@ -165,7 +174,13 @@ const MarketplaceView: React.FC<MarketplaceViewProps> = (props) => {
             </div>
 
             <div className="flex-grow flex overflow-hidden">
-                <div className={`${activeTab === 'list' ? 'flex' : 'hidden md:flex'} w-full md:w-[400px] flex-shrink-0 flex-col bg-white border-r border-slate-200 shadow-2xl z-10 overflow-hidden`}>
+                <div 
+                    className={`${activeTab === 'list' ? 'flex' : 'hidden md:flex'} w-full flex-shrink-0 flex-col bg-white border-r border-slate-200 shadow-2xl z-10 overflow-hidden`}
+                    style={{
+                        width: typeof window !== 'undefined' && window.innerWidth > 768 ? `${marketPanelWidth}px` : undefined,
+                        maxWidth: '85vw'
+                    }}
+                >
                     {selectedListing ? (
                         <ListingDetails 
                             listing={selectedListing} 
@@ -223,6 +238,18 @@ const MarketplaceView: React.FC<MarketplaceViewProps> = (props) => {
                         </div>
                     )}
                 </div>
+
+                {/* Resizable Divider between Marketplace Panel and Map */}
+                <ResizableDivider 
+                    direction="horizontal"
+                    currentSize={marketPanelWidth}
+                    onResize={(newWidth) => setMarketPanelWidth(newWidth)}
+                    minSize={280}
+                    maxSize={typeof window !== 'undefined' ? Math.max(window.innerWidth - 300, 600) : 850}
+                    storageKey="marketplace_panel_width"
+                    isKa={t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka'}
+                    className="hidden md:flex"
+                />
 
                 <div className={`${activeTab === 'map' ? 'flex' : 'hidden md:flex'} flex-1 h-full relative overflow-hidden bg-slate-200`}>
                     <MapComponent {...mapProps} showSearch={true}>

@@ -937,6 +937,12 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
               <StaffAttendanceWidget 
                   logs={props.dailyLogs} 
                   employees={props.employees} 
+                  roles={props.roles}
+                  workAssignments={props.workAssignments}
+                  harvestEvents={props.harvestEvents}
+                  harvestEntries={props.harvestEntries}
+                  plantationFeatures={props.plantationFeatures}
+                  onSetEmployees={props.onSetEmployees}
                   onSetDailyLogs={props.onSetDailyLogs} 
                   onNavigateMode={props.onNavigateMode}
               />

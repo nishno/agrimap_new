@@ -18,7 +18,9 @@ import {
 import { useLanguage } from '../contexts/LanguageContext';
 import { exportToExcel } from '../utils/excelExporter';
 import { createSpreadsheet, ensureGoogleToken } from '../services/googleSheetsService';
-import QrScannerModal, { ScannerCategory } from './QrScannerModal';
+import QrScannerModal, { ScannerCategory, ParsedScanResult } from './QrScannerModal';
+import { parseUniversalScan } from '../utils/universalScannerParser';
+import { findMatchingEmployee } from '../utils/employeeMatching';
 import { toast } from 'sonner';
 
 interface WorkDetailsModalProps {
@@ -104,7 +106,15 @@ export const WorkDetailsModal: React.FC<WorkDetailsModalProps> = ({
         setAuditLogs(work.changeHistory || []);
 
         const defaultDuration = work.plannedTime || 8;
-        const initialRows: WorkerDraftRow[] = (work.assignedEmployeeIds || []).map(empId => {
+        const rawEmpIds = work.assignedEmployeeIds || [];
+        const seenEmpIds = new Set<string>();
+        const uniqueEmpIds = rawEmpIds.filter(id => {
+            if (!id || seenEmpIds.has(id)) return false;
+            seenEmpIds.add(id);
+            return true;
+        });
+
+        const initialRows: WorkerDraftRow[] = uniqueEmpIds.map(empId => {
             const emp = employees.find(e => e.id === empId);
             const loggedHours = work.employeeHours?.find(h => h.employeeId === empId)?.hours;
             const hours = loggedHours !== undefined ? loggedHours : defaultDuration;
@@ -226,6 +236,11 @@ export const WorkDetailsModal: React.FC<WorkDetailsModalProps> = ({
 
     const handleAddWorker = () => {
         if (!selectedNewEmployeeId) return;
+        if (workerRows.some(r => r.employeeId === selectedNewEmployeeId)) {
+            toast.info(isKa ? "თანამშრომელი უკვე დამატებულია" : "Employee already assigned");
+            setSelectedNewEmployeeId('');
+            return;
+        }
         const emp = employees.find(e => e.id === selectedNewEmployeeId);
         if (!emp) return;
 
@@ -240,7 +255,10 @@ export const WorkDetailsModal: React.FC<WorkDetailsModalProps> = ({
             workerNotes: ''
         };
 
-        setWorkerRows(prev => [...prev, newRow]);
+        setWorkerRows(prev => {
+            if (prev.some(r => r.employeeId === newRow.employeeId)) return prev;
+            return [...prev, newRow];
+        });
         setSelectedNewEmployeeId('');
         toast.success(isKa ? `${emp.name} დაემატა სამუშაოზე` : `Added ${emp.name} to work`);
     };
@@ -276,27 +294,15 @@ export const WorkDetailsModal: React.FC<WorkDetailsModalProps> = ({
         setMaterials(prev => prev.filter(m => m.inventoryItemId !== inventoryItemId));
     };
 
-    const handleScanResult = (result: string, targetCat: ScannerCategory = 'auto') => {
+    const handleScanResult = (result: string, targetCat: ScannerCategory = 'auto', parsed?: ParsedScanResult) => {
         const code = result.trim();
         if (!code) return;
 
-        // 1. Check if matches employee
-        const matchedEmp = employees.find(e => 
-            e.id === code ||
-            (e as any).barcode === code ||
-            (e as any).idNumber === code ||
-            e.name.toLowerCase() === code.toLowerCase()
-        );
+        const scanData = parsed || parseUniversalScan(code, employees, inventoryItems, targetCat);
 
-        // 2. Check if matches inventory item
-        const matchedItem = inventoryItems.find(i => 
-            i.id === code ||
-            (i as any).sku === code ||
-            (i as any).barcode === code ||
-            i.name.toLowerCase() === code.toLowerCase()
-        );
-
-        if (targetCat === 'worker' || (targetCat === 'auto' && matchedEmp)) {
+        // 1. Worker Identification
+        if (scanData.detectedType === 'worker' || scanData.employee || targetCat === 'worker') {
+            const matchedEmp = scanData.employee || findMatchingEmployee(employees, code) || employees.find(e => e.id === code || e.barcode === code || e.idNumber === code);
             if (matchedEmp) {
                 if (workerRows.some(w => w.employeeId === matchedEmp.id)) {
                     toast.info(isKa ? `${matchedEmp.name} უკვე არის სიაში` : `${matchedEmp.name} is already assigned`);
@@ -313,11 +319,10 @@ export const WorkDetailsModal: React.FC<WorkDetailsModalProps> = ({
                         workerNotes: isKa ? 'დამატებულია QR სკანირებით' : 'Assigned via QR Scan'
                     };
                     setWorkerRows(prev => [...prev, newRow]);
-                    toast.success(isKa ? `✓ ${matchedEmp.name} წარმატებით დაემატა!` : `✓ Assigned ${matchedEmp.name}!`);
+                    toast.success(isKa ? `✓ ${matchedEmp.name} წარმატებით დაემატა სამუშაოზე!` : `✓ Assigned ${matchedEmp.name} to task!`);
                 }
-                setIsScannerOpen(false);
                 return;
-            } else if (targetCat === 'worker') {
+            } else if (targetCat === 'worker' && !workerRows.some(w => w.name === code || w.employeeId === code)) {
                 const tempId = `worker-scan-${Date.now()}`;
                 const newRow: WorkerDraftRow = {
                     employeeId: tempId,
@@ -331,35 +336,55 @@ export const WorkDetailsModal: React.FC<WorkDetailsModalProps> = ({
                 };
                 setWorkerRows(prev => [...prev, newRow]);
                 toast.success(isKa ? `✓ მუშაკი "${code}" დაემატა!` : `✓ Added worker "${code}"!`);
-                setIsScannerOpen(false);
                 return;
             }
         }
 
-        if (targetCat === 'material' || (targetCat === 'auto' && matchedItem)) {
-            if (matchedItem) {
-                const existing = materials.find(m => m.inventoryItemId === matchedItem.id);
+        // 2. Material / Agro-input Identification
+        if (scanData.detectedType === 'material' || scanData.material || ['material', 'supplies', 'assets', 'goods'].includes(targetCat)) {
+            const mat = scanData.material;
+            const item = mat?.item || inventoryItems.find(i => 
+                i.id === (mat?.materialId || code) || 
+                (i as any).sku === (mat?.sku || code) ||
+                i.name.toLowerCase() === (mat?.materialName || code).toLowerCase()
+            );
+
+            const qtyToAdd = mat?.quantity || 1;
+            const unitToAdd = mat?.unit || item?.unitOfMeasure || 'units';
+            const nameToAdd = mat?.materialName || item?.name || code;
+            const unitCost = item?.unitCost || 0;
+
+            if (item) {
+                const existing = materials.find(m => m.inventoryItemId === item.id);
                 if (existing) {
-                    setMaterials(prev => prev.map(m => m.inventoryItemId === matchedItem.id 
-                        ? { ...m, quantity: m.quantity + 1, cost: (m.quantity + 1) * (m.unitCost || 0) } 
+                    setMaterials(prev => prev.map(m => m.inventoryItemId === item.id 
+                        ? { ...m, quantity: m.quantity + qtyToAdd, cost: (m.quantity + qtyToAdd) * (m.unitCost || 0) } 
                         : m
                     ));
-                    toast.success(isKa ? `✓ +1 ${matchedItem.name}` : `✓ +1 ${matchedItem.name} added`);
+                    toast.success(isKa ? `✓ +${qtyToAdd} ${unitToAdd} ${item.name}` : `✓ +${qtyToAdd} ${unitToAdd} ${item.name} added`);
                 } else {
                     setMaterials(prev => [...prev, {
-                        inventoryItemId: matchedItem.id,
-                        name: matchedItem.name,
-                        quantity: 1,
-                        unit: matchedItem.unitOfMeasure || 'units',
-                        unitCost: matchedItem.unitCost || 0,
-                        cost: matchedItem.unitCost || 0
+                        inventoryItemId: item.id,
+                        name: item.name,
+                        quantity: qtyToAdd,
+                        unit: unitToAdd,
+                        unitCost: unitCost,
+                        cost: unitCost * qtyToAdd
                     }]);
-                    toast.success(isKa ? `✓ ${matchedItem.name} დაემატა მასალებში!` : `✓ Added ${matchedItem.name} to materials!`);
+                    toast.success(isKa ? `✓ ${item.name} (${qtyToAdd} ${unitToAdd}) დაემატა მასალებში!` : `✓ Added ${item.name} (${qtyToAdd} ${unitToAdd}) to materials!`);
                 }
                 setIsScannerOpen(false);
                 return;
-            } else if (targetCat === 'material') {
-                toast.error(isKa ? `მასალა ვერ მოიძებნა კოდით: ${code}` : `No inventory item found for code: ${code}`);
+            } else {
+                setMaterials(prev => [...prev, {
+                    inventoryItemId: mat?.materialId || `mat-scan-${Date.now()}`,
+                    name: nameToAdd,
+                    quantity: qtyToAdd,
+                    unit: unitToAdd,
+                    unitCost: 0,
+                    cost: 0
+                }]);
+                toast.success(isKa ? `✓ ${nameToAdd} (${qtyToAdd} ${unitToAdd}) დაემატა!` : `✓ Added ${nameToAdd} (${qtyToAdd} ${unitToAdd})!`);
                 setIsScannerOpen(false);
                 return;
             }
@@ -440,14 +465,19 @@ export const WorkDetailsModal: React.FC<WorkDetailsModalProps> = ({
 
         const combinedHistory = [...(work.changeHistory || []), ...newAuditEntries];
 
+        const uniqueEmployeeIds = Array.from(new Set(workerRows.map(r => r.employeeId)));
+
         const updatedWork: WorkAssignment = {
             ...work,
             workName: workName.trim() || work.workName,
             date: new Date(workDate).toISOString(),
             status,
             notes: generalNotes,
-            assignedEmployeeIds: workerRows.map(r => r.employeeId),
-            employeeHours: workerRows.map(r => ({ employeeId: r.employeeId, hours: r.hours })),
+            assignedEmployeeIds: uniqueEmployeeIds,
+            employeeHours: uniqueEmployeeIds.map(empId => {
+                const row = workerRows.find(r => r.employeeId === empId);
+                return { employeeId: empId, hours: row ? row.hours : (work.plannedTime || 8) };
+            }),
             materialsUsed: materials,
             assignedVehicles: vehicles,
             totalLaborCost,
@@ -868,7 +898,7 @@ export const WorkDetailsModal: React.FC<WorkDetailsModalProps> = ({
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
                                         {filteredWorkers.map((w, idx) => (
-                                            <tr key={w.employeeId} className="hover:bg-slate-50/80 transition-colors">
+                                            <tr key={`${w.employeeId || 'worker'}-${idx}`} className="hover:bg-slate-50/80 transition-colors">
                                                 <td className="p-3 font-mono text-slate-400 font-bold text-[10px]">
                                                     {idx + 1}
                                                 </td>
@@ -1043,7 +1073,7 @@ export const WorkDetailsModal: React.FC<WorkDetailsModalProps> = ({
                                         {vehicles.map((veh, idx) => {
                                             const lineCost = !veh.isOwned ? (veh.usageHours || 0) * (veh.hiredCost || 0) : 0;
                                             return (
-                                                <tr key={veh.id || idx} className="hover:bg-slate-50/80 transition-colors">
+                                                <tr key={veh.id ? `${veh.id}-${idx}` : `veh-${idx}`} className="hover:bg-slate-50/80 transition-colors">
                                                     <td className="p-3 font-mono text-slate-400 font-bold text-[10px]">
                                                         {idx + 1}
                                                     </td>
@@ -1190,7 +1220,7 @@ export const WorkDetailsModal: React.FC<WorkDetailsModalProps> = ({
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
                                         {materialDetails.map((mat, idx) => (
-                                            <tr key={mat.inventoryItemId} className="hover:bg-slate-50/80 transition-colors">
+                                            <tr key={`${mat.inventoryItemId || 'mat'}-${idx}`} className="hover:bg-slate-50/80 transition-colors">
                                                 <td className="p-3 font-mono text-slate-400 font-bold text-[10px]">
                                                     {idx + 1}
                                                 </td>
@@ -1260,7 +1290,7 @@ export const WorkDetailsModal: React.FC<WorkDetailsModalProps> = ({
 
                             <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm bg-white divide-y divide-slate-100">
                                 {auditLogs.map((entry, idx) => (
-                                    <div key={entry.id || idx} className="p-3.5 hover:bg-slate-50 transition-colors flex items-start justify-between gap-3">
+                                    <div key={entry.id ? `${entry.id}-${idx}` : `audit-${idx}`} className="p-3.5 hover:bg-slate-50 transition-colors flex items-start justify-between gap-3">
                                         <div className="space-y-1">
                                             <div className="flex items-center gap-2">
                                                 <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-md text-[9px] font-black uppercase tracking-wider">
@@ -1334,6 +1364,7 @@ export const WorkDetailsModal: React.FC<WorkDetailsModalProps> = ({
                     onScan={handleScanResult}
                     initialCategory={scannerCategory}
                     mockEmployees={employees}
+                    inventoryItems={inventoryItems}
                     title={scannerCategory === 'worker' ? (isKa ? "თანამშრომლის QR სკანერი" : "Scan Worker QR / Badge") : (isKa ? "მასალის / ინვენტარის სკანერი" : "Scan Material SKU / Barcode")}
                     description={isKa ? "დაასკანერეთ კამერით ან USB/Bluetooth სკანერით" : "Scan with camera or USB/Bluetooth scanner"}
                 />

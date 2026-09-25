@@ -160,6 +160,81 @@ try {
                 }
             };
         }
+
+        // Global Canvas Renderer Safety Guard for Leaflet (L.Canvas)
+        // Prevents "Uncaught TypeError: Cannot read properties of undefined (reading 'clearRect')"
+        // when vector layers are unmounted, moved, or redrawn after container disposal.
+        if ((L as any).Canvas && (L as any).Canvas.prototype) {
+            const CanvasProto = (L as any).Canvas.prototype;
+
+            const origClear = CanvasProto._clear;
+            CanvasProto._clear = function () {
+                if (!this._ctx || !this._container) return;
+                try {
+                    if (origClear) {
+                        origClear.call(this);
+                    }
+                } catch (e) {
+                    // Suppress unmounted/cleared canvas context clearRect errors
+                }
+            };
+
+            const origDraw = CanvasProto._draw;
+            CanvasProto._draw = function () {
+                if (!this._ctx || !this._container) return;
+                try {
+                    if (origDraw) {
+                        origDraw.call(this);
+                    }
+                } catch (e) {
+                    // Suppress drawing on destroyed/detached context
+                }
+            };
+
+            const origRedraw = CanvasProto._redraw;
+            CanvasProto._redraw = function () {
+                if (!this._ctx || !this._container) {
+                    this._redrawRequest = null;
+                    return;
+                }
+                try {
+                    if (origRedraw) {
+                        origRedraw.call(this);
+                    }
+                } catch (e) {
+                    this._redrawRequest = null;
+                }
+            };
+
+            const origUpdate = CanvasProto._update;
+            CanvasProto._update = function () {
+                if (!this._ctx || !this._container) return;
+                try {
+                    if (origUpdate) {
+                        origUpdate.call(this);
+                    }
+                } catch (e) {
+                    // Suppress canvas dimension update on disposed container
+                }
+            };
+
+            const origDestroyContainer = CanvasProto._destroyContainer;
+            CanvasProto._destroyContainer = function () {
+                if (this._redrawRequest) {
+                    try {
+                        (L as any).Util?.cancelAnimFrame?.(this._redrawRequest);
+                    } catch (_) {}
+                    this._redrawRequest = null;
+                }
+                try {
+                    if (origDestroyContainer) {
+                        origDestroyContainer.call(this);
+                    }
+                } catch (e) {
+                    // Gracefully handle container teardown
+                }
+            };
+        }
     }
 } catch (e) {
     console.warn('[Leaflet Safety Interceptor] Error initializing safety patches:', e);

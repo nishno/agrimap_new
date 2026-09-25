@@ -171,175 +171,192 @@ export const DroneCameraWindow: React.FC<DroneCameraWindowProps> = ({
 
     // Realistic Drone Camera Simulation Render Loop
     useEffect(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-
+        let isCancelled = false;
         let frame = 0;
+
         const render = () => {
+            if (isCancelled) return;
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
             frame++;
-            const w = canvas.width;
-            const h = canvas.height;
-            ctx.clearRect(0, 0, w, h);
+            const w = canvas.width || 480;
+            const h = canvas.height || 270;
 
-            // 1. Terrain Base
-            if (cameraMode === 'rgb') {
-                // Natural agricultural terrain
-                const grad = ctx.createLinearGradient(0, 0, w, h);
-                grad.addColorStop(0, '#3a5f2d');
-                grad.addColorStop(0.5, '#477337');
-                grad.addColorStop(1, '#2f4f22');
-                ctx.fillStyle = grad;
-                ctx.fillRect(0, 0, w, h);
+            try {
+                ctx.clearRect(0, 0, w, h);
 
-                // Planted tree rows / trench lines
-                ctx.strokeStyle = '#27411c';
-                ctx.lineWidth = 14;
-                const offset = (frame * (isPlaying ? speed * 0.2 : 0.3)) % 40;
-                for (let x = -50; x < w + 80; x += 42) {
-                    ctx.beginPath();
-                    ctx.moveTo(x + offset * 0.4, 0);
-                    ctx.lineTo(x - 20 + offset * 0.4, h);
-                    ctx.stroke();
+                // 1. Terrain Base
+                if (cameraMode === 'rgb') {
+                    // Natural agricultural terrain
+                    const grad = ctx.createLinearGradient(0, 0, w, h);
+                    grad.addColorStop(0, '#3a5f2d');
+                    grad.addColorStop(0.5, '#477337');
+                    grad.addColorStop(1, '#2f4f22');
+                    ctx.fillStyle = grad;
+                    ctx.fillRect(0, 0, w, h);
 
-                    // Seedling dots on row
-                    for (let y = 15; y < h; y += 32) {
-                        ctx.fillStyle = '#65a30d';
+                    // Planted tree rows / trench lines
+                    ctx.strokeStyle = '#27411c';
+                    ctx.lineWidth = 14;
+                    const offset = (frame * (isPlaying ? speed * 0.2 : 0.3)) % 40;
+                    for (let x = -50; x < w + 80; x += 42) {
                         ctx.beginPath();
-                        ctx.arc(x + offset * 0.4 - (y / h) * 20, y, 6, 0, Math.PI * 2);
-                        ctx.fill();
-                        ctx.fillStyle = '#84cc16';
+                        ctx.moveTo(x + offset * 0.4, 0);
+                        ctx.lineTo(x - 20 + offset * 0.4, h);
+                        ctx.stroke();
+
+                        // Seedling dots on row
+                        for (let y = 15; y < h; y += 32) {
+                            ctx.fillStyle = '#65a30d';
+                            ctx.beginPath();
+                            ctx.arc(x + offset * 0.4 - (y / h) * 20, y, 6, 0, Math.PI * 2);
+                            ctx.fill();
+                            ctx.fillStyle = '#84cc16';
+                            ctx.beginPath();
+                            ctx.arc(x + offset * 0.4 - (y / h) * 20 - 1, y - 1, 3, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    }
+                } else if (cameraMode === 'ndvi') {
+                    // NDVI False Color (Green = High Vigor, Yellow = Moderate, Red = Water/Pest Stress)
+                    const grad = ctx.createLinearGradient(0, 0, w, h);
+                    grad.addColorStop(0, '#15803d');
+                    grad.addColorStop(0.4, '#84cc16');
+                    grad.addColorStop(0.7, '#eab308');
+                    grad.addColorStop(1, '#ef4444');
+                    ctx.fillStyle = grad;
+                    ctx.fillRect(0, 0, w, h);
+
+                    // NDVI heatmap noise texture
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+                    for (let i = 0; i < 40; i++) {
+                        const rx = (i * 37 + frame * 0.5) % w;
+                        const ry = (i * 29) % h;
                         ctx.beginPath();
-                        ctx.arc(x + offset * 0.4 - (y / h) * 20 - 1, y - 1, 3, 0, Math.PI * 2);
+                        ctx.arc(rx, ry, 18, 0, Math.PI * 2);
                         ctx.fill();
                     }
-                }
-            } else if (cameraMode === 'ndvi') {
-                // NDVI False Color (Green = High Vigor, Yellow = Moderate, Red = Water/Pest Stress)
-                const grad = ctx.createLinearGradient(0, 0, w, h);
-                grad.addColorStop(0, '#15803d');
-                grad.addColorStop(0.4, '#84cc16');
-                grad.addColorStop(0.7, '#eab308');
-                grad.addColorStop(1, '#ef4444');
-                ctx.fillStyle = grad;
-                ctx.fillRect(0, 0, w, h);
+                } else {
+                    // Thermal IR (Ironbow: Dark Blue -> Purple -> Orange -> White)
+                    const grad = ctx.createLinearGradient(0, 0, 0, h);
+                    grad.addColorStop(0, '#1e1b4b');
+                    grad.addColorStop(0.3, '#581c87');
+                    grad.addColorStop(0.6, '#ea580c');
+                    grad.addColorStop(0.9, '#fde047');
+                    grad.addColorStop(1, '#ffffff');
+                    ctx.fillStyle = grad;
+                    ctx.fillRect(0, 0, w, h);
 
-                // NDVI heatmap noise texture
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-                for (let i = 0; i < 40; i++) {
-                    const rx = (i * 37 + frame * 0.5) % w;
-                    const ry = (i * 29) % h;
-                    ctx.beginPath();
-                    ctx.arc(rx, ry, 18, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-            } else {
-                // Thermal IR (Ironbow: Dark Blue -> Purple -> Orange -> White)
-                const grad = ctx.createLinearGradient(0, 0, 0, h);
-                grad.addColorStop(0, '#1e1b4b');
-                grad.addColorStop(0.3, '#581c87');
-                grad.addColorStop(0.6, '#ea580c');
-                grad.addColorStop(0.9, '#fde047');
-                grad.addColorStop(1, '#ffffff');
-                ctx.fillStyle = grad;
-                ctx.fillRect(0, 0, w, h);
-
-                // Thermal canopy spots
-                ctx.fillStyle = 'rgba(253, 224, 71, 0.4)';
-                for (let x = 20; x < w; x += 50) {
-                    for (let y = 20; y < h; y += 40) {
-                        ctx.beginPath();
-                        ctx.arc(x + Math.sin(frame * 0.05 + x) * 4, y, 12, 0, Math.PI * 2);
-                        ctx.fill();
+                    // Thermal canopy spots
+                    ctx.fillStyle = 'rgba(253, 224, 71, 0.4)';
+                    for (let x = 20; x < w; x += 50) {
+                        for (let y = 20; y < h; y += 40) {
+                            ctx.beginPath();
+                            ctx.arc(x + Math.sin(frame * 0.05 + x) * 4, y, 12, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
                     }
                 }
-            }
 
-            // 2. FPV HUD Graphics Overlay
-            const cx = w / 2;
-            const cy = h / 2;
+                // 2. FPV HUD Graphics Overlay
+                const cx = w / 2;
+                const cy = h / 2;
 
-            // Pitch ladder & Artificial Horizon
-            const rollAngle = Math.sin(frame * 0.03) * 0.05;
-            ctx.save();
-            ctx.translate(cx, cy);
-            ctx.rotate(rollAngle);
+                // Pitch ladder & Artificial Horizon
+                const rollAngle = Math.sin(frame * 0.03) * 0.05;
+                ctx.save();
+                ctx.translate(cx, cy);
+                ctx.rotate(rollAngle);
 
-            // Center reticle
-            ctx.strokeStyle = '#00ffcc';
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            ctx.moveTo(-18, 0);
-            ctx.lineTo(-6, 0);
-            ctx.moveTo(6, 0);
-            ctx.lineTo(18, 0);
-            ctx.moveTo(0, -18);
-            ctx.lineTo(0, -6);
-            ctx.moveTo(0, 6);
-            ctx.lineTo(0, 18);
-            ctx.stroke();
+                // Center reticle
+                ctx.strokeStyle = '#00ffcc';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(-18, 0);
+                ctx.lineTo(-6, 0);
+                ctx.moveTo(6, 0);
+                ctx.lineTo(18, 0);
+                ctx.moveTo(0, -18);
+                ctx.lineTo(0, -6);
+                ctx.moveTo(0, 6);
+                ctx.lineTo(0, 18);
+                ctx.stroke();
 
-            // Reticle box
-            ctx.strokeRect(-4, -4, 8, 8);
+                // Reticle box
+                ctx.strokeRect(-4, -4, 8, 8);
 
-            // Pitch lines
-            ctx.strokeStyle = 'rgba(0, 255, 204, 0.5)';
-            ctx.beginPath();
-            ctx.moveTo(-35, -25);
-            ctx.lineTo(35, -25);
-            ctx.moveTo(-25, 25);
-            ctx.lineTo(25, 25);
-            ctx.stroke();
-            ctx.restore();
+                // Pitch lines
+                ctx.strokeStyle = 'rgba(0, 255, 204, 0.5)';
+                ctx.beginPath();
+                ctx.moveTo(-35, -25);
+                ctx.lineTo(35, -25);
+                ctx.moveTo(-25, 25);
+                ctx.lineTo(25, 25);
+                ctx.stroke();
+                ctx.restore();
 
-            // 3. Compass ribbon at top
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-            ctx.fillRect(cx - 70, 8, 140, 18);
-            ctx.strokeStyle = '#00ffcc';
-            ctx.strokeRect(cx - 70, 8, 140, 18);
-            ctx.fillStyle = '#00ffcc';
-            ctx.font = 'bold 9px monospace';
-            ctx.textAlign = 'center';
-            const heading = Math.round((45 + Math.sin(frame * 0.02) * 8 + 360) % 360);
-            ctx.fillText(`${heading.toString().padStart(3, '0')}° N-NE`, cx, 21);
+                // 3. Compass ribbon at top
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.fillRect(cx - 70, 8, 140, 18);
+                ctx.strokeStyle = '#00ffcc';
+                ctx.strokeRect(cx - 70, 8, 140, 18);
+                ctx.fillStyle = '#00ffcc';
+                ctx.font = 'bold 9px monospace';
+                ctx.textAlign = 'center';
+                const heading = Math.round((45 + Math.sin(frame * 0.02) * 8 + 360) % 360);
+                ctx.fillText(`${heading.toString().padStart(3, '0')}° N-NE`, cx, 21);
 
-            // 4. Photogrammetry Scanning Line Sweep
-            const sweepY = (frame * 3) % h;
-            ctx.strokeStyle = cameraMode === 'ndvi' ? 'rgba(74, 222, 128, 0.7)' : cameraMode === 'thermal' ? 'rgba(251, 146, 60, 0.7)' : 'rgba(56, 189, 248, 0.7)';
-            ctx.lineWidth = 2;
-            ctx.setLineDash([4, 4]);
-            ctx.beginPath();
-            ctx.moveTo(0, sweepY);
-            ctx.lineTo(w, sweepY);
-            ctx.stroke();
-            ctx.setLineDash([]);
+                // 4. Photogrammetry Scanning Line Sweep
+                const sweepY = (frame * 3) % h;
+                ctx.strokeStyle = cameraMode === 'ndvi' ? 'rgba(74, 222, 128, 0.7)' : cameraMode === 'thermal' ? 'rgba(251, 146, 60, 0.7)' : 'rgba(56, 189, 248, 0.7)';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([4, 4]);
+                ctx.beginPath();
+                ctx.moveTo(0, sweepY);
+                ctx.lineTo(w, sweepY);
+                ctx.stroke();
+                ctx.setLineDash([]);
 
-            // 5. Live Recording Watermark
-            if (isRecording) {
-                const isBlink = Math.floor(frame / 20) % 2 === 0;
-                if (isBlink) {
-                    ctx.fillStyle = '#ef4444';
-                    ctx.beginPath();
-                    ctx.arc(20, 20, 5, 0, Math.PI * 2);
-                    ctx.fill();
+                // 5. Live Recording Watermark
+                if (isRecording) {
+                    const isBlink = Math.floor(frame / 20) % 2 === 0;
+                    if (isBlink) {
+                        ctx.fillStyle = '#ef4444';
+                        ctx.beginPath();
+                        ctx.arc(20, 20, 5, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = 'bold 10px monospace';
+                    ctx.textAlign = 'left';
+                    const mins = String(Math.floor(recordingSec / 60)).padStart(2, '0');
+                    const secs = String(recordingSec % 60).padStart(2, '0');
+                    ctx.fillText(`REC [${mins}:${secs}] 4K-60FPS`, 30, 24);
                 }
-                ctx.fillStyle = '#ffffff';
-                ctx.font = 'bold 10px monospace';
-                ctx.textAlign = 'left';
-                const mins = String(Math.floor(recordingSec / 60)).padStart(2, '0');
-                const secs = String(recordingSec % 60).padStart(2, '0');
-                ctx.fillText(`REC [${mins}:${secs}] 4K-60FPS`, 30, 24);
+            } catch (renderErr) {
+                // Safeguard against canvas context disposal during mode/unmount changes
             }
 
+            if (!isCancelled) {
+                animFrameRef.current = requestAnimationFrame(render);
+            }
+        };
+
+        if (isOpen && !isMinimized && activeTab === 'feed') {
             animFrameRef.current = requestAnimationFrame(render);
-        };
+        }
 
-        render();
         return () => {
-            if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+            isCancelled = true;
+            if (animFrameRef.current) {
+                cancelAnimationFrame(animFrameRef.current);
+                animFrameRef.current = null;
+            }
         };
-    }, [cameraMode, isPlaying, speed, altitude, isRecording, recordingSec]);
+    }, [isOpen, isMinimized, activeTab, cameraMode, isPlaying, speed, altitude, isRecording, recordingSec]);
 
     if (!isOpen) return null;
 

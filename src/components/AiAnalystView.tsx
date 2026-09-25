@@ -29,6 +29,8 @@ import {
     getSavedAnalysisConfig, saveAnalysisConfig 
 } from '../services/crossModuleAnalysisService';
 import { toast } from 'sonner';
+import ResizableDivider from './common/ResizableDivider';
+import { safeStorage } from '../services/storageService';
 
 
 interface AiAnalystViewProps {
@@ -131,6 +133,13 @@ const AiAnalystView: React.FC<AiAnalystViewProps> = (props) => {
 
     const [searchQuery, setSearchQuery] = useState('');
     const [regionSearch, setRegionSearch] = useState('');
+
+    // Resizable Edge Handle state
+    const [analystPanelWidth, setAnalystPanelWidth] = useState<number>(() => {
+        const saved = safeStorage.getItem('ai_analyst_panel_width');
+        const parsed = saved ? parseInt(saved, 10) : 480;
+        return Number.isFinite(parsed) && parsed >= 280 ? parsed : 480;
+    });
     const [regionalData, setRegionalData] = useState<{
         plantations: number;
         crops: { name: string, area: number }[];
@@ -367,7 +376,13 @@ const AiAnalystView: React.FC<AiAnalystViewProps> = (props) => {
             ) : (
             <div className="flex-1 overflow-hidden flex flex-col md:flex-row bg-gray-100">
                 {/* Control Panel */}
-                <div className={`w-full ${activeTab === 'cross_module' ? 'md:w-[540px]' : 'md:w-[450px]'} bg-white border-r flex-shrink-0 flex flex-col h-[50vh] md:h-full overflow-y-auto ${isMapFullScreen ? 'hidden' : ''}`}>
+                <div 
+                    className={`w-full bg-white border-r flex-shrink-0 flex flex-col h-[50vh] md:h-full overflow-y-auto ${isMapFullScreen ? 'hidden' : ''}`}
+                    style={{
+                        width: typeof window !== 'undefined' && window.innerWidth > 768 ? `${analystPanelWidth}px` : undefined,
+                        maxWidth: '85vw'
+                    }}
+                >
                     
                     {activeTab === 'cross_module' && (
                         <div className="p-6 space-y-6 animate-fade-in">
@@ -810,8 +825,23 @@ const AiAnalystView: React.FC<AiAnalystViewProps> = (props) => {
                         </div>
                     )}
                 </div>
+
+                {/* Resizable Divider between AI Analyst Panel and Map */}
+                {!isMapFullScreen && (
+                    <ResizableDivider 
+                        direction="horizontal"
+                        currentSize={analystPanelWidth}
+                        onResize={(newWidth) => setAnalystPanelWidth(newWidth)}
+                        minSize={280}
+                        maxSize={typeof window !== 'undefined' ? Math.max(window.innerWidth - 300, 600) : 850}
+                        storageKey="ai_analyst_panel_width"
+                        isKa={isKa}
+                        className="hidden md:flex"
+                    />
+                )}
+
                 {/* Map View */}
-                <div className={`flex-grow relative ${isMapFullScreen ? 'h-full' : 'h-[50vh] md:h-auto'}`}>
+                <div className={`flex-1 relative ${isMapFullScreen ? 'h-full' : 'h-[50vh] md:h-auto'}`}>
                     <MapComponent 
                         {...mapProps} 
                         showSearch={true}
