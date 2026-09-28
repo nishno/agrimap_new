@@ -750,7 +750,9 @@ export type InventoryCategory =
     | 'Construction' 
     | 'Consumables' 
     | 'Produce' 
-    | 'Other';
+    | 'Other'
+    | 'Uncategorized'
+    | (string & {});
 
 export const INVENTORY_CATEGORIES: InventoryCategory[] = [
     'Fertilizers', 
@@ -768,7 +770,8 @@ export const INVENTORY_CATEGORIES: InventoryCategory[] = [
     'Machinery', 
     'Fixed Assets', 
     'Produce', 
-    'Other'
+    'Other',
+    'Uncategorized'
 ];
 
 export interface CategoryGroupsMap {
@@ -836,6 +839,21 @@ export interface RefrigeratorLot {
     salesHistory?: RefrigeratorSaleRecord[];
 }
 
+export interface SubStock {
+    id: string;
+    organizationId?: string;
+    name: string;
+    code: string;
+    locationDescription?: string;
+    managerName?: string;
+    contactPhone?: string;
+    isMain?: boolean;
+    connectedToMain?: boolean;
+    color?: string;
+    notes?: string;
+    createdAt?: string;
+}
+
 export interface InventoryItem {
     id: string;
     organizationId?: string;
@@ -847,6 +865,8 @@ export interface InventoryItem {
     currentStock: number;
     minStockThreshold: number;
     location?: string;
+    subStockId?: string;
+    subStockName?: string;
     unitCost: number;
     supplierId?: string;
     avgTareWeightKg?: number;
@@ -984,6 +1004,9 @@ export interface Supplier {
     contactPerson?: string;
     email?: string;
     phone?: string;
+    taxId?: string;
+    address?: string;
+    notes?: string;
 }
 
 export type PurchaseDocumentType = 'Invoice from Company' | 'IE Agreement' | 'Cash Receipt';
@@ -994,13 +1017,18 @@ export interface PurchaseOrder {
     supplierId: string;
     supplierName?: string;
     date: string;
+    expectedDate?: string;
     items: PurchaseOrderItem[];
     totalCost: number;
-    status: 'Draft' | 'Pre-order' | 'Ordered' | 'Received';
+    status: 'Draft' | 'Pre-order' | 'Ordered' | 'Received' | 'Returned' | 'Cancelled';
     notes?: string;
     documentUrl?: string;
     documentAnalysis?: PurchaseDocumentAnalysis | null;
     documentType: PurchaseDocumentType;
+    targetSubStockId?: string;
+    targetSubStockName?: string;
+    returnReason?: string;
+    refundAmount?: number;
 }
 
 export interface PurchaseOrderItem {
@@ -1015,10 +1043,23 @@ export interface PurchaseOrderItem {
     category?: string;
 }
 
+export type StockDocumentCategory = 
+    | 'forms' 
+    | 'templates' 
+    | 'agreements' 
+    | 'images' 
+    | 'analysis' 
+    | 'invoices' 
+    | 'certificates' 
+    | 'plantation_photos' 
+    | 'lab_reports' 
+    | 'contracts' 
+    | 'other';
+
 export interface StockDocument {
     id: string;
     title: string;
-    category: 'plantation_photos' | 'invoices' | 'lab_reports' | 'certificates' | 'contracts' | 'other';
+    category: StockDocumentCategory;
     fileUrl: string;
     fileType: string;
     fileSize?: string;

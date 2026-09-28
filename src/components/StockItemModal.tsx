@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import type { InventoryItem } from '../types';
+import type { InventoryItem, SubStock } from '../types';
 import { XCircleIcon } from './Icons';
-import { QrCode } from 'lucide-react';
+import { QrCode, Plus } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import MaterialQrGeneratorModal from './MaterialQrGeneratorModal';
 
@@ -9,14 +9,26 @@ interface StockItemModalProps {
     item: InventoryItem | null;
     onSave: (item: InventoryItem) => void;
     onClose: () => void;
+    subStocks?: SubStock[];
+    customCategories?: string[];
+    onAddCustomCategory?: (category: string) => void;
 }
 
-const StockItemModal: React.FC<StockItemModalProps> = ({ item, onSave, onClose }) => {
+const StockItemModal: React.FC<StockItemModalProps> = ({ 
+    item, 
+    onSave, 
+    onClose, 
+    subStocks = [], 
+    customCategories = [],
+    onAddCustomCategory 
+}) => {
     const { t, language } = useLanguage();
     const isKa = language === 'ka';
 
     const [isBatchQrOpen, setIsBatchQrOpen] = useState(false);
     const [machineryDetails, setMachineryDetails] = useState(item?.machineryDetails || { ownership: "owned", vehicleCategory: "passenger", passengerCapacity: undefined, cargoPurpose: "", payloadCapacity: undefined, enginePower: "", toolCategory: "", baseCostRate: undefined, foremanId: "" } as any);
+    const [showNewCatInput, setShowNewCatInput] = useState(false);
+    const [newCatName, setNewCatName] = useState('');
     const [formState, setFormState] = useState<Omit<InventoryItem, 'id'>>({
         name: item?.name || '',
         sku: item?.sku || '',
@@ -26,6 +38,8 @@ const StockItemModal: React.FC<StockItemModalProps> = ({ item, onSave, onClose }
         currentStock: item?.currentStock || 0,
         minStockThreshold: item?.minStockThreshold || 0,
         location: item?.location || '',
+        subStockId: item?.subStockId || undefined,
+        subStockName: item?.subStockName || undefined,
         unitCost: item?.unitCost || 0,
         supplierId: item?.supplierId || '',
         avgTareWeightKg: item?.avgTareWeightKg || undefined,
@@ -113,10 +127,49 @@ const StockItemModal: React.FC<StockItemModalProps> = ({ item, onSave, onClose }
                                 <input name="sku" value={formState.sku} onChange={handleChange} className="input-field" placeholder={isKa ? "მაგ. FERT-001" : "e.g. FERT-001"} />
                             </div>
                             <div>
-                                <label className="font-bold text-slate-700 block mb-1">
-                                    {isKa ? 'კატეგორია' : 'Category'} <span className="text-rose-500">*</span>
-                                </label>
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="font-bold text-slate-700 block">
+                                        {isKa ? 'კატეგორია' : 'Category'} <span className="text-rose-500">*</span>
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowNewCatInput(!showNewCatInput)}
+                                        className="text-[11px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer"
+                                    >
+                                        <Plus className="w-3 h-3" />
+                                        <span>{isKa ? '+ ახალი კატეგორია' : '+ New Category'}</span>
+                                    </button>
+                                </div>
+
+                                {showNewCatInput && (
+                                    <div className="flex items-center gap-1.5 mb-2 p-2 bg-blue-50 rounded-xl border border-blue-200">
+                                        <input
+                                            type="text"
+                                            value={newCatName}
+                                            onChange={(e) => setNewCatName(e.target.value)}
+                                            placeholder={isKa ? 'შეიყვანეთ ახალი კატეგორია...' : 'Enter category name...'}
+                                            className="flex-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs outline-none"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (newCatName.trim()) {
+                                                    const trimmed = newCatName.trim();
+                                                    onAddCustomCategory?.(trimmed);
+                                                    setFormState(prev => ({ ...prev, category: trimmed as any }));
+                                                    setNewCatName('');
+                                                    setShowNewCatInput(false);
+                                                }
+                                            }}
+                                            className="px-2.5 py-1 bg-blue-600 text-white rounded-lg text-xs font-bold"
+                                        >
+                                            {isKa ? 'დამატება' : 'Add'}
+                                        </button>
+                                    </div>
+                                )}
+
                                 <select name="category" value={formState.category} onChange={handleChange} className="input-field" required>
+                                    <option value="Uncategorized">⚠️ {isKa ? 'უკატეგორიო ნივთები (დალაგებამდე)' : 'Uncategorized (Pending)'}</option>
                                     <optgroup label={isKa ? "🌱 აგროინპუტები" : "🌱 Agroinputs"}>
                                         <option value="Fertilizers">{isKa ? 'სასუქები' : 'Fertilizers'}</option>
                                         <option value="Pesticides">{isKa ? 'პესტიციდები' : 'Pesticides'}</option>
@@ -132,19 +185,57 @@ const StockItemModal: React.FC<StockItemModalProps> = ({ item, onSave, onClose }
                                         <option value="Construction">{isKa ? 'სამშენებლო მასალები' : 'Construction'}</option>
                                         <option value="Consumables">{isKa ? 'სახარჯი მასალები' : 'Consumables'}</option>
                                         <option value="Tools">{isKa ? 'ხელსაწყოები' : 'Tools'}</option>
-                                        <option value="Other">{isKa ? 'სხვა' : 'Other'}</option>
+                                        <option value="Other">{isKa ? 'სხვა (Other)' : 'Other'}</option>
                                     </optgroup>
                                     <optgroup label={isKa ? "🚜 ტექნიკა და აქტივები" : "🚜 Machinery & Assets"}>
                                         <option value="Machinery">{isKa ? 'ტექნიკა' : 'Machinery'}</option>
                                         <option value="Fixed Assets">{isKa ? 'ძირითადი აქტივები' : 'Fixed Assets'}</option>
                                     </optgroup>
+                                    {customCategories.length > 0 && (
+                                        <optgroup label={isKa ? "🏷️ მორგებული კატეგორიები" : "🏷️ Custom Categories"}>
+                                            {customCategories.map(cat => (
+                                                <option key={cat} value={cat}>{cat}</option>
+                                            ))}
+                                        </optgroup>
+                                    )}
                                 </select>
                             </div>
                             <div>
                                 <label className="font-bold text-slate-700 block mb-1">
                                     {isKa ? 'საწყობის ლოკაცია' : 'Warehouse Location'}
                                 </label>
-                                <input name="location" value={formState.location} onChange={handleChange} className="input-field" placeholder={isKa ? "მაგ. მთავარი საწყობი" : "e.g. Central Depot"} />
+                                {subStocks.length > 0 ? (
+                                    <select
+                                        value={formState.subStockId || (formState.location === 'main' ? 'main' : formState.location || 'main')}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val === 'main') {
+                                                setFormState(prev => ({
+                                                    ...prev,
+                                                    subStockId: undefined,
+                                                    subStockName: undefined,
+                                                    location: isKa ? 'მთავარი საწყობი' : 'Main Warehouse'
+                                                }));
+                                            } else {
+                                                const sub = subStocks.find(s => s.id === val);
+                                                setFormState(prev => ({
+                                                    ...prev,
+                                                    subStockId: val,
+                                                    subStockName: sub?.name,
+                                                    location: sub?.name || val
+                                                }));
+                                            }
+                                        }}
+                                        className="input-field cursor-pointer"
+                                    >
+                                        <option value="main">{isKa ? 'მთავარი ცენტრალური საწყობი' : 'Main Central Warehouse'}</option>
+                                        {subStocks.map(s => (
+                                            <option key={s.id} value={s.id}>{s.name} ({s.code})</option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <input name="location" value={formState.location} onChange={handleChange} className="input-field" placeholder={isKa ? "მაგ. მთავარი საწყობი" : "e.g. Central Depot"} />
+                                )}
                             </div>
                         </div>
 

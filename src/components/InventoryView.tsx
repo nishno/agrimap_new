@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
-import type { User, InventoryItem, InventoryTransaction, InventoryCategory, Supplier, PurchaseOrder, PurchaseOrderItem, NutritionPlan, PlanExecution, HarvestEntry, WorkAssignment, DashboardWidget, HarvestEvent, Account, Transaction, Permission, StockTransaction, HarvestedProduce, Employee, Role, EmployeeGroup, PlantationFeature, AreaPlantationFeature, Machinery, Crop, RefrigeratorLot, StockChargeReasonCategory } from '../types';
+import type { User, InventoryItem, InventoryTransaction, InventoryCategory, Supplier, PurchaseOrder, PurchaseOrderItem, NutritionPlan, PlanExecution, HarvestEntry, WorkAssignment, DashboardWidget, HarvestEvent, Account, Transaction, Permission, StockTransaction, HarvestedProduce, Employee, Role, EmployeeGroup, PlantationFeature, AreaPlantationFeature, Machinery, Crop, RefrigeratorLot, StockChargeReasonCategory, SubStock } from '../types';
 import { getInventoryEligibleEmployees } from '../utils/employeeFilters';
 import { PlusCircleIcon, SearchIcon, AlertTriangleIcon, PencilSquareIcon, TrashIcon, XCircleIcon, DocumentTextIcon, ArrowPathIcon, ChevronUpIcon, ChevronDownIcon, BanknotesIcon, BuildingStorefrontIcon, TagIcon, ShoppingBagIcon, CheckIcon, WrenchScrewdriverIcon, BeakerIcon, LeafIcon, TractorIcon, ShieldCheckIcon, ArrowsRightLeftIcon } from './Icons';
 
@@ -22,8 +22,14 @@ import HarvestCommercialModal from './HarvestCommercialModal';
 import RefrigeratorView from './RefrigeratorView';
 import { HarvestProduceList } from './HarvestProduceList';
 import { HarvestSalesList } from './HarvestSalesList';
-import { Brain, Sparkles, Snowflake, FileSpreadsheet, ScanLine, QrCode, Folder } from 'lucide-react';
+import { Brain, Sparkles, Snowflake, FileSpreadsheet, ScanLine, QrCode, Folder, Warehouse, ArrowRightLeft, PackagePlus, Layers, Boxes, Box, ClipboardCheck } from 'lucide-react';
 import StockDocumentsFolder from './StockDocumentsFolder';
+import SubStocksManager from './Stock/SubStocksManager';
+import StockTransferModal from './Stock/StockTransferModal';
+import QuickAddUncategorizedModal from './Stock/QuickAddUncategorizedModal';
+import OrdersSection from './Stock/OrdersSection';
+import BureaucracySection from './Stock/BureaucracySection';
+import { safeStorage } from '../services/storageService';
 import { toast } from 'sonner';
 import { useLanguage } from '../contexts/LanguageContext';
 import { calculatePickerEarnings, calculateNetDurationHours } from './HarvestingStats';
@@ -320,11 +326,41 @@ const LockedProduceView: React.FC = () => (
 );
 
 
+const INITIAL_SUB_STOCKS: SubStock[] = [
+    {
+        id: 'sub-north-1',
+        name: 'North Plot Field Depot',
+        code: 'SUB-NORTH',
+        locationDescription: 'Sector 3 & 4 Perimeter Gate',
+        managerName: 'Davit Beridze',
+        contactPhone: '+995 599 12 34 56',
+        connectedToMain: true,
+        notes: 'Secured container for daily fertilization and irrigation spare parts',
+        createdAt: '2026-06-01'
+    },
+    {
+        id: 'sub-south-2',
+        name: 'South Sector Storage Bunker',
+        code: 'SUB-SOUTH',
+        locationDescription: 'Sector 7 Organic Block',
+        managerName: 'Giorgi Melikidze',
+        contactPhone: '+995 577 98 76 54',
+        connectedToMain: true,
+        notes: 'Temperature-controlled storage for bio-stimulants and tools',
+        createdAt: '2026-07-15'
+    }
+];
+
+type StockMainSection = 'main_stock' | 'yield' | 'orders' | 'bureaucracy';
+
 const StockView: React.FC<StockViewProps> = (props) => {
     const { onAddToDashboard, currentUserPermissions, currentUser, inventoryItems = [], harvestEvents = [], plantationFeatures = [], machinery = [], harvestEntries = [], employees = [] } = props;
-    const [activeTab, setActiveTab] = useState<'produce' | 'sales' | 'refrigerator' | 'archive' | 'ledger' | 'agroinputs' | 'machinery' | 'supplies' | 'charges' | 'purchases' | 'suppliers' | 'documents'>('produce');
+    const [mainSection, setMainSection] = useState<StockMainSection>('main_stock');
+    const [yieldSubTab, setYieldSubTab] = useState<'produce' | 'sales' | 'refrigerator' | 'archive' | 'ledger'>('produce');
+    const [mainStockSubTab, setMainStockSubTab] = useState<'catalog' | 'substocks' | 'charges' | 'machinery'>('catalog');
     const [machinerySubTab, setMachinerySubTab] = useState<'fleet' | 'stock'>('fleet');
-    const { t, formatCurrency, currency } = useLanguage();
+    const { t, formatCurrency, currency, language } = useLanguage();
+    const isKa = language === 'ka';
     const [selectedSectorId, setSelectedSectorId] = useState<string>('all');
     const [isGlobalChargeOpen, setIsGlobalChargeOpen] = useState(false);
     const [globalChargeItem, setGlobalChargeItem] = useState<InventoryItem | null>(null);
@@ -335,21 +371,86 @@ const StockView: React.FC<StockViewProps> = (props) => {
     const [scannerCategory, setScannerCategory] = useState<ScannerCategory>('auto');
     const [scannerAction, setScannerAction] = useState<'charge' | 'add'>('charge');
 
-    const mapTabToSheetModule = (tab: typeof activeTab): GoogleSheetsModuleType => {
-        switch (tab) {
-            case 'produce': return 'harvest_produce';
-            case 'sales': return 'sales';
-            case 'refrigerator': return 'cold_storage';
-            case 'archive': return 'post_harvest_archive';
-            case 'ledger': return 'live_ledger';
-            case 'agroinputs': return 'agro_inputs';
-            case 'machinery': return 'assets';
-            case 'supplies': return 'supplies';
-            case 'purchases': return 'purchase_orders';
-            case 'suppliers': return 'supplier_directory';
-            case 'charges': return 'direct_charges';
-            default: return 'stock';
+    // Sub-Stocks State
+    const [subStocks, setSubStocks] = useState<SubStock[]>(() => {
+        try {
+            const raw = safeStorage.getItem('agrimap_sub_stocks');
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            }
+        } catch (e) {
+            console.error('Failed to load sub-stocks:', e);
         }
+        return INITIAL_SUB_STOCKS;
+    });
+
+    useEffect(() => {
+        try {
+            safeStorage.setItem('agrimap_sub_stocks', JSON.stringify(subStocks));
+        } catch (e) {
+            console.error('Failed to save sub-stocks:', e);
+        }
+    }, [subStocks]);
+
+    // Custom Categories State
+    const [customCategories, setCustomCategories] = useState<string[]>(() => {
+        try {
+            const raw = safeStorage.getItem('agrimap_custom_categories');
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            }
+        } catch (e) {}
+        return ['Irrigation Drip Parts', 'Protective Gear', 'Laboratory Reagents'];
+    });
+
+    const handleAddCustomCategory = (cat: string) => {
+        if (!cat.trim() || customCategories.includes(cat.trim())) return;
+        const updated = [...customCategories, cat.trim()];
+        setCustomCategories(updated);
+        try {
+            safeStorage.setItem('agrimap_custom_categories', JSON.stringify(updated));
+        } catch (e) {}
+        toast.success(isKa ? `კატეგორია "${cat}" დამატებულია!` : `Category "${cat}" added!`);
+    };
+
+    // Inter-Stock Transfer Modal State
+    const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+    const [transferPreselectedItemId, setTransferPreselectedItemId] = useState<string | undefined>();
+    const [transferPreselectedSourceId, setTransferPreselectedSourceId] = useState<string>('main');
+
+    // Quick Add Uncategorized Modal State
+    const [isQuickDropOpen, setIsQuickDropOpen] = useState(false);
+
+    // Location Filter transferred from SubStocks view
+    const [catalogLocationFilter, setCatalogLocationFilter] = useState<string>('all');
+
+    const handleOpenTransfer = (itemId?: string, sourceId?: string) => {
+        setTransferPreselectedItemId(itemId);
+        setTransferPreselectedSourceId(sourceId || 'main');
+        setIsTransferModalOpen(true);
+    };
+
+    const getCurrentSheetModule = (): GoogleSheetsModuleType => {
+        if (mainSection === 'yield') {
+            switch (yieldSubTab) {
+                case 'produce': return 'harvest_produce';
+                case 'sales': return 'sales';
+                case 'refrigerator': return 'cold_storage';
+                case 'archive': return 'post_harvest_archive';
+                case 'ledger': return 'live_ledger';
+                default: return 'harvest_produce';
+            }
+        }
+        if (mainSection === 'orders') return 'purchase_orders';
+        if (mainSection === 'bureaucracy') return 'stock';
+        if (mainSection === 'main_stock') {
+            if (mainStockSubTab === 'charges') return 'direct_charges';
+            if (mainStockSubTab === 'machinery') return 'assets';
+            return 'stock';
+        }
+        return 'stock';
     };
 
     const isFounder = useMemo(() => {
@@ -687,227 +788,583 @@ const StockView: React.FC<StockViewProps> = (props) => {
         }
     };
 
+    // Uncategorized items count
+    const uncategorizedItems = useMemo(() => {
+        return inventoryItems.filter(i => 
+            i.category !== 'Produce' && !i.isPrivate && (!i.category || i.category === 'Uncategorized')
+        );
+    }, [inventoryItems]);
+
+    // Active & Pre-orders count
+    const activeOrdersCount = useMemo(() => {
+        return (props.purchaseOrders || []).filter(o => o.status === 'Ordered' || o.status === 'Pre-order').length;
+    }, [props.purchaseOrders]);
+
     return (
         <div className="flex-grow space-y-6">
-            {activeTab === 'produce' && (
-                <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 space-y-4">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                        <div>
-                            <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">Sector Analysis / სექტორის ანალიზი</h3>
-                            <p className="text-xs font-bold text-slate-500">Filter stock metrics and sales data by plantation sector</p>
-                        </div>
-                        <select
-                            value={selectedSectorId}
-                            onChange={(e) => setSelectedSectorId(e.target.value)}
-                            className="bg-white border border-slate-200 text-xs font-black uppercase tracking-wider rounded-xl px-4 py-2.5 shadow-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-colors cursor-pointer"
-                        >
-                            <option value="all">All Sectors / ყველა სექტორი</option>
-                            {sectors.map(s => (
-                                <option key={s.id} value={s.id}>{s.name}</option>
-                            ))}
-                        </select>
-                    </div>
+            {/* Master High-Level Section Switcher */}
+            <div className="bg-white p-2.5 md:p-3 rounded-[2rem] border border-slate-200/80 shadow-sm flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+                <div className="grid grid-cols-2 lg:flex lg:flex-row gap-1.5 overflow-x-auto scrollbar-hide">
+                    {/* 1. Main Stock */}
+                    <button
+                        type="button"
+                        onClick={() => setMainSection('main_stock')}
+                        className={`px-4 py-3 rounded-2xl text-xs md:text-sm font-black uppercase tracking-wider flex items-center gap-2.5 transition-all cursor-pointer ${
+                            mainSection === 'main_stock'
+                                ? 'bg-slate-900 text-white shadow-md shadow-slate-900/10 scale-[1.01]'
+                                : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        }`}
+                    >
+                        <Warehouse className={`w-4 h-4 md:w-5 md:h-5 ${mainSection === 'main_stock' ? 'text-amber-400' : 'text-slate-400'}`} />
+                        <span>{isKa ? 'მთავარი საწყობი' : 'Main Stock & Depots'}</span>
+                        {uncategorizedItems.length > 0 && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white animate-pulse">
+                                ⚠️ {uncategorizedItems.length}
+                            </span>
+                        )}
+                    </button>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                        <StatCard 
-                            title="Public Yield Value" 
-                            value={formatCurrency(publicYieldValue)} 
-                            color="text-emerald-600" 
-                            subtitle="მოსავლიდან შემოსული თანხები"
-                        />
-                        <StatCard 
-                            title="Harvest Opex" 
-                            value={formatCurrency(totalHarvestOpex)} 
-                            color="text-red-600" 
-                            subtitle="მოსავლის ხარჯები"
-                        />
-                        <StatCard 
-                            title="Deposits on LLC" 
-                            value={formatCurrency(totalDepositsOnLLC)} 
-                            color="text-blue-600" 
-                            subtitle="შპს-ზე ჩარიცხვები"
-                        />
-                        <StatCard 
-                            title="Cash Deposits" 
-                            value={formatCurrency(totalCashDeposits)} 
-                            color="text-slate-800" 
-                            subtitle="ქეში ჩარიცხვები"
-                        />
-                        <StatCard 
-                            title="Weighted Avg Price / 1 KG" 
-                            value={`${formatCurrency(weightedAveragePrice)} / kg`} 
-                            color="text-indigo-600" 
-                            subtitle="საშუალო ფასი 1 კგ-ზე"
-                        />
-                    </div>
-                </div>
-            )}
+                    {/* 2. Yield Section */}
+                    <button
+                        type="button"
+                        onClick={() => setMainSection('yield')}
+                        className={`px-4 py-3 rounded-2xl text-xs md:text-sm font-black uppercase tracking-wider flex items-center gap-2.5 transition-all cursor-pointer ${
+                            mainSection === 'yield'
+                                ? 'bg-emerald-700 text-white shadow-md shadow-emerald-700/10 scale-[1.01]'
+                                : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        }`}
+                    >
+                        <LeafIcon className={`w-4 h-4 md:w-5 md:h-5 ${mainSection === 'yield' ? 'text-emerald-300' : 'text-emerald-500'}`} />
+                        <span>{isKa ? 'მოსავალი & რეალიზაცია' : 'Yield & Harvest'}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${mainSection === 'yield' ? 'bg-emerald-800 text-emerald-100' : 'bg-slate-200 text-slate-700'}`}>
+                            {dashboardStats.produceCount}
+                        </span>
+                    </button>
 
-            {activeTab !== 'produce' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-                    <StatCard title="Public Yield Value" value={formatCurrency(dashboardStats.produceValue)} color="text-green-600" onAddToDashboard={() => onAddToDashboard?.({ type: 'custom_stat', title: 'Produce Value', content: formatCurrency(dashboardStats.produceValue) })} />
-                    <StatCard title="SKU Count" value={dashboardStats.itemCount} color="text-slate-800" />
-                    <StatCard title="Public Portfolio" value={formatCurrency(dashboardStats.totalValue)} color="text-blue-600" />
-                    <StatCard title="Low Stock" value={dashboardStats.lowStockCount} color={dashboardStats.lowStockCount > 0 ? 'text-red-600' : 'text-slate-800'} />
-                </div>
-            )}
+                    {/* 3. Orders Section */}
+                    <button
+                        type="button"
+                        onClick={() => setMainSection('orders')}
+                        className={`px-4 py-3 rounded-2xl text-xs md:text-sm font-black uppercase tracking-wider flex items-center gap-2.5 transition-all cursor-pointer ${
+                            mainSection === 'orders'
+                                ? 'bg-blue-700 text-white shadow-md shadow-blue-700/10 scale-[1.01]'
+                                : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        }`}
+                    >
+                        <ShoppingBagIcon className={`w-4 h-4 md:w-5 md:h-5 ${mainSection === 'orders' ? 'text-blue-300' : 'text-blue-500'}`} />
+                        <span>{isKa ? 'შეკვეთები & ლოჯისტიკა' : 'Orders & Logistics'}</span>
+                        {activeOrdersCount > 0 && (
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${mainSection === 'orders' ? 'bg-blue-800 text-blue-100' : 'bg-blue-100 text-blue-800'}`}>
+                                {activeOrdersCount}
+                            </span>
+                        )}
+                    </button>
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-0.5">
-                <div className="flex gap-1 overflow-x-auto scrollbar-hide no-scrollbar pb-0.5">
-                    <TabButton active={activeTab === 'produce'} onClick={() => setActiveTab('produce')} label={t('stock.tab.produce') || "HARVESTED PRODUCE"} icon={<LeafIcon className="h-4 w-4 text-emerald-500"/>} />
-                    <TabButton active={activeTab === 'sales'} onClick={() => setActiveTab('sales')} label="Sales" icon={<BanknotesIcon className="h-4 w-4 text-emerald-500"/>} />
-                    <TabButton active={activeTab === 'refrigerator'} onClick={() => setActiveTab('refrigerator')} label={t('stock.tab.refrigerator') || "Cold Storage Refrigerator"} icon={<Snowflake className="h-4 w-4 text-sky-500"/>} />
-                    <TabButton active={activeTab === 'archive'} onClick={() => setActiveTab('archive')} label={t('stock.tab.archive') || "Post-Harvest Archive"} icon={<TagIcon className="h-4 w-4"/>} />
-                    <TabButton active={activeTab === 'ledger'} onClick={() => setActiveTab('ledger')} label={t('stock.tab.ledger') || "Live Ledger"} icon={<DocumentTextIcon className="h-4 w-4"/>} />
-                    <TabButton active={activeTab === 'agroinputs'} onClick={() => setActiveTab('agroinputs')} label="Agro-Inputs" icon={<BeakerIcon className="h-4 w-4 text-emerald-600"/>} />
-                    <TabButton active={activeTab === 'machinery'} onClick={() => setActiveTab('machinery')} label="Assets" icon={<TractorIcon className="h-4 w-4 text-amber-600"/>} />
-                    <TabButton active={activeTab === 'supplies'} onClick={() => setActiveTab('supplies')} label="Supplies" icon={<WrenchScrewdriverIcon className="h-4 w-4 text-blue-600"/>} />
-                    <TabButton active={activeTab === 'purchases'} onClick={() => setActiveTab('purchases')} label={t('stock.tab.purchases') || "P. Orders"} icon={<ShoppingBagIcon className="h-4 w-4"/>} />
-                    <TabButton active={activeTab === 'suppliers'} onClick={() => setActiveTab('suppliers')} label={t('stock.tab.suppliers') || "Directory"} icon={<BuildingStorefrontIcon className="h-4 w-4"/>} />
-                    <TabButton active={activeTab === 'charges'} onClick={() => setActiveTab('charges')} label="Direct Charges" icon={<Sparkles className="h-4 w-4 text-rose-500"/>} />
-                    <TabButton active={activeTab === 'documents'} onClick={() => setActiveTab('documents')} label={t('language') === 'ka' ? "დოკუმენტები & მედია" : "Documents & Media"} icon={<Folder className="h-4 w-4 text-amber-500"/>} />
+                    {/* 4. Bureaucracy Section */}
+                    <button
+                        type="button"
+                        onClick={() => setMainSection('bureaucracy')}
+                        className={`px-4 py-3 rounded-2xl text-xs md:text-sm font-black uppercase tracking-wider flex items-center gap-2.5 transition-all cursor-pointer ${
+                            mainSection === 'bureaucracy'
+                                ? 'bg-violet-700 text-white shadow-md shadow-violet-700/10 scale-[1.01]'
+                                : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        }`}
+                    >
+                        <Folder className={`w-4 h-4 md:w-5 md:h-5 ${mainSection === 'bureaucracy' ? 'text-violet-300' : 'text-violet-500'}`} />
+                        <span>{isKa ? 'ბიუროკრატია & დოკუმენტები' : 'Bureaucracy & Vault'}</span>
+                    </button>
                 </div>
 
-                <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-auto mb-1">
+                {/* Global Utilities Action Group */}
+                <div className="flex flex-wrap items-center gap-1.5 shrink-0 self-end xl:self-auto border-t xl:border-t-0 pt-2 xl:pt-0 border-slate-100">
+                    <button
+                        type="button"
+                        onClick={() => setIsQuickDropOpen(true)}
+                        className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-sm shadow-amber-200 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
+                        title={isKa ? "სწრაფი მიღება (უკატეგორიო ინბოქსში ჩაგდება)" : "Quick drop item into uncategorized intake"}
+                    >
+                        <PackagePlus size={15} />
+                        <span className="hidden sm:inline">{isKa ? 'სწრაფი მიღება' : 'Quick Intake'}</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => handleOpenTransfer()}
+                        className="px-3 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
+                        title={isKa ? "საწყობთაშორისი გადატანა" : "Inter-stock transfer"}
+                    >
+                        <ArrowRightLeft size={15} />
+                        <span className="hidden sm:inline">{isKa ? 'გადატანა' : 'Transfer'}</span>
+                    </button>
+
                     <button
                         type="button"
                         onClick={() => {
                             setScannerCategory(
-                                activeTab === 'agroinputs' ? 'supplies' :
-                                activeTab === 'machinery' ? 'assets' :
-                                activeTab === 'produce' ? 'goods' : 'auto'
+                                mainSection === 'yield' ? 'goods' :
+                                mainSection === 'main_stock' && mainStockSubTab === 'machinery' ? 'assets' : 'supplies'
                             );
                             setIsScanModalOpen(true);
                         }}
-                        className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs uppercase tracking-wider flex items-center gap-2 shadow-sm transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
-                        title={t('language') === 'ka' ? "QR / შტრიხკოდის სკანერის გახსნა (მიღება / ხარჯვა)" : "Open QR/Barcode Scanner to receive or charge materials"}
+                        className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-sm transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
+                        title={isKa ? "QR / შტრიხკოდის სკანერი (მიღება / ხარჯვა)" : "QR/Barcode scanner"}
                     >
                         <ScanLine size={15} className="text-emerald-400" />
-                        <span>{t('language') === 'ka' ? 'სკანერი' : 'QR Scanner'}</span>
+                        <span>{isKa ? 'სკანერი' : 'Scanner'}</span>
                     </button>
 
                     <button
                         type="button"
                         onClick={() => setIsQrGenModalOpen(true)}
-                        className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider flex items-center gap-2 shadow-sm shadow-indigo-200 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
-                        title={t('language') === 'ka' ? "აგრო-ინპუტების & მასალების QR ეტიკეტების გენერატორი" : "Generate Quantity-based QR Code Labels for materials"}
+                        className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-sm shadow-indigo-200 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
+                        title={isKa ? "QR ეტიკეტების გენერატორი" : "Generate QR Code Labels"}
                     >
                         <QrCode size={15} />
-                        <span>{t('language') === 'ka' ? 'QR შექმნა' : 'Generate QR'}</span>
+                        <span>QR</span>
                     </button>
 
                     <button
+                        type="button"
                         onClick={() => {
-                            setGoogleSheetsInitialModule(mapTabToSheetModule(activeTab));
+                            setGoogleSheetsInitialModule(getCurrentSheetModule());
                             setIsGoogleSheetsModalOpen(true);
                         }}
-                        className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-xs uppercase tracking-wider flex items-center gap-2 shadow-sm shadow-emerald-200 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
-                        title="Export or Import this Stock sub-module or full inventory to Google Sheets"
+                        className="px-3 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-black text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-sm shadow-teal-200 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
+                        title="Sync with Google Sheets"
                     >
                         <FileSpreadsheet size={15} />
-                        <span>Google Sheets Sync</span>
+                        <span className="hidden md:inline">Sheets</span>
                     </button>
                 </div>
             </div>
 
-            <div className="animate-fade-in overflow-hidden">
-                {activeTab === 'produce' && <HarvestProduceList {...props} />}
-                {activeTab === 'sales' && <HarvestSalesList {...props} />}
-                {activeTab === 'refrigerator' && (
-                    <RefrigeratorView 
-                        inventoryItems={inventoryItems} 
-                        onSetInventoryItems={props.onSetInventoryItems} 
-                        accounts={props.accounts} 
-                        onSetAccounts={props.onSetAccounts}
-                        transactions={props.transactions}
-                        onSetTransactions={props.onSetTransactions}
-                    />
-                )}
-                {activeTab === 'archive' && <HarvestArchiveList {...props} />}
-                {activeTab === 'ledger' && <LiveStockLedger {...props} />}
-                {activeTab === 'agroinputs' && (
-                    <ItemsList 
-                        {...props} 
-                        filterCategories={STOCK_CATEGORY_GROUPS.agroinputs} 
-                        onOpenDirectCharge={(item) => { 
-                            setGlobalChargeItem(item); 
-                            setIsGlobalChargeOpen(true); 
-                        }} 
-                    />
-                )}
-                {activeTab === 'machinery' && (
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl w-fit">
-                            <button
-                                type="button"
-                                onClick={() => setMachinerySubTab('fleet')}
-                                className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
-                                    machinerySubTab === 'fleet' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-                                }`}
-                            >
-                                <TractorIcon className="w-4 h-4 text-amber-500" />
-                                <span>Fleet & Machinery Master</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setMachinerySubTab('stock')}
-                                className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
-                                    machinerySubTab === 'stock' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-                                }`}
-                            >
-                                <TagIcon className="w-4 h-4 text-blue-500" />
-                                <span>Asset Inventory Catalog</span>
-                            </button>
+            {/* SECTION 1: MAIN STOCK & LOCATIONS */}
+            {mainSection === 'main_stock' && (
+                <div className="space-y-6 animate-fade-in">
+                    {/* Main Stock Executive Stat Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                        <StatCard 
+                            title={isKa ? "საწყობის ღირებულება" : "Portfolio Valuation"} 
+                            value={formatCurrency(dashboardStats.totalValue)} 
+                            color="text-blue-600" 
+                            subtitle={isKa ? "ცენტრალური & ქვესაწყობები" : "Central & Field Depots"}
+                            onAddToDashboard={() => onAddToDashboard?.({ type: 'custom_stat', title: 'Stock Valuation', content: formatCurrency(dashboardStats.totalValue) })} 
+                        />
+                        <StatCard 
+                            title={isKa ? "სულ მასალები (SKU)" : "Catalog SKUs"} 
+                            value={dashboardStats.itemCount} 
+                            color="text-slate-800" 
+                            subtitle={isKa ? "აქტიური ნივთები" : "Active stock items"}
+                        />
+                        <div 
+                            onClick={() => {
+                                setMainStockSubTab('catalog');
+                            }}
+                            className={`p-5 rounded-3xl shadow-sm border transition-all cursor-pointer ${
+                                uncategorizedItems.length > 0 
+                                    ? 'bg-amber-50/80 border-amber-300 hover:border-amber-400 hover:shadow-md' 
+                                    : 'bg-white border-slate-100'
+                            }`}
+                        >
+                            <div className="flex items-center justify-between">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                    {isKa ? "უკატეგორიო ინბოქსი" : "Uncategorized Inbox"}
+                                </p>
+                                {uncategorizedItems.length > 0 && (
+                                    <span className="relative flex h-2.5 w-2.5">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                                    </span>
+                                )}
+                            </div>
+                            <p className={`text-xl md:text-2xl font-black mt-1 ${uncategorizedItems.length > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
+                                {uncategorizedItems.length}
+                            </p>
+                            <p className="text-xs font-bold text-amber-700 mt-2 tracking-wide">
+                                {uncategorizedItems.length > 0 
+                                    ? (isKa ? "საჭიროებს კატეგორიზაციას ➔" : "Pending categorization ➔") 
+                                    : (isKa ? "ყველა ნივთი დალაგებულია" : "All items categorized")}
+                            </p>
                         </div>
+                        <StatCard 
+                            title={isKa ? "ქვესაწყობები" : "Sub-Stocks Network"} 
+                            value={`${subStocks.length} Depots`} 
+                            color="text-indigo-600" 
+                            subtitle={isKa ? "დაკავშირებულია მთავართან" : "Linked to Main Stock"}
+                        />
+                        <StatCard 
+                            title={isKa ? "მცირე მარაგი" : "Low Stock Warnings"} 
+                            value={dashboardStats.lowStockCount} 
+                            color={dashboardStats.lowStockCount > 0 ? 'text-rose-600' : 'text-slate-800'} 
+                            subtitle={isKa ? "მინიმალურ ზღვარზე დაბლა" : "Below minimum threshold"}
+                        />
+                    </div>
 
-                        {machinerySubTab === 'fleet' ? (
-                            <MachineryManager 
-                                machinery={props.machinery || []}
-                                onSetMachinery={props.onSetMachinery || (() => {})}
-                                currentUserPermissions={props.currentUserPermissions}
-                                employees={props.employees || []}
-                            />
-                        ) : (
+                    {/* Main Stock Sub-Navigation Bar */}
+                    <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide border-b border-slate-200 pb-0.5">
+                        <button
+                            type="button"
+                            onClick={() => setMainStockSubTab('catalog')}
+                            className={`px-4 py-2.5 rounded-t-2xl text-xs md:text-sm font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                                mainStockSubTab === 'catalog' 
+                                    ? 'bg-white text-slate-900 border-b-4 border-slate-900 shadow-sm' 
+                                    : 'text-slate-400 hover:text-slate-700'
+                            }`}
+                        >
+                            <Box className="w-4 h-4 text-slate-700" />
+                            <span>{isKa ? 'ცენტრალური კატალოგი & მასალები' : 'Stock Catalog & Materials'}</span>
+                            {uncategorizedItems.length > 0 && (
+                                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500 text-white font-bold">
+                                    {uncategorizedItems.length}
+                                </span>
+                            )}
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setMainStockSubTab('substocks')}
+                            className={`px-4 py-2.5 rounded-t-2xl text-xs md:text-sm font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                                mainStockSubTab === 'substocks' 
+                                    ? 'bg-white text-indigo-700 border-b-4 border-indigo-700 shadow-sm' 
+                                    : 'text-slate-400 hover:text-slate-700'
+                            }`}
+                        >
+                            <Warehouse className="w-4 h-4 text-indigo-600" />
+                            <span>{isKa ? 'ქვესაწყობების ქსელი & ლოკაციები' : 'Sub-Stocks & Field Depots'}</span>
+                            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-indigo-100 text-indigo-800 font-bold">
+                                {subStocks.length}
+                            </span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setMainStockSubTab('charges')}
+                            className={`px-4 py-2.5 rounded-t-2xl text-xs md:text-sm font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                                mainStockSubTab === 'charges' 
+                                    ? 'bg-white text-rose-700 border-b-4 border-rose-700 shadow-sm' 
+                                    : 'text-slate-400 hover:text-slate-700'
+                            }`}
+                        >
+                            <Sparkles className="w-4 h-4 text-rose-500" />
+                            <span>{isKa ? 'პირდაპირი ჩამოწერები' : 'Direct Charges & Audit'}</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setMainStockSubTab('machinery')}
+                            className={`px-4 py-2.5 rounded-t-2xl text-xs md:text-sm font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                                mainStockSubTab === 'machinery' 
+                                    ? 'bg-white text-amber-700 border-b-4 border-amber-700 shadow-sm' 
+                                    : 'text-slate-400 hover:text-slate-700'
+                            }`}
+                        >
+                            <TractorIcon className="w-4 h-4 text-amber-600" />
+                            <span>{isKa ? 'ტექნიკა & აქტივები' : 'Fleet & Machinery Assets'}</span>
+                        </button>
+                    </div>
+
+                    {/* Main Stock Sub-Views */}
+                    <div>
+                        {mainStockSubTab === 'catalog' && (
                             <ItemsList 
                                 {...props} 
-                                filterCategories={STOCK_CATEGORY_GROUPS.machinery} 
+                                subStocks={subStocks}
+                                customCategories={customCategories}
+                                onAddCustomCategory={handleAddCustomCategory}
+                                onOpenTransfer={handleOpenTransfer}
+                                onOpenQuickDrop={() => setIsQuickDropOpen(true)}
+                                preselectedLocation={catalogLocationFilter}
                                 onOpenDirectCharge={(item) => { 
                                     setGlobalChargeItem(item); 
                                     setIsGlobalChargeOpen(true); 
                                 }} 
                             />
                         )}
+
+                        {mainStockSubTab === 'substocks' && (
+                            <SubStocksManager
+                                subStocks={subStocks}
+                                onSetSubStocks={setSubStocks}
+                                inventoryItems={inventoryItems}
+                                onOpenTransfer={(sourceId) => handleOpenTransfer(undefined, sourceId)}
+                                onFilterByLocation={(locId) => {
+                                    setCatalogLocationFilter(locId);
+                                    setMainStockSubTab('catalog');
+                                }}
+                            />
+                        )}
+
+                        {mainStockSubTab === 'charges' && (
+                            <DirectChargesAuditList 
+                                {...props} 
+                                onOpenChargeModal={(item) => {
+                                    setGlobalChargeItem(item || null);
+                                    setIsGlobalChargeOpen(true);
+                                }} 
+                            />
+                        )}
+
+                        {mainStockSubTab === 'machinery' && (
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl w-fit">
+                                    <button
+                                        type="button"
+                                        onClick={() => setMachinerySubTab('fleet')}
+                                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+                                            machinerySubTab === 'fleet' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                                        }`}
+                                    >
+                                        <TractorIcon className="w-4 h-4 text-amber-500" />
+                                        <span>Fleet & Machinery Master</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setMachinerySubTab('stock')}
+                                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+                                            machinerySubTab === 'stock' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                                        }`}
+                                    >
+                                        <TagIcon className="w-4 h-4 text-blue-500" />
+                                        <span>Asset Inventory Catalog</span>
+                                    </button>
+                                </div>
+
+                                {machinerySubTab === 'fleet' ? (
+                                    <MachineryManager 
+                                        machinery={props.machinery || []}
+                                        onSetMachinery={props.onSetMachinery || (() => {})}
+                                        currentUserPermissions={props.currentUserPermissions}
+                                        employees={props.employees || []}
+                                    />
+                                ) : (
+                                    <ItemsList 
+                                        {...props} 
+                                        filterCategories={STOCK_CATEGORY_GROUPS.machinery} 
+                                        subStocks={subStocks}
+                                        customCategories={customCategories}
+                                        onAddCustomCategory={handleAddCustomCategory}
+                                        onOpenTransfer={handleOpenTransfer}
+                                        onOpenQuickDrop={() => setIsQuickDropOpen(true)}
+                                        onOpenDirectCharge={(item) => { 
+                                            setGlobalChargeItem(item); 
+                                            setIsGlobalChargeOpen(true); 
+                                        }} 
+                                    />
+                                )}
+                            </div>
+                        )}
                     </div>
-                )}
-                {activeTab === 'supplies' && (
-                    <ItemsList 
-                        {...props} 
-                        filterCategories={STOCK_CATEGORY_GROUPS.supplies} 
-                        onOpenDirectCharge={(item) => { 
-                            setGlobalChargeItem(item); 
-                            setIsGlobalChargeOpen(true); 
-                        }} 
+                </div>
+            )}
+
+            {/* SECTION 2: YIELD & HARVEST */}
+            {mainSection === 'yield' && (
+                <div className="space-y-6 animate-fade-in">
+                    {/* Sector Analysis & Yield Stat Cards */}
+                    <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 space-y-4">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                            <div>
+                                <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">
+                                    {isKa ? 'სექტორის ანალიზი & მოსავალი' : 'Sector Analysis & Yield Valuation'}
+                                </h3>
+                                <p className="text-xs font-bold text-slate-500">
+                                    {isKa ? 'ფილტრაცია პლანტაციის სექტორების მიხედვით' : 'Filter yield metrics and harvest lots by plantation sector'}
+                                </p>
+                            </div>
+                            <select
+                                value={selectedSectorId}
+                                onChange={(e) => setSelectedSectorId(e.target.value)}
+                                className="bg-white border border-slate-200 text-xs font-black uppercase tracking-wider rounded-xl px-4 py-2.5 shadow-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-colors cursor-pointer"
+                            >
+                                <option value="all">All Sectors / ყველა სექტორი</option>
+                                {sectors.map(s => (
+                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                            <StatCard 
+                                title="Public Yield Value" 
+                                value={formatCurrency(publicYieldValue)} 
+                                color="text-emerald-600" 
+                                subtitle="მოსავლიდან შემოსული თანხები"
+                            />
+                            <StatCard 
+                                title="Harvest Opex" 
+                                value={formatCurrency(totalHarvestOpex)} 
+                                color="text-red-600" 
+                                subtitle="მოსავლის ხარჯები"
+                            />
+                            <StatCard 
+                                title="Deposits on LLC" 
+                                value={formatCurrency(totalDepositsOnLLC)} 
+                                color="text-blue-600" 
+                                subtitle="შპს-ზე ჩარიცხვები"
+                            />
+                            <StatCard 
+                                title="Cash Deposits" 
+                                value={formatCurrency(totalCashDeposits)} 
+                                color="text-slate-800" 
+                                subtitle="ქეში ჩარიცხვები"
+                            />
+                            <StatCard 
+                                title="Weighted Avg Price / 1 KG" 
+                                value={`${formatCurrency(weightedAveragePrice)} / kg`} 
+                                color="text-indigo-600" 
+                                subtitle="საშუალო ფასი 1 კგ-ზე"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Yield Sub-Navigation */}
+                    <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide border-b border-slate-200 pb-0.5">
+                        <button
+                            type="button"
+                            onClick={() => setYieldSubTab('produce')}
+                            className={`px-4 py-2.5 rounded-t-2xl text-xs md:text-sm font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                                yieldSubTab === 'produce' 
+                                    ? 'bg-white text-emerald-700 border-b-4 border-emerald-600 shadow-sm' 
+                                    : 'text-slate-400 hover:text-slate-700'
+                            }`}
+                        >
+                            <LeafIcon className="h-4 w-4 text-emerald-500"/>
+                            <span>{t('stock.tab.produce') || "Harvested Produce"}</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setYieldSubTab('sales')}
+                            className={`px-4 py-2.5 rounded-t-2xl text-xs md:text-sm font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                                yieldSubTab === 'sales' 
+                                    ? 'bg-white text-emerald-700 border-b-4 border-emerald-600 shadow-sm' 
+                                    : 'text-slate-400 hover:text-slate-700'
+                            }`}
+                        >
+                            <BanknotesIcon className="h-4 w-4 text-emerald-500"/>
+                            <span>{isKa ? 'რეალიზაცია & გაყიდვები' : 'Sales & Commercial'}</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setYieldSubTab('refrigerator')}
+                            className={`px-4 py-2.5 rounded-t-2xl text-xs md:text-sm font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                                yieldSubTab === 'refrigerator' 
+                                    ? 'bg-white text-sky-700 border-b-4 border-sky-600 shadow-sm' 
+                                    : 'text-slate-400 hover:text-slate-700'
+                            }`}
+                        >
+                            <Snowflake className="h-4 w-4 text-sky-500"/>
+                            <span>{t('stock.tab.refrigerator') || "Cold Storage Refrigerator"}</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setYieldSubTab('archive')}
+                            className={`px-4 py-2.5 rounded-t-2xl text-xs md:text-sm font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                                yieldSubTab === 'archive' 
+                                    ? 'bg-white text-slate-800 border-b-4 border-slate-800 shadow-sm' 
+                                    : 'text-slate-400 hover:text-slate-700'
+                            }`}
+                        >
+                            <TagIcon className="h-4 w-4"/>
+                            <span>{t('stock.tab.archive') || "Post-Harvest Archive"}</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setYieldSubTab('ledger')}
+                            className={`px-4 py-2.5 rounded-t-2xl text-xs md:text-sm font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                                yieldSubTab === 'ledger' 
+                                    ? 'bg-white text-indigo-700 border-b-4 border-indigo-600 shadow-sm' 
+                                    : 'text-slate-400 hover:text-slate-700'
+                            }`}
+                        >
+                            <DocumentTextIcon className="h-4 w-4"/>
+                            <span>{t('stock.tab.ledger') || "Live Yield Ledger"}</span>
+                        </button>
+                    </div>
+
+                    {/* Yield Content */}
+                    <div>
+                        {yieldSubTab === 'produce' && <HarvestProduceList {...props} />}
+                        {yieldSubTab === 'sales' && <HarvestSalesList {...props} />}
+                        {yieldSubTab === 'refrigerator' && (
+                            <RefrigeratorView 
+                                inventoryItems={inventoryItems} 
+                                onSetInventoryItems={props.onSetInventoryItems} 
+                                accounts={props.accounts} 
+                                onSetAccounts={props.onSetAccounts}
+                                transactions={props.transactions}
+                                onSetTransactions={props.onSetTransactions}
+                            />
+                        )}
+                        {yieldSubTab === 'archive' && <HarvestArchiveList {...props} />}
+                        {yieldSubTab === 'ledger' && <LiveStockLedger {...props} />}
+                    </div>
+                </div>
+            )}
+
+            {/* SECTION 3: ORDERS & PROCUREMENT */}
+            {mainSection === 'orders' && (
+                <div className="space-y-6 animate-fade-in">
+                    <OrdersSection 
+                        purchaseOrders={props.purchaseOrders || []}
+                        onSetPurchaseOrders={props.onSetPurchaseOrders}
+                        suppliers={props.suppliers || []}
+                        onSetSuppliers={props.onSetSuppliers}
+                        inventoryItems={inventoryItems}
+                        onSetInventoryItems={props.onSetInventoryItems}
+                        stockTransactions={props.stockTransactions}
+                        onSetStockTransactions={props.onSetStockTransactions}
+                        subStocks={subStocks}
+                        currentUserPermissions={currentUserPermissions}
                     />
-                )}
-                {activeTab === 'purchases' && <PurchasesList {...props} />}
-                {activeTab === 'suppliers' && <SuppliersList {...props} />}
-                {activeTab === 'charges' && (
-                    <DirectChargesAuditList 
-                        {...props} 
-                        onOpenChargeModal={(item) => {
-                            setGlobalChargeItem(item || null);
-                            setIsGlobalChargeOpen(true);
-                        }} 
-                    />
-                )}
-                {activeTab === 'documents' && (
-                    <StockDocumentsFolder 
+                </div>
+            )}
+
+            {/* SECTION 4: BUREAUCRACY & DOCUMENTS */}
+            {mainSection === 'bureaucracy' && (
+                <div className="space-y-6 animate-fade-in">
+                    <BureaucracySection 
                         sectors={props.plantationFeatures?.filter((f: any) => f.type === 'area' || f.type === 'sector') as any} 
                         inventoryItems={props.inventoryItems} 
                         currentUser={currentUser} 
                     />
-                )}
-            </div>
+                </div>
+            )}
+
+            {/* Quick Add Uncategorized Modal */}
+            {isQuickDropOpen && (
+                <QuickAddUncategorizedModal
+                    isOpen={isQuickDropOpen}
+                    onClose={() => setIsQuickDropOpen(false)}
+                    subStocks={subStocks}
+                    onSaveItem={(newItem) => {
+                        props.onSetInventoryItems([newItem, ...inventoryItems]);
+                        setIsQuickDropOpen(false);
+                        toast.success(isKa ? `✓ ნივთი მიღებულია: ${newItem.name} (უკატეგორიო ინბოქსში)` : `✓ Item added: ${newItem.name} (uncategorized inbox)`);
+                    }}
+                />
+            )}
+
+            {/* Inter-Stock Transfer Modal */}
+            {isTransferModalOpen && (
+                <StockTransferModal
+                    isOpen={isTransferModalOpen}
+                    onClose={() => {
+                        setIsTransferModalOpen(false);
+                        setTransferPreselectedItemId(undefined);
+                    }}
+                    inventoryItems={inventoryItems}
+                    onSetInventoryItems={props.onSetInventoryItems}
+                    subStocks={subStocks}
+                    stockTransactions={props.stockTransactions}
+                    onSetStockTransactions={props.onSetStockTransactions}
+                    preselectedItemId={transferPreselectedItemId}
+                    preselectedSourceId={transferPreselectedSourceId}
+                />
+            )}
 
             {isGlobalChargeOpen && (
                 <DirectStockChargeModal
@@ -977,9 +1434,33 @@ const StockView: React.FC<StockViewProps> = (props) => {
     );
 };
 
-const ItemsList: React.FC<StockViewProps & { filterCategories?: string[]; onOpenDirectCharge?: (item: InventoryItem) => void }> = (props) => {
-    const { formatCurrency } = useLanguage();
-    const { inventoryItems = [], onSetInventoryItems, filterCategories, onOpenDirectCharge } = props;
+interface ItemsListProps extends StockViewProps {
+    filterCategories?: string[];
+    onOpenDirectCharge?: (item: InventoryItem) => void;
+    subStocks?: SubStock[];
+    customCategories?: string[];
+    onAddCustomCategory?: (cat: string) => void;
+    onOpenTransfer?: (itemId?: string, sourceId?: string) => void;
+    onOpenQuickDrop?: () => void;
+    preselectedLocation?: string;
+}
+
+const ItemsList: React.FC<ItemsListProps> = (props) => {
+    const { formatCurrency, language } = useLanguage();
+    const isKa = language === 'ka';
+    const { 
+        inventoryItems = [], 
+        onSetInventoryItems, 
+        filterCategories, 
+        onOpenDirectCharge,
+        subStocks = [],
+        customCategories = [],
+        onAddCustomCategory,
+        onOpenTransfer,
+        onOpenQuickDrop,
+        preselectedLocation = 'all'
+    } = props;
+
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
     const [isChargeModalOpen, setIsChargeModalOpen] = useState(false);
@@ -989,15 +1470,77 @@ const ItemsList: React.FC<StockViewProps & { filterCategories?: string[]; onOpen
     const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     
+    // Category & Location Tabs
+    const [selectedCategoryTab, setSelectedCategoryTab] = useState<string>('all');
+    const [selectedLocation, setSelectedLocation] = useState<string>(preselectedLocation);
+    const [showNewCatModal, setShowNewCatModal] = useState(false);
+    const [newCatInput, setNewCatInput] = useState('');
+
+    // Categorization counts
+    const uncategorizedItems = useMemo(() => {
+        return inventoryItems.filter(i => 
+            i.category !== 'Produce' && !i.isPrivate && (!i.category || i.category === 'Uncategorized')
+        );
+    }, [inventoryItems]);
+
     const filteredItems = useMemo(() => {
         let items = inventoryItems.filter(i => i.category !== 'Produce' && !i.isPrivate && !i.relatedHarvestId);
-        if (filterCategories?.length) items = items.filter(i => filterCategories.includes(i.category));
-        if (searchQuery) {
+
+        // Location Filter
+        if (selectedLocation === 'main') {
+            items = items.filter(i => !i.subStockId);
+        } else if (selectedLocation !== 'all') {
+            items = items.filter(i => i.subStockId === selectedLocation);
+        }
+
+        // Category Tab Filter
+        if (selectedCategoryTab === 'Uncategorized') {
+            items = items.filter(i => !i.category || i.category === 'Uncategorized');
+        } else if (selectedCategoryTab === 'agroinputs') {
+            items = items.filter(i => STOCK_CATEGORY_GROUPS.agroinputs.includes(i.category as any));
+        } else if (selectedCategoryTab === 'packaging') {
+            items = items.filter(i => ['Packaging', 'Pallets'].includes(i.category));
+        } else if (selectedCategoryTab === 'fuel') {
+            items = items.filter(i => i.category === 'Fuel');
+        } else if (selectedCategoryTab === 'tools') {
+            items = items.filter(i => ['Tools', 'Fixed Assets', 'Machinery'].includes(i.category));
+        } else if (selectedCategoryTab === 'parts') {
+            items = items.filter(i => ['Spare Parts', 'Construction', 'Consumables'].includes(i.category));
+        } else if (selectedCategoryTab === 'Other') {
+            items = items.filter(i => i.category === 'Other');
+        } else if (selectedCategoryTab !== 'all') {
+            items = items.filter(i => i.category === selectedCategoryTab);
+        } else if (filterCategories?.length) {
+            items = items.filter(i => filterCategories.includes(i.category));
+        }
+
+        // Search Query
+        if (searchQuery.trim()) {
             const q = searchQuery.toLowerCase();
-            items = items.filter(i => i.name.toLowerCase().includes(q) || i.sku?.toLowerCase().includes(q) || i.category.toLowerCase().includes(q));
+            items = items.filter(i => 
+                i.name.toLowerCase().includes(q) || 
+                i.sku?.toLowerCase().includes(q) || 
+                i.category.toLowerCase().includes(q) ||
+                (i.subStockName && i.subStockName.toLowerCase().includes(q)) ||
+                (i.location && i.location.toLowerCase().includes(q))
+            );
         }
         return items;
-    }, [inventoryItems, searchQuery, filterCategories]);
+    }, [inventoryItems, searchQuery, filterCategories, selectedCategoryTab, selectedLocation]);
+
+    const handleQuickCategorize = (itemId: string, newCategory: string) => {
+        if (!newCategory) return;
+        const updated = inventoryItems.map(i => i.id === itemId ? { ...i, category: newCategory as any } : i);
+        onSetInventoryItems(updated);
+        toast.success(isKa ? `ნივთს მიენიჭა კატეგორია: ${newCategory}` : `Categorized as: ${newCategory}`);
+    };
+
+    const handleDeleteItem = (itemId: string, itemName: string) => {
+        if (confirm(isKa ? `დარწმუნებული ხართ, რომ გსურთ "${itemName}"-ის წაშლა?` : `Are you sure you want to delete "${itemName}"?`)) {
+            onSetInventoryItems(inventoryItems.filter(i => i.id !== itemId));
+            toast.info(isKa ? 'ნივთი წაიშალა მარაგებიდან' : 'Item removed from stock');
+        }
+    };
 
     const handleExport = () => {
         const headers = ["Registry Registry", "SKU", "Category", "Current Stock (PKGS)", "Unit", "Total Mass/Vol", "Unit Vol/Size", "Unit Cost", "Portfolio Value"];
@@ -1087,98 +1630,387 @@ const ItemsList: React.FC<StockViewProps & { filterCategories?: string[]; onOpen
     };
 
     return (
-        <div className="bg-white p-4 md:p-6 rounded-[2rem] md:rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
-            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-8">
-                 <div className="relative flex-grow max-w-md">
-                    <SearchIcon className="h-5 w-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2"/><input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Filter Registry..." className="w-full pl-12 pr-4 py-3 bg-slate-50 border-none rounded-2xl font-bold text-sm outline-none" />
+        <div className="bg-white p-4 md:p-6 rounded-[2rem] md:rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden space-y-5">
+            {/* Top Toolbar */}
+            <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-1">
+                    <div className="relative flex-grow max-w-md">
+                        <SearchIcon className="h-5 w-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2"/>
+                        <input 
+                            type="text" 
+                            value={searchQuery} 
+                            onChange={e => setSearchQuery(e.target.value)} 
+                            placeholder={isKa ? "ძიება დასახელებით, SKU, საწყობით..." : "Filter inventory, SKU, sub-stock..."} 
+                            className="w-full pl-12 pr-4 py-2.5 bg-slate-50 border border-slate-200/60 rounded-2xl font-bold text-xs outline-none focus:bg-white focus:border-blue-500 transition-all" 
+                        />
+                    </div>
+
+                    {/* Location Selector */}
+                    <div className="flex items-center gap-2">
+                        <Warehouse className="w-4 h-4 text-slate-500 shrink-0" />
+                        <select
+                            value={selectedLocation}
+                            onChange={(e) => setSelectedLocation(e.target.value)}
+                            className="bg-slate-50 border border-slate-200 text-xs font-bold rounded-xl px-3 py-2 text-slate-800 outline-none cursor-pointer hover:bg-slate-100 transition-colors"
+                        >
+                            <option value="all">{isKa ? 'ყველა ლოკაცია' : 'All Warehouses'}</option>
+                            <option value="main">{isKa ? 'მთავარი ცენტრალური საწყობი' : 'Main Central Warehouse'}</option>
+                            {subStocks.map(s => (
+                                <option key={s.id} value={s.id}>{s.name} ({s.code})</option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
+
+                <div className="flex flex-wrap items-center gap-2">
+                    {onOpenQuickDrop && (
+                        <button 
+                            type="button"
+                            onClick={onOpenQuickDrop}
+                            className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-sm shadow-amber-200 hover:scale-[1.02] active:scale-95 cursor-pointer"
+                            title={isKa ? "სწრაფი მიღება დალაგებამდე (უკატეგორიო ნივთი)" : "Quick drop item before categorization"}
+                        >
+                            <PackagePlus className="h-4 w-4" />
+                            <span>{isKa ? 'სწრაფი მიღება' : 'Quick Drop'}</span>
+                        </button>
+                    )}
+
+                    {onOpenTransfer && (
+                        <button 
+                            type="button"
+                            onClick={() => onOpenTransfer()}
+                            className="px-4 py-2.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 border border-blue-200 cursor-pointer"
+                            title={isKa ? "საწყობთაშორისი გადატანა" : "Inter-warehouse stock transfer"}
+                        >
+                            <ArrowRightLeft className="h-4 w-4" />
+                            <span>{isKa ? 'გადატანა' : 'Transfer'}</span>
+                        </button>
+                    )}
+
                     <button 
+                        type="button"
                         onClick={() => { setChargeItem(null); setIsChargeModalOpen(true); }} 
-                        className="px-5 py-3 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center gap-2"
-                        title="Charge or write off item directly from stock"
+                        className="px-4 py-2.5 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-xl font-black text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 border border-rose-200 cursor-pointer"
+                        title={isKa ? "პირდაპირი ჩამოწერა / ხარჯვა" : "Charge or write off item directly from stock"}
                     >
                         <Sparkles className="h-4 w-4 text-rose-600" />
-                        Direct Charge / ჩამოწერა
+                        <span>{isKa ? 'ჩამოწერა' : 'Charge'}</span>
                     </button>
-                    <button onClick={() => setIsMergeModalOpen(true)} className="px-5 py-3 bg-indigo-50 text-indigo-700 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-indigo-100 transition-all flex items-center gap-2">
+
+                    <button 
+                        type="button"
+                        onClick={() => setIsMergeModalOpen(true)} 
+                        className="px-4 py-2.5 bg-indigo-50 text-indigo-700 rounded-xl font-black text-xs uppercase tracking-wider hover:bg-indigo-100 transition-all flex items-center gap-1.5 border border-indigo-200 cursor-pointer"
+                    >
                         <ArrowsRightLeftIcon className="h-4 w-4" />
-                        Merge Items / გაერთიანება
+                        <span>{isKa ? 'გაერთიანება' : 'Merge'}</span>
                     </button>
-                    <button onClick={handleExport} className="px-6 py-3 bg-emerald-50 text-emerald-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-emerald-100 transition-all flex items-center gap-2">
+
+                    <button 
+                        type="button"
+                        onClick={handleExport} 
+                        className="px-4 py-2.5 bg-emerald-50 text-emerald-700 rounded-xl font-black text-xs uppercase tracking-wider hover:bg-emerald-100 transition-all flex items-center gap-1.5 border border-emerald-200 cursor-pointer"
+                    >
                         <DocumentTextIcon className="h-4 w-4" />
-                        Export Excel
+                        <span>Excel</span>
                     </button>
-                    <button onClick={() => { setEditingItem(null); setIsModalOpen(true); }} className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg">Add Item</button>
+
+                    <button 
+                        type="button"
+                        onClick={() => { setEditingItem(null); setIsModalOpen(true); }} 
+                        className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-sm flex items-center gap-1.5 cursor-pointer hover:scale-[1.02] active:scale-95"
+                    >
+                        <span>{isKa ? '+ ნივთის დამატება' : '+ Add Item'}</span>
+                    </button>
                 </div>
             </div>
+
+            {/* Category Filter Pills Bar */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide pt-1 border-t border-slate-100">
+                <button
+                    type="button"
+                    onClick={() => setSelectedCategoryTab('all')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
+                        selectedCategoryTab === 'all' ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                    }`}
+                >
+                    {isKa ? 'ყველა ნივთი' : 'All Items'}
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => setSelectedCategoryTab('Uncategorized')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                        selectedCategoryTab === 'Uncategorized' 
+                            ? 'bg-amber-600 text-white shadow-sm' 
+                            : uncategorizedItems.length > 0 
+                                ? 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100' 
+                                : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                    }`}
+                >
+                    <span>⚠️ {isKa ? 'უკატეგორიო' : 'Uncategorized'}</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                        selectedCategoryTab === 'Uncategorized' ? 'bg-amber-800 text-amber-100' : 'bg-amber-200 text-amber-900'
+                    }`}>
+                        {uncategorizedItems.length}
+                    </span>
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => setSelectedCategoryTab('agroinputs')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
+                        selectedCategoryTab === 'agroinputs' ? 'bg-emerald-600 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                    }`}
+                >
+                    🌱 {isKa ? 'აგროინპუტები' : 'Agro-Inputs'}
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => setSelectedCategoryTab('packaging')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
+                        selectedCategoryTab === 'packaging' ? 'bg-blue-600 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                    }`}
+                >
+                    📦 {isKa ? 'ტარა & შეფუთვა' : 'Packaging & Crates'}
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => setSelectedCategoryTab('tools')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
+                        selectedCategoryTab === 'tools' ? 'bg-violet-600 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                    }`}
+                >
+                    🔧 {isKa ? 'ხელსაწყოები & ტექნიკა' : 'Tools & Equipment'}
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => setSelectedCategoryTab('parts')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
+                        selectedCategoryTab === 'parts' ? 'bg-slate-700 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                    }`}
+                >
+                    ⚙️ {isKa ? 'სათადარიგო ნაწილები' : 'Spare Parts'}
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => setSelectedCategoryTab('fuel')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
+                        selectedCategoryTab === 'fuel' ? 'bg-amber-700 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                    }`}
+                >
+                    ⛽ {isKa ? 'საწვავი' : 'Fuel'}
+                </button>
+
+                {customCategories.map(cat => (
+                    <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setSelectedCategoryTab(cat)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
+                            selectedCategoryTab === cat ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/60'
+                        }`}
+                    >
+                        🏷️ {cat}
+                    </button>
+                ))}
+
+                <button
+                    type="button"
+                    onClick={() => setShowNewCatModal(true)}
+                    className="px-2.5 py-1.5 rounded-xl text-xs font-bold text-blue-600 hover:bg-blue-50 border border-dashed border-blue-300 transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                >
+                    <PlusCircleIcon className="w-3.5 h-3.5" />
+                    <span>{isKa ? 'ახალი კატეგორია' : 'New Category'}</span>
+                </button>
+            </div>
+
+            {/* Custom Category Quick Add Modal */}
+            {showNewCatModal && (
+                <div className="p-3 bg-blue-50/70 rounded-2xl border border-blue-200 flex items-center gap-2">
+                    <input
+                        type="text"
+                        value={newCatInput}
+                        onChange={(e) => setNewCatInput(e.target.value)}
+                        placeholder={isKa ? 'შეიყვანეთ ახალი კატეგორიის სახელი...' : 'Enter custom category name...'}
+                        className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (newCatInput.trim()) {
+                                onAddCustomCategory?.(newCatInput.trim());
+                                setSelectedCategoryTab(newCatInput.trim());
+                                setNewCatInput('');
+                                setShowNewCatModal(false);
+                            }
+                        }}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer"
+                    >
+                        {isKa ? 'შენახვა' : 'Save'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setShowNewCatModal(false)}
+                        className="px-3 py-2 text-slate-500 hover:text-slate-800 text-xs font-bold cursor-pointer"
+                    >
+                        {isKa ? 'გაუქმება' : 'Cancel'}
+                    </button>
+                </div>
+            )}
+
             <div className="overflow-x-auto -mx-4 md:-mx-6">
                 <div className="inline-block min-w-full align-middle px-4 md:px-6">
-                    <table className="min-w-full divide-y divide-slate-100">
+                    <table className="min-w-full divide-y divide-slate-100 text-xs">
                         <thead className="bg-slate-50/50 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">
                             <tr>
-                                <th className="px-6 py-4">Registry / SKU</th>
-                                <th className="px-6 py-4">Category</th>
-                                <th className="px-6 py-4 text-right">Current Stock (PKGS)</th>
-                                <th className="px-6 py-4 text-right">Total Mass/Vol</th>
-                                <th className="px-6 py-4 text-right">Portfolio Val.</th>
-                                <th className="px-6 py-4 text-right">Actions</th>
+                                <th className="px-6 py-4">{isKa ? 'ნივთი / SKU' : 'Registry / SKU'}</th>
+                                <th className="px-6 py-4">{isKa ? 'ლოკაცია / საწყობი' : 'Warehouse Location'}</th>
+                                <th className="px-6 py-4">{isKa ? 'კატეგორია' : 'Category'}</th>
+                                <th className="px-6 py-4 text-right">{isKa ? 'ნაშთი (PKGS)' : 'Current Stock (PKGS)'}</th>
+                                <th className="px-6 py-4 text-right">{isKa ? 'მასა / მოცულობა' : 'Total Mass/Vol'}</th>
+                                <th className="px-6 py-4 text-right">{isKa ? 'ღირებულება' : 'Portfolio Val.'}</th>
+                                <th className="px-6 py-4 text-right">{isKa ? 'მოქმედებები' : 'Actions'}</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
-                            {filteredItems.map(item => (
-                                <tr key={item.id} className="hover:bg-slate-50">
-                                    <td className="px-6 py-5 whitespace-nowrap"><div className="font-bold text-slate-800">{item.name}</div><div className="text-[10px] text-slate-400 font-black uppercase">{item.sku || 'No SKU'}</div></td>
-                                    <td className="px-6 py-5 whitespace-nowrap"><span className="px-2.5 py-1 text-[9px] font-black bg-blue-100 text-blue-700 rounded-lg uppercase">{item.category}</span></td>
-                                    <td className="px-6 py-5 text-right whitespace-nowrap font-black">
-                                        <div className="flex items-center justify-end gap-2">
-                                            {item.currentStock < (item.minStockThreshold || 0) && (
-                                                <span className="text-[8px] uppercase tracking-widest bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Low Stock</span>
-                                            )}
-                                            <span className={item.currentStock < (item.minStockThreshold || 0) ? 'text-red-600' : 'text-slate-900'}>
-                                                {item.currentStock.toLocaleString()}
+                            {filteredItems.map(item => {
+                                const isUncat = !item.category || item.category === 'Uncategorized';
+                                const locationLabel = item.subStockName || item.location || (isKa ? 'მთავარი საწყობი' : 'Main Warehouse');
+
+                                return (
+                                    <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <div className="font-bold text-slate-800 text-sm">{item.name}</div>
+                                            <div className="text-[10px] text-slate-400 font-mono uppercase">{item.sku || 'No SKU'}</div>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black rounded-lg bg-slate-100 text-slate-700">
+                                                <Warehouse className="w-3 h-3 text-slate-500" />
+                                                {locationLabel}
                                             </span>
-                                            <span className="text-[10px] text-slate-400">PKGS</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-5 text-right whitespace-nowrap">
-                                        <div className="font-black text-indigo-600">
-                                            {item.packageContent ? (item.currentStock * item.packageContent).toLocaleString() : item.currentStock.toLocaleString()}
-                                            <span className="text-[9px] ml-1 uppercase">{item.packageContentUnit || item.unitOfMeasure}</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-5 text-right whitespace-nowrap font-black text-slate-600">{formatCurrency(item.currentStock * item.unitCost)}</td>
-                                    <td className="px-6 py-5 text-right flex justify-end gap-2">
-                                        <button 
-                                            onClick={() => { setChargeItem(item); setIsChargeModalOpen(true); }} 
-                                            title="⚡ Charge Directly From Stock (ჩამოწერა)" 
-                                            className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition-all"
-                                        >
-                                            <Sparkles className="h-5 w-5" />
-                                        </button>
-                                        <button 
-                                            onClick={() => { setHistoryItem(item); setIsHistoryModalOpen(true); }} 
-                                            title="View Item Transaction History & Audits" 
-                                            className="p-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl transition-all"
-                                        >
-                                            <DocumentTextIcon className="h-5 w-5" />
-                                        </button>
-                                        <button 
-                                            onClick={() => { setEditingItem(item); setIsModalOpen(true); }} 
-                                            title="Edit Item"
-                                            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-xl transition-all"
-                                        >
-                                            <PencilSquareIcon className="h-5 w-5" />
-                                        </button>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            {isUncat ? (
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="px-2 py-0.5 text-[9px] font-black bg-amber-100 text-amber-800 rounded-md uppercase">
+                                                        ⚠️ {isKa ? 'უკატეგორიო' : 'Pending'}
+                                                    </span>
+                                                    <select
+                                                        onChange={(e) => handleQuickCategorize(item.id, e.target.value)}
+                                                        className="text-[10px] font-bold bg-white border border-amber-300 text-amber-900 rounded-lg px-2 py-1 outline-none cursor-pointer hover:bg-amber-50"
+                                                        defaultValue=""
+                                                    >
+                                                        <option value="" disabled>{isKa ? 'მიანიჭეთ კატეგორია...' : 'Assign Category...'}</option>
+                                                        <option value="Fertilizers">🌱 {isKa ? 'სასუქები' : 'Fertilizers'}</option>
+                                                        <option value="Pesticides">🛡️ {isKa ? 'პესტიციდები' : 'Pesticides'}</option>
+                                                        <option value="Packaging">📦 {isKa ? 'ტარა / ყუთები' : 'Packaging'}</option>
+                                                        <option value="Tools">🔧 {isKa ? 'ხელსაწყოები' : 'Tools'}</option>
+                                                        <option value="Spare Parts">⚙️ {isKa ? 'ნაწილები' : 'Spare Parts'}</option>
+                                                        <option value="Fuel">⛽ {isKa ? 'საწვავი' : 'Fuel'}</option>
+                                                        <option value="Consumables">🧻 {isKa ? 'სახარჯი' : 'Consumables'}</option>
+                                                        {customCategories.map(c => (
+                                                            <option key={c} value={c}>🏷️ {c}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            ) : (
+                                                <span className="px-2.5 py-1 text-[9px] font-black bg-blue-100 text-blue-700 rounded-lg uppercase">
+                                                    {item.category}
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="px-6 py-4 text-right whitespace-nowrap font-black">
+                                            <div className="flex items-center justify-end gap-2">
+                                                {item.currentStock < (item.minStockThreshold || 0) && (
+                                                    <span className="text-[8px] uppercase tracking-widest bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Low Stock</span>
+                                                )}
+                                                <span className={item.currentStock < (item.minStockThreshold || 0) ? 'text-red-600 font-black' : 'text-slate-900 font-bold'}>
+                                                    {item.currentStock.toLocaleString()}
+                                                </span>
+                                                <span className="text-[10px] text-slate-400 font-bold uppercase">{item.unitOfMeasure}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-right whitespace-nowrap">
+                                            <div className="font-black text-indigo-600">
+                                                {item.packageContent ? (item.currentStock * item.packageContent).toLocaleString() : item.currentStock.toLocaleString()}
+                                                <span className="text-[9px] ml-1 uppercase">{item.packageContentUnit || item.unitOfMeasure}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-right whitespace-nowrap font-black text-slate-700">
+                                            {formatCurrency(item.currentStock * item.unitCost)}
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="flex justify-end items-center gap-1.5">
+                                                {onOpenTransfer && (
+                                                    <button 
+                                                        type="button"
+                                                        onClick={() => onOpenTransfer(item.id, item.subStockId || 'main')} 
+                                                        title={isKa ? "საწყობთაშორისი გადატანა" : "Transfer between warehouses"} 
+                                                        className="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl transition-all cursor-pointer"
+                                                    >
+                                                        <ArrowRightLeft className="h-4 w-4" />
+                                                    </button>
+                                                )}
+                                                <button 
+                                                    type="button"
+                                                    onClick={() => { setChargeItem(item); setIsChargeModalOpen(true); }} 
+                                                    title={isKa ? "⚡ პირდაპირი ჩამოწერა მარაგებიდან" : "⚡ Charge Directly From Stock (ჩამოწერა)"} 
+                                                    className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition-all cursor-pointer"
+                                                >
+                                                    <Sparkles className="h-4 w-4" />
+                                                </button>
+                                                <button 
+                                                    type="button"
+                                                    onClick={() => { setHistoryItem(item); setIsHistoryModalOpen(true); }} 
+                                                    title="View Item Transaction History & Audits" 
+                                                    className="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl transition-all cursor-pointer"
+                                                >
+                                                    <DocumentTextIcon className="h-4 w-4" />
+                                                </button>
+                                                <button 
+                                                    type="button"
+                                                    onClick={() => { setEditingItem(item); setIsModalOpen(true); }} 
+                                                    title="Edit Item"
+                                                    className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-all cursor-pointer"
+                                                >
+                                                    <PencilSquareIcon className="h-4 w-4" />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDeleteItem(item.id, item.name)}
+                                                    title="Delete Item"
+                                                    className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-500 rounded-xl transition-all cursor-pointer"
+                                                >
+                                                    <TrashIcon className="h-4 w-4" />
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+
+                            {filteredItems.length === 0 && (
+                                <tr>
+                                    <td colSpan={7} className="px-6 py-12 text-center text-slate-400 font-bold">
+                                        <Box className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                                        <p>{isKa ? 'ნივთები არ მოიძებნა არჩეულ კრიტერიუმებზე' : 'No inventory items found matching selection'}</p>
                                     </td>
                                 </tr>
-                            ))}
+                            )}
                         </tbody>
                     </table>
                 </div>
             </div>
             {isModalOpen && <StockItemModal 
                 item={editingItem} 
+                subStocks={subStocks}
+                customCategories={customCategories}
+                onAddCustomCategory={onAddCustomCategory}
                 onSave={(data) => {
                     let diff = 0;
                     if (editingItem) {
