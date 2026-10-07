@@ -29,11 +29,25 @@ export class ErrorBoundary extends Component<Props, State> {
     this.setState({ hasError: false, error: null });
   };
 
-  public handleClearCacheAndReload = () => {
+  public handleClearCacheAndReload = async () => {
     try {
       localStorage.removeItem('agri-planter-temp-boundary');
       localStorage.removeItem('agri-planter-pending-org');
       localStorage.removeItem('agrimap-pending-sync');
+      localStorage.removeItem('agri-planter-mode');
+      localStorage.removeItem('agrimap_sandbox_hill_spine_profile');
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registrations) {
+          await reg.unregister();
+        }
+      }
+      if ('caches' in window) {
+        const cacheKeys = await caches.keys();
+        for (const key of cacheKeys) {
+          await caches.delete(key);
+        }
+      }
     } catch (e) {}
     window.location.reload();
   };

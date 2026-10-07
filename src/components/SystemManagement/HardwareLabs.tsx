@@ -43,11 +43,13 @@ import {
     Navigation,
     Video,
     CloudRain,
-    Droplets
+    Droplets,
+    MapPin
 } from 'lucide-react';
-import { Employee } from '../../types';
+import { Employee, PlantationFeature } from '../../types';
 import { toast } from 'sonner';
 import { useAppTheme } from '../../contexts/ThemeContext';
+import { HardwareTestingSandboxMap } from './HardwareLabs/HardwareTestingSandboxMap';
 import { UsbScannerLab } from './HardwareLabs/UsbScannerLab';
 import { GpsTrackerLab } from './HardwareLabs/GpsTrackerLab';
 import { CameraNvrLab } from './HardwareLabs/CameraNvrLab';
@@ -60,12 +62,39 @@ interface HardwareLabsProps {
     organizationId?: string;
     onAddDevice?: (device: any) => void;
     installedDevices?: any[];
+    plantationFeatures?: PlantationFeature[];
+    mapCenter?: [number, number];
+    fullScreenMap?: boolean;
+    initialTab?: 'sandbox_map' | 'bluetooth' | 'gps' | 'cameras' | 'drone' | 'weather' | 'sensors' | 'printer' | 'qr' | 'nfc' | 'scale' | 'ports';
+    onOpenDevicesMap?: () => void;
+    onSelectLabTab?: (tab: string) => void;
 }
 
-const HardwareLabs: React.FC<HardwareLabsProps> = ({ employees = [], organizationId, onAddDevice, installedDevices = [] }) => {
+const HardwareLabs: React.FC<HardwareLabsProps> = ({ 
+    employees = [], 
+    organizationId, 
+    onAddDevice, 
+    installedDevices = [],
+    plantationFeatures = [],
+    mapCenter = [41.9023, 44.5],
+    fullScreenMap = false,
+    initialTab,
+    onOpenDevicesMap,
+    onSelectLabTab
+}) => {
     const { resetToDefault } = useAppTheme();
-    const [activeTab, setActiveTab] = useState<'bluetooth' | 'gps' | 'cameras' | 'drone' | 'weather' | 'sensors' | 'printer' | 'qr' | 'nfc' | 'scale' | 'ports'>('bluetooth');
+    const [activeTab, setActiveTab] = useState<'sandbox_map' | 'bluetooth' | 'gps' | 'cameras' | 'drone' | 'weather' | 'sensors' | 'printer' | 'qr' | 'nfc' | 'scale' | 'ports'>(
+        initialTab ? initialTab : (fullScreenMap ? 'sandbox_map' : 'bluetooth')
+    );
     const [isScanning, setIsScanning] = useState(false);
+
+    useEffect(() => {
+        if (initialTab) {
+            setActiveTab(initialTab);
+        } else if (!fullScreenMap && activeTab === 'sandbox_map') {
+            setActiveTab('bluetooth');
+        }
+    }, [initialTab, fullScreenMap]);
     
     // Custom Adopted Printer and active Printing path selection
     const [selectedPrinterId, setSelectedPrinterId] = useState<string>(() => safeStorage.getItem('agrimap_selected_printer') || '');
@@ -1251,6 +1280,7 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({ employees = [], organizatio
         { id: 'ports', label: 'Ports & USB Bus', icon: Usb },
         { id: 'qr', label: 'QR Generator', icon: QrCode },
         { id: 'nfc', label: 'NFC & RFID', icon: Rss },
+        { id: 'sandbox_map', label: 'Testing Sandbox Map', icon: MapPin },
     ];
 
     const manageDevice = (devId: string, action: string) => {
@@ -1264,18 +1294,49 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({ employees = [], organizatio
         );
     };
 
+    if (activeTab === 'sandbox_map' && fullScreenMap) {
+        return (
+            <div className="w-full h-full relative overflow-hidden flex flex-col">
+                <HardwareTestingSandboxMap 
+                    plantationFeatures={plantationFeatures}
+                    mapCenter={mapCenter}
+                    onSwitchTab={(tab: string) => {
+                        if (onSelectLabTab) {
+                            onSelectLabTab('hardware');
+                        }
+                        setActiveTab((tab as any) || 'bluetooth');
+                    }}
+                />
+            </div>
+        );
+    }
+
     return (
-        <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-xl overflow-hidden min-h-[700px] flex flex-col">
-            <div className="p-8 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+        <div className="bg-white dark:bg-slate-950 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden min-h-[700px] flex flex-col">
+            <div className="p-6 sm:p-8 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex flex-wrap items-center justify-between gap-4">
                 <div>
-                    <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter flex items-center gap-2">
+                    <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter flex items-center gap-2">
                         <Cpu className="text-blue-600" /> Hardware Peripheral Labs
                     </h2>
                     <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest flex items-center gap-2">
                         <Wifi size={12} className="text-emerald-500" /> Active Local Mesh • Low-level driver management
                     </p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2.5">
+                    <button
+                        onClick={() => {
+                            if (onOpenDevicesMap) {
+                                onOpenDevicesMap();
+                            } else if (onSelectLabTab) {
+                                onSelectLabTab('devices_map');
+                            } else {
+                                setActiveTab('sandbox_map');
+                            }
+                        }}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-blue-900/40 transition-all active:scale-95 cursor-pointer"
+                    >
+                        <MapPin size={13} /> 🗺️ Full Screen Testing Map
+                    </button>
                     <button
                         onClick={() => {
                             resetToDefault();
@@ -1303,9 +1364,21 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({ employees = [], organizatio
                         return (
                             <button
                                 key={tab.id}
-                                onClick={() => setActiveTab(tab.id as any)}
+                                onClick={() => {
+                                    if (tab.id === 'sandbox_map') {
+                                        if (onOpenDevicesMap) {
+                                            onOpenDevicesMap();
+                                            return;
+                                        }
+                                        if (onSelectLabTab) {
+                                            onSelectLabTab('devices_map');
+                                            return;
+                                        }
+                                    }
+                                    setActiveTab(tab.id as any);
+                                }}
                                 data-active={isActive ? "true" : "false"}
-                                className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all relative ${
+                                className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all relative cursor-pointer ${
                                     isActive 
                                         ? 'bg-blue-600 text-white font-black scale-[1.02] shadow-md shadow-blue-500/20' 
                                         : 'text-slate-600 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white border border-transparent'
@@ -1329,6 +1402,13 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({ employees = [], organizatio
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.2 }}
                     >
+                        {activeTab === 'sandbox_map' && (
+                            <HardwareTestingSandboxMap 
+                                plantationFeatures={plantationFeatures}
+                                mapCenter={mapCenter}
+                            />
+                        )}
+
                         {activeTab === 'bluetooth' && (
                             <UsbScannerLab 
                                 employees={employees}
@@ -1346,11 +1426,16 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({ employees = [], organizatio
                         )}
 
                         {activeTab === 'cameras' && (
-                            <CameraNvrLab />
+                            <CameraNvrLab 
+                                plantationFeatures={plantationFeatures}
+                                mapCenter={mapCenter}
+                            />
                         )}
 
                         {activeTab === 'drone' && (
-                            <DroneHardwareLab />
+                            <DroneHardwareLab 
+                                mapCenter={mapCenter}
+                            />
                         )}
 
                         {activeTab === 'weather' && (

@@ -28,6 +28,8 @@ export interface DisplayToolsPreferences {
     showOperations: boolean;
     showHarvests: boolean;
     showShowcases: boolean;
+    showCameras: boolean;
+    showDroneMissions: boolean;
 }
 
 export const DEFAULT_DISPLAY_PREFS: DisplayToolsPreferences = {
@@ -48,7 +50,9 @@ export const DEFAULT_DISPLAY_PREFS: DisplayToolsPreferences = {
     showNotes: true,
     showOperations: true,
     showHarvests: true,
-    showShowcases: true
+    showShowcases: true,
+    showCameras: true,
+    showDroneMissions: true
 };
 
 interface MapDisplayVisibilityControlProps {
@@ -169,6 +173,8 @@ export const MapDisplayVisibilityControl: React.FC<MapDisplayVisibilityControlPr
     ];
 
     const layerItems = [
+        { key: 'showCameras' as const, label: isKa ? 'ვიდეოკამერები & NVR (ოპტიკური დაფარვა)' : 'Surveillance Cameras & Optical FOV', count: isKa ? 'კამერები' : 'Cameras' },
+        { key: 'showDroneMissions' as const, label: isKa ? 'დრონის ფრენის მარშრუტები & წერტილები' : 'Drone Flight Paths & Waypoints', count: isKa ? 'მარშრუტები' : 'Missions' },
         { key: 'showSectors' as const, label: isKa ? 'სექტორები & საზღვრები' : 'Sectors & Boundaries', count: isKa ? 'პოლიგონები' : 'Polygons' },
         { key: 'showLines' as const, label: isKa ? 'ხაზები & თხრილები' : 'Lines & Trenches', count: isKa ? 'რიგები' : 'Rows' },
         { key: 'showSeedlings' as const, label: isKa ? 'ნერგები' : 'Seedlings', count: isKa ? 'მცენარეები' : 'Plants' },

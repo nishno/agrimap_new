@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap, LayersControl, Polyline, Tooltip, useMapEvents, Polygon, LayerGroup, CircleMarker } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, LayersControl, Polyline, Tooltip, useMapEvents, Polygon, LayerGroup, CircleMarker, Circle } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet-editable';
 import { toast } from 'sonner';
@@ -11,6 +11,9 @@ import { GripHorizontal, PenTool } from 'lucide-react';
 import { getSphericalPolygonArea, calculateLineLength } from '../services/geospatialService';
 import type { LiveMapShowcase } from './FloatingCommunicationHub';
 import { safeStorage } from '../services/storageService';
+import type { PlantationCamera } from './SystemManagement/HardwareLabs/CameraNvrLab';
+import type { DroneFlightMission } from './DroneFlightPathPlanner';
+import { computeFovConePolygon, computeBlindZonePolygon, computeBlindZoneDistanceM } from '../utils/cameraGeospatial';
 
 // Fix for default icon issue
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -332,6 +335,71 @@ const createGpsDeviceIcon = (dev: any) => {
     });
 };
 
+const createCameraMarkerIcon = (cam: PlantationCamera, isSelected: boolean = false) => {
+    const azimuth = cam.azimuthDeg || 0;
+    const html = `
+        <div class="relative flex items-center justify-center select-none" style="width: 38px; height: 38px; transform: translate(-50%, -50%);">
+            <div class="absolute inset-0 rounded-full bg-blue-500/25 animate-ping pointer-events-none"></div>
+            <div class="relative w-9 h-9 rounded-2xl bg-slate-950 border-2 ${isSelected ? 'border-emerald-400 shadow-emerald-500/50 scale-110' : 'border-blue-500 shadow-blue-500/40'} shadow-xl flex items-center justify-center transition-all hover:scale-110 cursor-pointer">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${isSelected ? '#34d399' : '#60a5fa'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                    <circle cx="12" cy="13" r="4"></circle>
+                </svg>
+                <div class="absolute -top-1 w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-b-[6px] border-b-cyan-400" style="transform: rotate(${azimuth}deg) translateY(-8px);"></div>
+            </div>
+            <div class="absolute -bottom-2 px-1.5 py-0.2 bg-slate-950 text-white border border-slate-700 rounded font-mono text-[8px] font-black shadow pointer-events-none">
+                CH0${cam.channel}
+            </div>
+        </div>
+    `;
+    return L.divIcon({
+        className: 'agrimap-camera-marker',
+        html,
+        iconSize: [38, 38],
+        iconAnchor: [19, 19],
+        popupAnchor: [0, -22]
+    });
+};
+
+const createDroneWaypointIcon = (label: string, isHome: boolean = false, isReturn: boolean = false) => {
+    const bg = isHome ? '#10b981' : isReturn ? '#f59e0b' : '#06b6d4';
+    const html = `
+        <div style="position: relative; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; transform: translate(-50%, -50%);">
+            <div style="width: 24px; height: 24px; border-radius: 50%; background-color: ${bg}; border: 2.5px solid #ffffff; box-shadow: 0 2px 8px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; font-family: monospace; font-weight: 900; font-size: 10px; color: #ffffff;">
+                ${label}
+            </div>
+        </div>
+    `;
+    return L.divIcon({
+        className: 'agrimap-drone-waypoint-marker',
+        html,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+        popupAnchor: [0, -16]
+    });
+};
+
+const createDroneFlightIcon = (headingDeg: number = 0) => {
+    const html = `
+        <div style="position: relative; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; transform: translate(-50%, -50%) rotate(${headingDeg}deg); transition: transform 0.2s ease;">
+            <div style="position: absolute; inset: -3px; border-radius: 50%; border: 2px dashed #06b6d4; animation: spin 4s linear infinite;"></div>
+            <div style="width: 32px; height: 32px; border-radius: 10px; background-color: #0f172a; border: 2px solid #38bdf8; box-shadow: 0 0 15px rgba(56, 189, 248, 0.7); display: flex; align-items: center; justify-content: center;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                    <path d="M2 17l10 5 10-5"></path>
+                    <path d="M2 12l10 5 10-5"></path>
+                </svg>
+            </div>
+        </div>
+    `;
+    return L.divIcon({
+        className: 'agrimap-drone-flight-marker',
+        html,
+        iconSize: [38, 38],
+        iconAnchor: [19, 19]
+    });
+};
+
 const MapUpdater: React.FC<{ center: [number, number]; zoom: number; hasBounds: boolean }> = ({ center, zoom, hasBounds }) => {
   const map = useMap();
   const lastPropsRef = useRef({ center: [center[0], center[1]] as [number, number], zoom });
@@ -622,7 +690,7 @@ const DrawingHandler: React.FC<{
             if (!tool) return;
             // Pencil tool is purely freehand click-and-drag: ignore discrete clicks to avoid accidental dots
             if (tool === 'pencil') return;
-            if (tool === 'note' || tool === 'seedling' || tool === 'checkpoint') {
+            if (tool === 'note' || tool === 'seedling' || tool === 'checkpoint' || tool === 'camera') {
                 if (tool === 'seedling' && lastSeedPos) {
                     const dist = e.latlng.distanceTo(lastSeedPos);
                     toast.info(`Distance from last seed: ${dist.toFixed(2)}m`, { duration: 2000 });
@@ -1298,6 +1366,17 @@ export interface MapComponentProps {
     onShowcaseMapClick?: (latlng: [number, number]) => void;
     onContextMenuFeature?: (feature: PlantationFeature, screenPoint: { x: number; y: number }, coordinates?: { lat: number; lng: number }) => void;
     onMapContextMenu?: (screenPoint: { x: number; y: number }, coordinates?: { lat: number; lng: number }) => void;
+    cameras?: PlantationCamera[];
+    showCameras?: boolean;
+    onSelectCameraForLiveView?: (cam: PlantationCamera) => void;
+    onSelectCameraForProperties?: (cam: PlantationCamera) => void;
+    onUpdateCameraPosition?: (cameraId: string, lat: number, lng: number) => void;
+    customSlopes?: any[];
+    showCumulativeCoverage?: boolean;
+    droneMission?: DroneFlightMission | null;
+    showDroneMissions?: boolean;
+    onSelectDroneMissionForProperties?: () => void;
+    simulatedDronePosition?: { lat: number; lng: number; heading: number } | null;
 }
 
 export const MapComponent: React.FC<MapComponentProps> = (props) => {
@@ -1313,7 +1392,10 @@ export const MapComponent: React.FC<MapComponentProps> = (props) => {
         onUndo, onRedo, canUndo, canRedo, crops = EMPTY_ARRAY,
         trenchPreviewLines, liveShowcases = EMPTY_ARRAY, inProgressShowcasePoints = EMPTY_ARRAY,
         onShowcaseMapClick, showMeasurementGuide = true, showZoomControls = true,
-        onContextMenuFeature, onMapContextMenu
+        onContextMenuFeature, onMapContextMenu,
+        cameras = EMPTY_ARRAY, showCameras = true, onSelectCameraForLiveView, onSelectCameraForProperties,
+        onUpdateCameraPosition, customSlopes, showCumulativeCoverage,
+        droneMission, showDroneMissions = true, onSelectDroneMissionForProperties, simulatedDronePosition
     } = props;
 
     const rawCenter = isValidCoordinate(center) ? center : [42.14, 42.0];
@@ -2504,6 +2586,244 @@ export const MapComponent: React.FC<MapComponentProps> = (props) => {
                         </LayerGroup>
                     </LayersControl.Overlay>
                 </LayersControl>
+
+                {/* 1. Surveillance Cameras Layer with Optical FOV Cones & Live View Prompt */}
+                {showCameras && cameras.length > 0 && cameras.map((cam: PlantationCamera) => {
+                    if (!Number.isFinite(cam.lat) || !Number.isFinite(cam.lng)) return null;
+                    const fovPolygon = computeFovConePolygon(cam.lat, cam.lng, cam.azimuthDeg || 0, cam.fovAngleDeg || 95, cam.rangeM || 75);
+                    const blindPolygon = computeBlindZonePolygon({
+                        centerLat: cam.lat,
+                        centerLng: cam.lng,
+                        azimuthDeg: cam.azimuthDeg || 0,
+                        fovAngleDeg: cam.fovAngleDeg || 95,
+                        rangeM: cam.rangeM || 75,
+                        mountHeightM: cam.mountHeightM || 6,
+                        tiltAngleDeg: cam.tiltAngleDeg || 4
+                    });
+                    const blindDistM = computeBlindZoneDistanceM(cam.mountHeightM || 6, cam.tiltAngleDeg || 4, cam.fovAngleDeg || 95);
+
+                    return (
+                        <React.Fragment key={cam.id}>
+                            {/* Optical Field of View (FOV) Cone */}
+                            {fovPolygon.length > 2 && (
+                                <Polygon
+                                    positions={fovPolygon}
+                                    pathOptions={{
+                                        color: '#3b82f6',
+                                        weight: 1.5,
+                                        dashArray: '4, 4',
+                                        fillColor: '#3b82f6',
+                                        fillOpacity: 0.16
+                                    }}
+                                />
+                            )}
+                            {/* Blind Zone Arc directly beneath the camera pole */}
+                            {blindPolygon.length > 2 && (
+                                <Polygon
+                                    positions={blindPolygon}
+                                    pathOptions={{
+                                        color: '#ef4444',
+                                        weight: 1.2,
+                                        dashArray: '2, 2',
+                                        fillColor: '#ef4444',
+                                        fillOpacity: 0.35
+                                    }}
+                                />
+                            )}
+                            {/* Camera Pole Marker - Draggable for easy moving & replacement */}
+                            <Marker
+                                position={[cam.lat, cam.lng]}
+                                icon={createCameraMarkerIcon(cam)}
+                                draggable={true}
+                                eventHandlers={{
+                                    click: () => {
+                                        onSelectCameraForProperties?.(cam);
+                                    },
+                                    dragend: (e) => {
+                                        const marker = e.target;
+                                        const pos = marker.getLatLng();
+                                        onUpdateCameraPosition?.(cam.id, pos.lat, pos.lng);
+                                    }
+                                }}
+                            >
+                                <Tooltip direction="top" className="bg-slate-900 text-white border border-slate-700 shadow-xl rounded-xl p-2 font-mono text-[10px]">
+                                    <div><b>[CH0{cam.channel}] {cam.name}</b></div>
+                                    <div className="text-slate-400">Tilt: {cam.tiltAngleDeg || 4}° • Range: {cam.rangeM}m</div>
+                                </Tooltip>
+                                <Popup>
+                                    <div className="p-3 min-w-[220px] text-slate-800">
+                                        <div className="flex items-center justify-between gap-2 mb-2">
+                                            <span className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 font-mono font-bold text-[10px]">
+                                                CH0{cam.channel}
+                                            </span>
+                                            <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
+                                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                                {cam.status || 'ONLINE'}
+                                            </span>
+                                        </div>
+                                        <h4 className="text-sm font-black text-slate-900 leading-tight mb-1">{cam.name}</h4>
+                                        <div className="text-[11px] text-slate-600 mb-2.5 font-mono bg-slate-50 p-2 rounded-lg border border-slate-200 space-y-0.5">
+                                            <div><b>IP:</b> {cam.ipAddress}:{cam.rtspPort}</div>
+                                            <div><b>Model:</b> {cam.model}</div>
+                                            <div><b>Optical:</b> Range {cam.rangeM}m • FOV {cam.fovAngleDeg}°</div>
+                                            <div><b>Pole:</b> Height {cam.mountHeightM}m • Tilt {cam.tiltAngleDeg || 4}°</div>
+                                            <div><b>Blind Zone:</b> &lt; {blindDistM}m</div>
+                                        </div>
+
+                                        {/* Action buttons: Live View & Properties */}
+                                        <div className="flex gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onSelectCameraForLiveView?.(cam);
+                                                }}
+                                                className="flex-1 py-2 px-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-1 shadow-md shadow-blue-500/30 transition-all cursor-pointer active:scale-95"
+                                            >
+                                                <span>🎥 Live</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onSelectCameraForProperties?.(cam);
+                                                }}
+                                                className="flex-1 py-2 px-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95"
+                                            >
+                                                <span>⚙️ Config</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </Popup>
+                            </Marker>
+                        </React.Fragment>
+                    );
+                })}
+
+                {/* 2. Drone Missions Layer: Waypoints, Outbound/Return Legs, Circle Sectors */}
+                {showDroneMissions && droneMission && !droneMission.isHidden && (
+                    <React.Fragment>
+                        {/* Waypoints Mode */}
+                        {droneMission.mode === 'waypoints' && droneMission.waypoints.length > 0 && (
+                            <>
+                                {droneMission.waypoints.length > 1 && (
+                                    <Polyline
+                                        positions={droneMission.waypoints.map(wp => [wp.lat, wp.lng] as [number, number])}
+                                        eventHandlers={{
+                                            click: () => {
+                                                onSelectDroneMissionForProperties?.();
+                                            }
+                                        }}
+                                        pathOptions={{
+                                            color: '#06b6d4',
+                                            weight: 3.5,
+                                            dashArray: '6, 6',
+                                            opacity: 0.95
+                                        }}
+                                    />
+                                )}
+                                {droneMission.waypoints.map((wp, idx) => (
+                                    <Marker
+                                        key={wp.id}
+                                        position={[wp.lat, wp.lng]}
+                                        eventHandlers={{
+                                            click: () => {
+                                                onSelectDroneMissionForProperties?.();
+                                            }
+                                        }}
+                                        icon={createDroneWaypointIcon(
+                                            idx === 0 ? 'H' : wp.leg === 'return' ? 'R' : String(idx),
+                                            idx === 0,
+                                            wp.leg === 'return'
+                                        )}
+                                    >
+                                        <Tooltip direction="top">
+                                            <span className="font-mono text-[10px]">
+                                                {idx === 0 ? 'Takeoff / Home' : wp.leg === 'return' ? 'Return Leg' : `WP #${idx}`} ({droneMission.altitudeM}m AGL)
+                                            </span>
+                                        </Tooltip>
+                                    </Marker>
+                                ))}
+                            </>
+                        )}
+
+                        {/* Circle Sector Mode */}
+                        {droneMission.mode === 'circle_sector' && droneMission.circleCenter && (
+                            <>
+                                <Circle
+                                    center={droneMission.circleCenter}
+                                    radius={droneMission.circleRadiusM || 60}
+                                    eventHandlers={{
+                                        click: () => {
+                                            onSelectDroneMissionForProperties?.();
+                                        }
+                                    }}
+                                    pathOptions={{
+                                        color: '#06b6d4',
+                                        weight: 2.5,
+                                        dashArray: '8, 8',
+                                        fillColor: '#06b6d4',
+                                        fillOpacity: 0.14
+                                    }}
+                                />
+                                <Marker
+                                    position={droneMission.circleCenter}
+                                    eventHandlers={{
+                                        click: () => {
+                                            onSelectDroneMissionForProperties?.();
+                                        }
+                                    }}
+                                    icon={createDroneWaypointIcon('◎', true)}
+                                >
+                                    <Tooltip direction="top">
+                                        <span className="font-mono text-[10px]">Sector Orbit Center ({droneMission.circleRadiusM || 60}m radius)</span>
+                                    </Tooltip>
+                                </Marker>
+                            </>
+                        )}
+
+                        {/* Simulated In-Flight Drone Marker */}
+                        {simulatedDronePosition && (
+                            <Marker
+                                position={[simulatedDronePosition.lat, simulatedDronePosition.lng]}
+                                icon={createDroneFlightIcon(simulatedDronePosition.heading)}
+                            >
+                                <Tooltip direction="top" permanent>
+                                    <div className="font-mono text-[9px] bg-slate-950 text-cyan-300 px-2 py-0.5 rounded border border-cyan-500/50">
+                                        ALT: {droneMission.altitudeM}m | SPD: {droneMission.speedMs}m/s
+                                    </div>
+                                </Tooltip>
+                            </Marker>
+                        )}
+                    </React.Fragment>
+                )}
+
+                {/* 3. Custom Sculpted Slopes Layer (Rings & Influence Zones) */}
+                {customSlopes && customSlopes.filter(s => s && s.enabled).map((slope: any) => {
+                    const isExcavation = slope.peakHeightM < 0;
+                    return (
+                        <React.Fragment key={slope.id}>
+                            <Circle
+                                center={[slope.centerLat, slope.centerLng]}
+                                radius={slope.radiusM}
+                                pathOptions={{
+                                    color: isExcavation ? '#ef4444' : '#10b981',
+                                    weight: 1.8,
+                                    dashArray: '4, 4',
+                                    fillColor: isExcavation ? '#ef4444' : '#10b981',
+                                    fillOpacity: 0.12
+                                }}
+                            >
+                                <Tooltip direction="top">
+                                    <span className="font-mono text-[10px] font-bold">
+                                        ⛰️ {slope.name}: {slope.peakHeightM > 0 ? `+${slope.peakHeightM}m` : `${slope.peakHeightM}m`} (R={slope.radiusM}m)
+                                    </span>
+                                </Tooltip>
+                            </Circle>
+                        </React.Fragment>
+                    );
+                })}
+
                 <EditControl 
                   featureId={props.editingGeometryId || null} 
                   features={plantationFeatures} 

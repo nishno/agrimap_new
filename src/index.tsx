@@ -30,6 +30,7 @@ try {
 }
 
 import './lib/leafletSafety';
+import 'leaflet/dist/leaflet.css';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
@@ -72,11 +73,14 @@ const isSuppressedStr = (str: string) => {
     str.includes('INTERNAL ASSERTION FAILED') ||
     str.includes('INTERNAL UNHANDLED ERROR') ||
     str.includes('Unexpected state') ||
+    str.includes('Eu.get') ||
+    str.includes('removeAndCleanupTarget') ||
     str.includes('b815') ||
     str.includes('ca9') ||
     str.includes('da08') ||
     lower.includes('quota') ||
     lower.includes('exceeded') ||
+    lower.includes('not iterable') ||
     lower.includes('resizeobserver') ||
     lower.includes('clearrect') ||
     lower.includes('watchchangeaggregator') ||
@@ -165,9 +169,9 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// Register service worker for PWA safely
+// Register service worker for PWA safely in production only
 try {
-  if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+  if (import.meta.env.PROD && typeof window !== 'undefined' && 'serviceWorker' in navigator) {
     const updateSW = registerSW({
       onNeedRefresh() {
         if (confirm('New content available. Reload?')) {
@@ -226,13 +230,22 @@ if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
-const root = ReactDOM.createRoot(rootElement);
-// Removed StrictMode as it causes double-initialization issues with Leaflet
-// which leads to React Error #310 (mismatched node counts).
-root.render(
-  <ErrorBoundary>
-    <LanguageProvider>
-      <App />
-    </LanguageProvider>
-  </ErrorBoundary>
-);
+try {
+  const root = ReactDOM.createRoot(rootElement);
+  root.render(
+    <ErrorBoundary>
+      <LanguageProvider>
+        <App />
+      </LanguageProvider>
+    </ErrorBoundary>
+  );
+  (window as any).__AGRIMAP_MOUNTED__ = true;
+  if (typeof (window as any).__agrimapOnMounted === 'function') {
+    (window as any).__agrimapOnMounted();
+  }
+} catch (mountErr: any) {
+  console.error("FATAL ROOT MOUNT ERROR:", mountErr);
+  if (typeof (window as any).__agrimapReportError === 'function') {
+    (window as any).__agrimapReportError(mountErr);
+  }
+}

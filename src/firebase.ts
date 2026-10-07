@@ -768,7 +768,10 @@ export const onSnapshot = (q: any, cb: any, errCb?: any): any => {
                 errStr.includes('INTERNAL ASSERTION FAILED') || 
                 errStr.includes('Unexpected state') || 
                 errStr.includes('da08') || 
-                errStr.includes('Target ID already exists')
+                errStr.includes('Target ID already exists') ||
+                errStr.includes('Eu.get') ||
+                errStr.includes('not iterable') ||
+                errStr.includes('removeAndCleanupTarget')
             ) {
                 console.warn('[Firebase Snapshot Interceptor] Handled internal Firestore assertion state error:', errStr);
                 return;
@@ -787,7 +790,19 @@ export const onSnapshot = (q: any, cb: any, errCb?: any): any => {
         };
 
         try {
-            return firebaseOnSnapshot(q, wrappedCb, wrappedErrCb);
+            const rawUnsub = firebaseOnSnapshot(q, wrappedCb, wrappedErrCb);
+            let hasUnsubscribed = false;
+            return () => {
+                if (hasUnsubscribed) return;
+                hasUnsubscribed = true;
+                try {
+                    if (typeof rawUnsub === 'function') {
+                        rawUnsub();
+                    }
+                } catch (unsubErr: any) {
+                    console.warn('[Firebase Snapshot Interceptor] Handled unlisten/teardown exception:', unsubErr);
+                }
+            };
         } catch (syncErr: any) {
             console.warn('[Firebase Snapshot Interceptor] Synchronous onSnapshot call error:', syncErr);
             return () => {};

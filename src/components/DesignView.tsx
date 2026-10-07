@@ -19,7 +19,7 @@ import {
     AlertTriangleIcon, PencilSquareIcon, MapIcon, PlayIcon, StopIcon, PauseIcon, FastForwardIcon, CompassIcon,
     CrosshairIcon, ActivityIcon, RotateCwIcon, SparklesIcon, CloudUploadIcon, MicrophoneIcon, BuildingStorefrontIcon
 } from './Icons';
-import { PenTool, Plane, GripHorizontal, Video, MessageSquare, Building2, Briefcase } from 'lucide-react';
+import { PenTool, Plane, GripHorizontal, Video, MessageSquare, Building2, Briefcase, LayoutGrid, Navigation, Camera, Server, Wifi, Mountain } from 'lucide-react';
 import { offsetFeatures, calculateLineLength, generateTrenches, generateSeedlingCoordinates } from '../services/geospatialService';
 import { toGeoJSON, toKML } from '../services/fileService';
 import { safeStorage } from '../services/storageService';
@@ -30,6 +30,15 @@ import MapDisplayVisibilityControl, { DEFAULT_DISPLAY_PREFS, type DisplayToolsPr
 import MapFeatureContextMenu from './MapFeatureContextMenu';
 import { TransparencyPopover } from './TransparencyPopover';
 import { useLanguage } from '../contexts/LanguageContext';
+import { CameraPlannerModal } from './SystemManagement/HardwareLabs/CameraPlannerModal';
+import { CameraLiveMonitorWindow } from './SystemManagement/HardwareLabs/CameraLiveMonitorWindow';
+import { AllCamerasWideModal } from './SystemManagement/HardwareLabs/AllCamerasWideModal';
+import { DroneFlightPathPlanner, type DroneFlightMission } from './DroneFlightPathPlanner';
+import type { PlantationCamera } from './SystemManagement/HardwareLabs/CameraNvrLab';
+import { MapElementPropertiesPanel } from './MapElementPropertiesPanel';
+import { NetworkCameraNvrManagerModal } from './NetworkCameraNvrManagerModal';
+import { TerrainSlopeSculptorModal } from './TerrainSlopeSculptorModal';
+import { type CustomTerrainSlope, setActiveSlopesCache } from '../utils/demTerrainViewshed';
 
 interface DesignViewProps {
   layers: Layer[];
@@ -1231,6 +1240,334 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
     // AI Spatial Analysis Modal State (Decoupled Worker Engine)
     const [isSpatialAnalysisOpen, setIsSpatialAnalysisOpen] = useState(false);
 
+    // Surveillance Cameras & Hardware State
+    const [cameras, setCameras] = useState<PlantationCamera[]>(() => {
+        const saved = safeStorage.getItem('agrimap_plantation_cameras');
+        if (saved) {
+            try { return JSON.parse(saved); } catch (e) {}
+        }
+        const baseLat = mapProps.center?.[0] || 41.9023;
+        const baseLng = mapProps.center?.[1] || 44.5;
+        return [
+            {
+                id: 'cam-01',
+                name: 'Main Plantation Gate & Weigh Scale',
+                channel: 1,
+                model: 'Hikvision DS-2CD2087G2-LU (4K ColorVu)',
+                ipAddress: '192.168.1.121',
+                rtspPort: 554,
+                locationName: 'Front Security Gate & Weighing Terminal',
+                lat: baseLat - 0.0018,
+                lng: baseLng - 0.0005,
+                mountHeightM: 6,
+                azimuthDeg: 45,
+                fovAngleDeg: 102,
+                rangeM: 65,
+                tiltAngleDeg: 4, // 4 degrees down-tilt as requested
+                isPtz: false,
+                isNightVision: true,
+                status: 'RECORDING'
+            },
+            {
+                id: 'cam-02',
+                name: 'North Blueberry Field Block A',
+                channel: 2,
+                model: 'Hikvision DS-2CD2386G2-ISU (AcuSense 4K)',
+                ipAddress: '192.168.1.122',
+                rtspPort: 554,
+                locationName: 'North Orchard Pole #4',
+                lat: baseLat + 0.0012,
+                lng: baseLng + 0.0008,
+                mountHeightM: 8,
+                azimuthDeg: 135,
+                fovAngleDeg: 89,
+                rangeM: 90,
+                tiltAngleDeg: 4,
+                isPtz: false,
+                isNightVision: true,
+                status: 'RECORDING'
+            },
+            {
+                id: 'cam-03',
+                name: 'Cold Storage & Packing Facility',
+                channel: 3,
+                model: 'Hikvision DarkFighter Ultra-LowLight',
+                ipAddress: '192.168.1.123',
+                rtspPort: 554,
+                locationName: 'Post-Harvest Logistics Shed',
+                lat: baseLat - 0.0010,
+                lng: baseLng + 0.0018,
+                mountHeightM: 5,
+                azimuthDeg: 270,
+                fovAngleDeg: 110,
+                rangeM: 45,
+                tiltAngleDeg: 4,
+                isPtz: false,
+                isNightVision: true,
+                status: 'RECORDING'
+            },
+            {
+                id: 'cam-04',
+                name: 'Irrigation Pump House & Deep Well',
+                channel: 4,
+                model: 'Hikvision DS-2DE4425IW-DE (25x PTZ)',
+                ipAddress: '192.168.1.124',
+                rtspPort: 554,
+                locationName: 'Central Fertigation Station',
+                lat: baseLat + 0.0002,
+                lng: baseLng - 0.0014,
+                mountHeightM: 10,
+                azimuthDeg: 180,
+                fovAngleDeg: 60,
+                rangeM: 160,
+                tiltAngleDeg: 4,
+                isPtz: true,
+                isNightVision: true,
+                status: 'ONLINE'
+            }
+        ];
+    });
+
+    const [isCameraPlannerOpen, setIsCameraPlannerOpen] = useState(false);
+    const [cameraPlannerCoords, setCameraPlannerCoords] = useState<[number, number] | undefined>(undefined);
+    const [activeCameraForLiveView, setActiveCameraForLiveView] = useState<PlantationCamera | null>(null);
+    const [isAllCamerasWideOpen, setIsAllCamerasWideOpen] = useState(false);
+
+    // Selected camera or drone mission for floating properties panel
+    const [selectedCameraForProperties, setSelectedCameraForProperties] = useState<PlantationCamera | null>(null);
+    const [selectedDroneMissionForProperties, setSelectedDroneMissionForProperties] = useState<DroneFlightMission | null>(null);
+    const [isNetworkNvrManagerOpen, setIsNetworkNvrManagerOpen] = useState(false);
+
+    // 3D Area and Terrain Slope Sculptor State
+    const [isTerrainSculptorOpen, setIsTerrainSculptorOpen] = useState(false);
+    const [customSlopes, setCustomSlopes] = useState<CustomTerrainSlope[]>(() => {
+        try {
+            const raw = safeStorage.getItem('agrimap_custom_terrain_slopes');
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                setActiveSlopesCache(parsed);
+                return parsed;
+            }
+        } catch (_) {}
+        return [];
+    });
+
+    // Save camera from planner
+    const handleSavePlannedCamera = (cam: PlantationCamera) => {
+        setCameras(prev => {
+            const exists = prev.some(c => c.id === cam.id);
+            const next = exists ? prev.map(c => c.id === cam.id ? cam : c) : [...prev, cam];
+            safeStorage.setItem('agrimap_plantation_cameras', JSON.stringify(next));
+            return next;
+        });
+        window.dispatchEvent(new CustomEvent('agrimap:camera_deployed', { detail: cam }));
+    };
+
+    // Save batch of cameras from multi-camera planner
+    const handleSaveBatchCameras = (batch: PlantationCamera[]) => {
+        setCameras(prev => {
+            const updated = [...prev];
+            batch.forEach(cam => {
+                const idx = updated.findIndex(c => c.id === cam.id);
+                if (idx >= 0) {
+                    updated[idx] = cam;
+                } else {
+                    updated.push(cam);
+                }
+            });
+            safeStorage.setItem('agrimap_plantation_cameras', JSON.stringify(updated));
+            return updated;
+        });
+        batch.forEach(c => window.dispatchEvent(new CustomEvent('agrimap:camera_deployed', { detail: c })));
+    };
+
+    // Move/Relocate Camera position directly on map
+    const handleMoveCameraPosition = (camId: string, lat: number, lng: number) => {
+        setCameras(prev => {
+            const next = prev.map(c => c.id === camId ? { ...c, lat, lng } : c);
+            safeStorage.setItem('agrimap_plantation_cameras', JSON.stringify(next));
+            return next;
+        });
+        if (selectedCameraForProperties?.id === camId) {
+            setSelectedCameraForProperties(prev => prev ? { ...prev, lat, lng } : null);
+        }
+        toast.success(isKa ? "კამერის პოზიცია განახლდა რუკაზე" : "Camera moved on map");
+    };
+
+    // Copy Camera handler
+    const handleCopyCamera = (cam: PlantationCamera) => {
+        const nextChannel = cameras.length + 1;
+        const newCam: PlantationCamera = {
+            ...cam,
+            id: `cam-${Date.now()}-${nextChannel}`,
+            name: `${cam.name} (Copy)`,
+            channel: nextChannel,
+            ipAddress: `192.168.1.${120 + nextChannel}`,
+            lat: cam.lat + 0.0004,
+            lng: cam.lng + 0.0004
+        };
+        handleSavePlannedCamera(newCam);
+        setSelectedCameraForProperties(newCam);
+        toast.success(isKa ? `კამერის ასლი შეიქმნა: ${newCam.name}` : `Camera duplicated: ${newCam.name}`);
+    };
+
+    // Delete Camera handler
+    const handleDeleteCamera = (camId: string) => {
+        setCameras(prev => {
+            const next = prev.filter(c => c.id !== camId);
+            safeStorage.setItem('agrimap_plantation_cameras', JSON.stringify(next));
+            return next;
+        });
+        if (selectedCameraForProperties?.id === camId) {
+            setSelectedCameraForProperties(null);
+        }
+        if (activeCameraForLiveView?.id === camId) {
+            setActiveCameraForLiveView(null);
+        }
+    };
+
+    // Import All Cameras from Online NVR / DVR
+    const handleImportAllCamerasFromNvr = (importedList: PlantationCamera[]) => {
+        setCameras(prev => {
+            const next = [...prev, ...importedList];
+            safeStorage.setItem('agrimap_plantation_cameras', JSON.stringify(next));
+            return next;
+        });
+        importedList.forEach(cam => {
+            window.dispatchEvent(new CustomEvent('agrimap:camera_deployed', { detail: cam }));
+        });
+    };
+
+    // Listen for cameras deployed globally
+    useEffect(() => {
+        const handleCameraDeployed = (e: any) => {
+            if (e?.detail) {
+                setCameras(prev => {
+                    const exists = prev.some(c => c.id === e.detail.id);
+                    const next = exists ? prev.map(c => c.id === e.detail.id ? e.detail : c) : [...prev, e.detail];
+                    safeStorage.setItem('agrimap_plantation_cameras', JSON.stringify(next));
+                    return next;
+                });
+            }
+        };
+        window.addEventListener('agrimap:camera_deployed', handleCameraDeployed);
+        return () => window.removeEventListener('agrimap:camera_deployed', handleCameraDeployed);
+    }, []);
+
+    // Drone Real-time Mission State (Waypoints & Circle Sector)
+    const [droneMission, setDroneMission] = useState<DroneFlightMission | null>(() => {
+        const saved = safeStorage.getItem('agrimap_drone_realtime_mission');
+        if (saved) {
+            try { return JSON.parse(saved); } catch (e) {}
+        }
+        const baseLat = mapProps.center?.[0] || 41.9023;
+        const baseLng = mapProps.center?.[1] || 44.5;
+        return {
+            id: 'mission-01',
+            name: 'Orchard Perimeter & Tree Row Inspection',
+            mode: 'waypoints',
+            altitudeM: 50,
+            speedMs: 12,
+            timeIntervalSec: 5,
+            headingDeg: 45,
+            isHidden: false,
+            waypoints: [
+                { id: 'wp-0', lat: baseLat - 0.002, lng: baseLng - 0.002, altitudeM: 0, speedMs: 0, leg: 'takeoff', name: 'Home Base' },
+                { id: 'wp-1', lat: baseLat - 0.001, lng: baseLng - 0.001, altitudeM: 50, speedMs: 12, leg: 'outbound', name: 'WP 1' },
+                { id: 'wp-2', lat: baseLat + 0.001, lng: baseLng - 0.0005, altitudeM: 50, speedMs: 12, leg: 'outbound', name: 'WP 2' },
+                { id: 'wp-3', lat: baseLat + 0.002, lng: baseLng + 0.001, altitudeM: 50, speedMs: 12, leg: 'outbound', name: 'WP 3' },
+                { id: 'wp-4', lat: baseLat - 0.002, lng: baseLng - 0.002, altitudeM: 50, speedMs: 12, leg: 'return', name: 'RTH Home' }
+            ]
+        };
+    });
+
+    const [isDroneMissionPlannerOpen, setIsDroneMissionPlannerOpen] = useState<boolean>(false);
+    const [simulatedDronePos, setSimulatedDronePos] = useState<{ lat: number; lng: number; heading: number } | null>(null);
+    const droneAnimTimerRef = useRef<any>(null);
+
+    const handleUpdateDroneMission = (updated: DroneFlightMission | null) => {
+        setDroneMission(updated);
+        if (updated) {
+            safeStorage.setItem('agrimap_drone_realtime_mission', JSON.stringify(updated));
+        } else {
+            safeStorage.removeItem('agrimap_drone_realtime_mission');
+            setSimulatedDronePos(null);
+        }
+    };
+
+    const handleDeleteDroneMission = () => {
+        handleUpdateDroneMission(null);
+        setSelectedDroneMissionForProperties(null);
+        toast.info(isKa ? 'დრონის მარშრუტი წაიშალა' : 'Drone flight mission deleted');
+    };
+
+    const handleCopyDroneMission = (missionToCopy: DroneFlightMission) => {
+        const copied: DroneFlightMission = {
+            ...missionToCopy,
+            id: `mission-${Date.now()}`,
+            name: `${missionToCopy.name} (Copy)`,
+            waypoints: missionToCopy.waypoints.map((wp, idx) => ({
+                ...wp,
+                id: `wp-${Date.now()}-${idx}`,
+                lat: wp.lat + 0.0003,
+                lng: wp.lng + 0.0003
+            }))
+        };
+        handleUpdateDroneMission(copied);
+        setSelectedDroneMissionForProperties(copied);
+        toast.success(isKa ? 'მარშრუტის ასლი შეიქმნა' : 'Drone flight path duplicated');
+    };
+
+    const handleStartDroneSimulation = (missionToSim: DroneFlightMission) => {
+        if (!missionToSim || missionToSim.waypoints.length < 2) {
+            toast.warning(isKa ? "სიმულაციისთვის საჭიროა მინიმუმ 2 წერტილი" : "At least 2 waypoints required for simulation");
+            return;
+        }
+
+        if (droneAnimTimerRef.current) clearInterval(droneAnimTimerRef.current);
+
+        let wpIdx = 0;
+        let progress = 0;
+        const totalLegs = missionToSim.waypoints.length - 1;
+
+        droneAnimTimerRef.current = setInterval(() => {
+            const p1 = missionToSim.waypoints[wpIdx];
+            const p2 = missionToSim.waypoints[wpIdx + 1];
+            if (!p1 || !p2) {
+                clearInterval(droneAnimTimerRef.current);
+                setSimulatedDronePos(null);
+                toast.success(isKa ? "დრონის მისია წარმატებით დასრულდა!" : "Drone mission flight completed!");
+                return;
+            }
+
+            progress += 0.04;
+            if (progress >= 1) {
+                progress = 0;
+                wpIdx++;
+                if (wpIdx >= totalLegs) {
+                    clearInterval(droneAnimTimerRef.current);
+                    setSimulatedDronePos(null);
+                    toast.success(isKa ? "დრონი წარმატებით დაბრუნდა ბაზაზე!" : "Drone safely returned to base (RTH)!");
+                    return;
+                }
+            }
+
+            const currentLat = p1.lat + (p2.lat - p1.lat) * progress;
+            const currentLng = p1.lng + (p2.lng - p1.lng) * progress;
+            const dLat = p2.lat - p1.lat;
+            const dLng = p2.lng - p1.lng;
+            const heading = Math.round((Math.atan2(dLng, dLat) * 180 / Math.PI + 360) % 360);
+
+            setSimulatedDronePos({ lat: currentLat, lng: currentLng, heading });
+        }, 150);
+    };
+
+    useEffect(() => {
+        return () => {
+            if (droneAnimTimerRef.current) clearInterval(droneAnimTimerRef.current);
+        };
+    }, []);
+
     // Crops & Varieties and Plantation Crops Modal State
     const [isCropModalOpen, setIsCropModalOpen] = useState(false);
     const [cropModalTab, setCropModalTab] = useState<'crops' | 'plantation'>('plantation');
@@ -1864,12 +2201,24 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
             if (!displayPrefs.showLines && (f.type === 'line' || f.type === 'trench' || f.type === 'irrigation_line')) return false;
             if (!displayPrefs.showSeedlings && f.type === 'seedling') return false;
             if (!displayPrefs.showNotes && (f.type === 'note' || f.type === 'checkpoint')) return false;
+            if (!displayPrefs.showCameras && (f.type === 'camera' || (f as any).subType === 'camera' || (f as any).monitoringType === 'camera')) return false;
+            if (!displayPrefs.showDroneMissions && (f.type === 'drone_path' || (f as any).subType === 'drone_direction' || (f as any).subType === 'drone_flight_path')) return false;
             return true;
         });
     }, [allFeatures, isLayersHidden, displayPrefs]);
 
     // Handlers for Simulation & Draft Features
     const handleMapFeatureDrawn = (type: any, geometry: any, clickPos?: L.LatLng, metadata?: any) => {
+        if (type === 'camera') {
+            const coords: [number, number] = Array.isArray(geometry) && typeof geometry[0] === 'number' 
+                ? [geometry[0], geometry[1]] 
+                : clickPos ? [clickPos.lat, clickPos.lng] : [mapProps.center?.[0] || 41.9023, mapProps.center?.[1] || 44.5];
+            setCameraPlannerCoords(coords);
+            setIsCameraPlannerOpen(true);
+            onSetActiveDrawingTool({ tool: null });
+            return;
+        }
+
         if (!isSimulationMode) {
             // Standard Live Cloud Saving
             props.onFeatureDrawn(type, geometry, clickPos, metadata);
@@ -2416,6 +2765,24 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                         showZoomControls={displayPrefs.showZoomControls}
                         onContextMenuFeature={handleOpenMapContextMenu}
                         onMapContextMenu={handleMapContextMenu}
+                        cameras={cameras}
+                        showCameras={displayPrefs.showCameras}
+                        onSelectCameraForLiveView={(cam) => setActiveCameraForLiveView(cam)}
+                        onSelectCameraForProperties={(cam) => {
+                            setSelectedCameraForProperties(cam);
+                            setSelectedDroneMissionForProperties(null);
+                        }}
+                        onUpdateCameraPosition={handleMoveCameraPosition}
+                        customSlopes={customSlopes}
+                        droneMission={droneMission}
+                        showDroneMissions={displayPrefs.showDroneMissions}
+                        onSelectDroneMissionForProperties={() => {
+                            if (droneMission) {
+                                setSelectedDroneMissionForProperties(droneMission);
+                                setSelectedCameraForProperties(null);
+                            }
+                        }}
+                        simulatedDronePosition={simulatedDronePos}
                     >
                         {props.tempBoundaryGeometry && props.tempBoundaryGeometry.filter(isLatLngValidLocal).length > 0 && (
                             <Polygon 
@@ -3386,9 +3753,107 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                                 >
                                     <div className="flex items-center gap-2">
                                         <Plane size={15} className="text-cyan-400 group-hover:scale-110 transition-transform" />
-                                        <span>{isKa ? 'დრონის სიმულაცია' : 'Drone Simulation'}</span>
+                                        <span>{isKa ? 'დრონის სიმულაცია (პოპაპი)' : 'Drone Simulation Modal'}</span>
                                     </div>
                                     <span className="text-[8px] font-mono px-1.5 py-0.5 bg-cyan-950/80 text-cyan-300 border border-cyan-700/50 rounded-md">UAV</span>
+                                </button>
+
+                                {/* Drone Real-Time Flight Path on Map (Outbound, Return & Circle Sector) */}
+                                <button
+                                    onClick={() => {
+                                        setIsDroneMissionPlannerOpen(!isDroneMissionPlannerOpen);
+                                        setIsMapToolsMenuOpen(false);
+                                    }}
+                                    className="flex items-center justify-between w-full px-3 py-2 rounded-xl text-xs font-bold hover:bg-slate-800/80 text-slate-200 transition-all text-left group cursor-pointer border border-cyan-500/20 bg-cyan-950/20"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <Navigation size={15} className="text-cyan-400 group-hover:scale-110 transition-transform" />
+                                        <div className="flex flex-col min-w-0">
+                                            <span className="leading-tight text-[11px] font-bold text-slate-100">{isKa ? 'დრონის ფრენის გეგმა (რუკაზე)' : 'Drone Flight Path (Map)'}</span>
+                                            <span className="text-[9px] text-cyan-400 font-semibold truncate max-w-[140px]">
+                                                {droneMission?.waypoints.length || 0} {isKa ? 'წერტილი' : 'Waypoints'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <span className="text-[8px] font-mono px-1.5 py-0.5 bg-cyan-950/80 text-cyan-300 border border-cyan-700/50 rounded-md">LIVE</span>
+                                </button>
+
+                                <div className="w-full h-[1px] bg-slate-800/80 my-0.5" />
+
+                                {/* Camera Adding Tool on Map */}
+                                <button
+                                    onClick={() => {
+                                        setCameraPlannerCoords(mapProps.center || [41.9023, 44.5]);
+                                        setIsCameraPlannerOpen(true);
+                                        setIsMapToolsMenuOpen(false);
+                                    }}
+                                    className="flex items-center justify-between w-full px-3 py-2 rounded-xl text-xs font-bold hover:bg-slate-800/80 text-slate-200 transition-all text-left group cursor-pointer border border-blue-500/20 bg-blue-950/20"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <Camera size={15} className="text-blue-400 group-hover:scale-110 transition-transform shrink-0" />
+                                        <div className="flex flex-col min-w-0">
+                                            <span className="leading-tight text-[11px] font-bold text-slate-100">{isKa ? 'კამერის დამატება & დაგეგმვა' : 'Add & Plan Camera'}</span>
+                                            <span className="text-[9px] text-blue-400 font-semibold truncate max-w-[140px]">
+                                                {cameras.length} {isKa ? 'აქტიური კამერა' : 'Active Cameras'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <PlusIcon size={13} className="text-blue-400 opacity-60 group-hover:opacity-100 shrink-0" />
+                                </button>
+
+                                {/* All Cameras Wide Window Matrix Link */}
+                                <button
+                                    onClick={() => {
+                                        setIsAllCamerasWideOpen(true);
+                                        setIsMapToolsMenuOpen(false);
+                                    }}
+                                    className="flex items-center justify-between w-full px-3 py-2 rounded-xl text-xs font-bold hover:bg-slate-800/80 text-slate-200 transition-all text-left group cursor-pointer"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <LayoutGrid size={15} className="text-emerald-400 group-hover:scale-110 transition-transform" />
+                                        <span>{isKa ? 'ყველა კამერა (მატრიცა)' : 'All Cameras (Wide View)'}</span>
+                                    </div>
+                                    <span className="text-[8px] font-mono px-1.5 py-0.5 bg-emerald-950/80 text-emerald-300 border border-emerald-700/50 rounded-md">NVR</span>
+                                </button>
+
+                                {/* Local Network Scanner & Online NVR / DVR Hub */}
+                                <button
+                                    onClick={() => {
+                                        setIsNetworkNvrManagerOpen(true);
+                                        setIsMapToolsMenuOpen(false);
+                                    }}
+                                    className="flex items-center justify-between w-full px-3 py-2 rounded-xl text-xs font-bold hover:bg-slate-800/80 text-slate-200 transition-all text-left group cursor-pointer border border-cyan-500/20 bg-cyan-950/20"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <Server size={15} className="text-cyan-400 group-hover:scale-110 transition-transform" />
+                                        <div className="flex flex-col min-w-0">
+                                            <span className="leading-tight text-[11px] font-bold text-slate-100">{isKa ? 'ქსელის სკანერი & NVR / DVR' : 'Network Scanner & NVR / DVR'}</span>
+                                            <span className="text-[9px] text-cyan-400 font-semibold truncate max-w-[140px]">
+                                                {isKa ? 'სკანირება, იმპორტი & LIVE' : 'Scan, Import & Live View'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <span className="text-[8px] font-mono px-1.5 py-0.5 bg-cyan-950/80 text-cyan-300 border border-cyan-700/50 rounded-md">SCAN</span>
+                                </button>
+
+                                {/* 3D Area & Slope Sculptor (Falloff Engine) */}
+                                <button
+                                    onClick={() => {
+                                        setIsTerrainSculptorOpen(true);
+                                        setIsMapToolsMenuOpen(false);
+                                    }}
+                                    className="flex items-center justify-between w-full px-3 py-2 rounded-xl text-xs font-bold hover:bg-slate-800/80 text-slate-200 transition-all text-left group cursor-pointer border border-emerald-500/20 bg-emerald-950/20"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <Mountain size={15} className="text-emerald-400 group-hover:scale-110 transition-transform" />
+                                        <div className="flex flex-col min-w-0">
+                                            <span className="leading-tight text-[11px] font-bold text-slate-100">{isKa ? '3D რელიეფი & ფერდობის მოდელირება' : '3D Terrain & Slope Sculptor'}</span>
+                                            <span className="text-[9px] text-emerald-400 font-semibold truncate max-w-[140px]">
+                                                {isKa ? 'სიმაღლე (H), რადიუსი (R) & Falloff' : 'Height (H), Radius (R) & Falloff'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <span className="text-[8px] font-mono px-1.5 py-0.5 bg-emerald-950/80 text-emerald-300 border border-emerald-700/50 rounded-md">3D DEM</span>
                                 </button>
 
                                 {/* AI Spatial Analyzer */}
@@ -3940,6 +4405,103 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                 onUpdateUser={props.onUpdateUser}
                 onStartMapRegistration={props.onStartMapRegistration}
             />
+
+            {/* Camera Planner & Deployment Modal */}
+            <CameraPlannerModal
+                isOpen={isCameraPlannerOpen}
+                onClose={() => setIsCameraPlannerOpen(false)}
+                plantationCoords={cameraPlannerCoords}
+                onSaveCamera={handleSavePlannedCamera}
+                onSaveBatchCameras={handleSaveBatchCameras}
+                plantationFeatures={allFeatures}
+            />
+
+            {/* 3D Terrain & Slope Sculptor Modal (Falloff Engine) */}
+            {isTerrainSculptorOpen && (
+                <TerrainSlopeSculptorModal
+                    isOpen={isTerrainSculptorOpen}
+                    onClose={() => setIsTerrainSculptorOpen(false)}
+                    mapCenter={mapProps.center || [41.9023, 44.5]}
+                    plantationFeatures={allFeatures}
+                    activeDroneMission={droneMission}
+                    onUpdateDroneMission={handleUpdateDroneMission}
+                    cameras={cameras}
+                    onSlopeUpdated={(newSlopes) => setCustomSlopes(newSlopes)}
+                    isKa={isKa}
+                />
+            )}
+
+            {/* Small Live Monitoring Window for clicked camera with Wide View link */}
+            {activeCameraForLiveView && (
+                <CameraLiveMonitorWindow
+                    camera={activeCameraForLiveView}
+                    onClose={() => setActiveCameraForLiveView(null)}
+                    onOpenAllCamerasWide={() => setIsAllCamerasWideOpen(true)}
+                />
+            )}
+
+            {/* All Cameras Wide Matrix Grid Window */}
+            <AllCamerasWideModal
+                isOpen={isAllCamerasWideOpen}
+                onClose={() => setIsAllCamerasWideOpen(false)}
+                cameras={cameras}
+                onSelectCameraForDetail={(cam) => setActiveCameraForLiveView(cam)}
+                onOpenAddCameraModal={() => {
+                    setCameraPlannerCoords(mapProps.center || [41.9023, 44.5]);
+                    setIsCameraPlannerOpen(true);
+                }}
+            />
+
+            {/* Drone Flight Path Planner on Real-Time Map */}
+            {droneMission && (
+                <DroneFlightPathPlanner
+                    isOpen={isDroneMissionPlannerOpen}
+                    onClose={() => setIsDroneMissionPlannerOpen(false)}
+                    mission={droneMission}
+                    onChangeMission={handleUpdateDroneMission}
+                    plantationFeatures={allFeatures}
+                    onStartSimulation={handleStartDroneSimulation}
+                    activeDrawingTool={activeDrawingTool}
+                    onSetActiveDrawingTool={onSetActiveDrawingTool}
+                />
+            )}
+
+            {/* Floating Properties Panel for Selected Camera or Drone Flight Path */}
+            {(selectedCameraForProperties || selectedDroneMissionForProperties) && (
+                <MapElementPropertiesPanel
+                    selectedCamera={selectedCameraForProperties}
+                    onUpdateCamera={handleSavePlannedCamera}
+                    onDeleteCamera={handleDeleteCamera}
+                    onCopyCamera={handleCopyCamera}
+                    onOpenLiveView={(cam) => setActiveCameraForLiveView(cam)}
+                    selectedDroneMission={selectedDroneMissionForProperties}
+                    onUpdateDroneMission={handleUpdateDroneMission}
+                    onDeleteDroneMission={handleDeleteDroneMission}
+                    onCopyDroneMission={handleCopyDroneMission}
+                    onStartDroneSimulation={handleStartDroneSimulation}
+                    onClose={() => {
+                        setSelectedCameraForProperties(null);
+                        setSelectedDroneMissionForProperties(null);
+                    }}
+                    isKa={isKa}
+                />
+            )}
+
+            {/* Local Network Scanner & Online NVR / DVR Manager Modal */}
+            {isNetworkNvrManagerOpen && (
+                <NetworkCameraNvrManagerModal
+                    isOpen={isNetworkNvrManagerOpen}
+                    onClose={() => setIsNetworkNvrManagerOpen(false)}
+                    plantationCoords={mapProps.center || [41.9023, 44.5]}
+                    onImportAllCameras={handleImportAllCamerasFromNvr}
+                    onSelectCameraForDetail={(cam) => {
+                        setActiveCameraForLiveView(cam);
+                        setIsNetworkNvrManagerOpen(false);
+                    }}
+                    currentCameras={cameras}
+                    isKa={isKa}
+                />
+            )}
 
             <style>{`
                 .custom-scrollbar::-webkit-scrollbar { width: 4px; }

@@ -227,8 +227,8 @@ export interface SystemLog {
 }
 
 // Map / Design Types
-export type FeatureType = 'area' | 'line' | 'seedling' | 'note' | 'sector' | 'checkpoint' | 'boundary' | 'trench' | 'irrigation_line' | 'pencil';
-export type DrawingTool = FeatureType | 'measure' | 'pencil';
+export type FeatureType = 'area' | 'line' | 'seedling' | 'note' | 'sector' | 'checkpoint' | 'boundary' | 'trench' | 'irrigation_line' | 'pencil' | 'camera' | 'drone_path';
+export type DrawingTool = FeatureType | 'measure' | 'pencil' | 'camera' | 'drone_path';
 
 export interface ActiveDrawingTool {
     tool: DrawingTool | null;
@@ -329,7 +329,46 @@ export interface BoundaryPlantationFeature extends BasePlantationFeature {
     geometry: [number, number][];
 }
 
-export type PlantationFeature = AreaPlantationFeature | LinePlantationFeature | SeedlingPlantationFeature | NotePlantationFeature | CheckpointPlantationFeature | BoundaryPlantationFeature;
+export interface CameraPlantationFeature extends BasePlantationFeature {
+    type: 'camera';
+    geometry: [number, number];
+    channel?: number;
+    model?: string;
+    ipAddress?: string;
+    rtspPort?: number;
+    streamUrl?: string;
+    mountHeightM?: number;
+    azimuthDeg?: number;
+    fovAngleDeg?: number;
+    rangeM?: number;
+    tiltAngleDeg?: number; // e.g. 4 degrees down-tilt
+    isPtz?: boolean;
+    isNightVision?: boolean;
+    status?: 'ONLINE' | 'STANDBY' | 'RECORDING';
+}
+
+export interface DroneMissionPlantationFeature extends BasePlantationFeature {
+    type: 'drone_path';
+    geometry: [number, number][]; // Sequence of waypoints: takeoff -> outbound -> return
+    missionType?: 'waypoints' | 'circle_sector';
+    altitudeM?: number;
+    speedMs?: number;
+    timeIntervalSec?: number;
+    headingDeg?: number;
+    circleCenter?: [number, number];
+    circleRadiusM?: number;
+    status?: 'planned' | 'in_flight' | 'completed';
+}
+
+export type PlantationFeature = 
+    | AreaPlantationFeature 
+    | LinePlantationFeature 
+    | SeedlingPlantationFeature 
+    | NotePlantationFeature 
+    | CheckpointPlantationFeature 
+    | BoundaryPlantationFeature
+    | CameraPlantationFeature
+    | DroneMissionPlantationFeature;
 
 export interface Template {
     id: string;

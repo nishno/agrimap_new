@@ -5,8 +5,11 @@ import {
     Layers, Navigation, Settings2, Sliders, ChevronDown, ChevronUp,
     Share2, AlertCircle, FileText, ArrowRight, Sprout,
     Maximize2, Minimize2, Video, Square, Trash2, ArrowUpRight,
-    MapPin, Crosshair
+    MapPin, Crosshair, Satellite, Map as MapIcon
 } from 'lucide-react';
+import { MapContainer, TileLayer, Polygon as LeafletPolygon, Polyline as LeafletPolyline, Marker as LeafletMarker, useMapEvents } from 'react-leaflet';
+import L from 'leaflet';
+import { Sandbox3DTerrainCanvas } from './SystemManagement/HardwareLabs/Sandbox3DTerrainCanvas';
 import { toast } from 'sonner';
 import type { PlantationFeature } from '../types';
 import { safeStorage } from '../services/storageService';
@@ -63,6 +66,10 @@ export const DroneSimulationModal: React.FC<DroneSimulationModalProps> = ({
     const [directionEnd, setDirectionEnd] = useState<[number, number] | null>(null);
     const [isDrawingDirection, setIsDrawingDirection] = useState<boolean>(false);
     const drawingSvgRef = useRef<SVGSVGElement | null>(null);
+
+    // View mode for embedded farm map: Satellite vs 3D DEM vs Vector
+    const [mapViewMode, setMapViewMode] = useState<'satellite' | '3d' | 'vector'>('satellite');
+    const [customTrenchNumber, setCustomTrenchNumber] = useState<number>(12);
 
     // Flight configuration parameters
     const [altitude, setAltitude] = useState<number>(50); // meters AGL
@@ -740,17 +747,51 @@ export const DroneSimulationModal: React.FC<DroneSimulationModalProps> = ({
                                 <>
                                     {/* Interactive Farm Vector Mini Map with Drawing Direction Support */}
                                     <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 space-y-2">
-                                        <div className="flex items-center justify-between text-xs">
+                                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                                             <div className="flex items-center gap-2">
                                                 <span className="font-bold text-slate-200 flex items-center gap-1.5">
                                                     <Compass size={14} className="text-sky-400" />
-                                                    <span>{isKa ? "მეურნეობის რუკა & მარშრუტის კორიდორი" : "Farm Survey Map & Waypoint Corridor"}</span>
+                                                    <span>{isKa ? "მეურნეობის რუკა & მარშრუტი" : "Farm Survey Map & Waypoint Corridor"}</span>
                                                 </span>
                                                 {directionStart && directionEnd && (
                                                     <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-full text-[10px] font-mono font-bold">
                                                         {isKa ? "აზიმუტი" : "Bearing"}: {drawnBearing}&deg; &bull; {drawnDistanceMeters}m
                                                     </span>
                                                 )}
+                                            </div>
+
+                                            {/* Map Mode Switcher: SATELLITE | 3D DEM | VECTOR */}
+                                            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setMapViewMode('satellite')}
+                                                    className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer ${
+                                                        mapViewMode === 'satellite' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                                                    }`}
+                                                >
+                                                    <Satellite size={11} />
+                                                    <span>{isKa ? 'სატელიტი' : 'Satellite'}</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setMapViewMode('3d')}
+                                                    className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer ${
+                                                        mapViewMode === '3d' ? 'bg-gradient-to-r from-sky-600 to-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                                                    }`}
+                                                >
+                                                    <Layers size={11} />
+                                                    <span>{isKa ? '3D რელიეფი' : '3D DEM'}</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setMapViewMode('vector')}
+                                                    className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer ${
+                                                        mapViewMode === 'vector' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                                                    }`}
+                                                >
+                                                    <Compass size={11} />
+                                                    <span>{isKa ? 'ვექტორი' : 'Vector'}</span>
+                                                </button>
                                             </div>
 
                                             {/* Draw Direction Button */}
@@ -770,161 +811,266 @@ export const DroneSimulationModal: React.FC<DroneSimulationModalProps> = ({
                                                 <Crosshair size={12} />
                                                 <span>
                                                     {isDrawingDirection 
-                                                        ? (isKa ? "დააწკაპუნეთ რუკაზე: წერტილი (A)" : "Click Map: Set Start Point (A)") 
-                                                        : (isKa ? "მიმართულების დახაზვა (A → B)" : "Draw Direction (Start → Finish)")}
+                                                        ? (isKa ? "დააწკაპუნეთ: წერტილი (A)" : "Click: Start Point (A)") 
+                                                        : (isKa ? "მიმართულება (A → B)" : "Draw (A → B)")}
                                                 </span>
                                             </button>
                                         </div>
 
-                                        {/* SVG Map Canvas */}
-                                        <div className="relative w-full h-[220px] bg-slate-950 rounded-xl overflow-hidden border border-slate-800/80">
-                                            <svg
-                                                ref={drawingSvgRef}
-                                                onClick={handleSvgClick}
-                                                className="w-full h-full cursor-crosshair select-none"
-                                            >
-                                                {/* Grid lines */}
-                                                <defs>
-                                                    <pattern id="drone-grid" width="20" height="20" patternUnits="userSpaceOnUse">
-                                                        <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
-                                                    </pattern>
-                                                </defs>
-                                                <rect width="100%" height="100%" fill="url(#drone-grid)" />
-
-                                                {/* Draw Area Boundaries */}
-                                                {availableAreas.map(area => {
-                                                    const isSelected = selectedAreaIds.includes(area.id);
-                                                    const coords = (Array.isArray(area.geometry) ? area.geometry : []) as [number, number][];
-                                                    if (coords.length < 3) return null;
-                                                    const ptsStr = coords.map(c => projectToSvg(c[0], c[1]).join(',')).join(' ');
-                                                    return (
-                                                        <polygon
-                                                            key={area.id}
-                                                            points={ptsStr}
-                                                            fill={isSelected ? 'rgba(56, 189, 248, 0.25)' : 'rgba(74, 222, 128, 0.1)'}
-                                                            stroke={isSelected ? '#38bdf8' : '#22c55e'}
-                                                            strokeWidth={isSelected ? 2 : 1}
-                                                            className="cursor-pointer transition-colors"
-                                                            onClick={(e) => {
-                                                                if (!isDrawingDirection) {
-                                                                    e.stopPropagation();
-                                                                    setSelectedAreaIds(prev => 
-                                                                        prev.includes(area.id) ? prev.filter(x => x !== area.id) : [...prev, area.id]
-                                                                    );
-                                                                }
+                                        {/* Multi-view Map Canvas Viewport (Satellite / 3D / Vector) */}
+                                        <div className="relative w-full h-[230px] bg-slate-950 rounded-xl overflow-hidden border border-slate-800/80">
+                                            {mapViewMode === 'satellite' ? (
+                                                /* 🛰️ REAL SATELLITE MAP */
+                                                <MapContainer
+                                                    center={activeMapCenter}
+                                                    zoom={17}
+                                                    className="w-full h-full z-10"
+                                                    zoomControl={false}
+                                                >
+                                                    <TileLayer
+                                                        url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                                                        maxZoom={20}
+                                                    />
+                                                    {/* Sectors on Satellite */}
+                                                    {availableAreas.map(area => {
+                                                        const coords = (Array.isArray(area.geometry) ? area.geometry : []) as [number, number][];
+                                                        if (coords.length < 3) return null;
+                                                        const isSelected = selectedAreaIds.includes(area.id);
+                                                        return (
+                                                            <LeafletPolygon
+                                                                key={area.id}
+                                                                positions={coords}
+                                                                pathOptions={{
+                                                                    color: isSelected ? '#38bdf8' : '#22c55e',
+                                                                    weight: isSelected ? 2.5 : 1.5,
+                                                                    fillColor: isSelected ? '#38bdf8' : '#22c55e',
+                                                                    fillOpacity: isSelected ? 0.3 : 0.12
+                                                                }}
+                                                            />
+                                                        );
+                                                    })}
+                                                    {/* Trenches on Satellite */}
+                                                    {availableTrenches.map(trench => {
+                                                        const coords = (Array.isArray(trench.geometry) ? trench.geometry : []) as [number, number][];
+                                                        if (coords.length < 2) return null;
+                                                        const isSelected = selectedTrenchIds.includes(trench.id);
+                                                        return (
+                                                            <LeafletPolyline
+                                                                key={trench.id}
+                                                                positions={coords}
+                                                                pathOptions={{
+                                                                    color: isSelected ? '#f59e0b' : '#94a3b8',
+                                                                    weight: isSelected ? 3 : 1.5,
+                                                                    dashArray: isSelected ? undefined : '4, 4'
+                                                                }}
+                                                            />
+                                                        );
+                                                    })}
+                                                    {/* Flight Route on Satellite */}
+                                                    {waypoints.length > 1 && (
+                                                        <LeafletPolyline
+                                                            positions={waypoints.map(w => [w.lat, w.lng] as [number, number])}
+                                                            pathOptions={{
+                                                                color: '#38bdf8',
+                                                                weight: 3,
+                                                                dashArray: '5, 5'
                                                             }}
                                                         />
-                                                    );
-                                                })}
+                                                    )}
+                                                </MapContainer>
+                                            ) : mapViewMode === '3d' ? (
+                                                /* 🏔️ 3D DIGITAL ELEVATION MODEL (DEM) TERRAIN */
+                                                <div className="w-full h-full">
+                                                    <Sandbox3DTerrainCanvas
+                                                        plantationFeatures={plantationFeatures}
+                                                        cameras={[]}
+                                                        droneMission={{
+                                                            name: 'Autonomous Survey',
+                                                            mode: 'waypoints',
+                                                            waypoints: waypoints.map((w, idx) => ({
+                                                                id: `wp-${idx}`,
+                                                                lat: w.lat,
+                                                                lng: w.lng,
+                                                                altM: w.altitude || altitude,
+                                                                leg: idx === waypoints.length - 1 ? 'return' : 'outbound'
+                                                            })),
+                                                            circleRadiusM: 60,
+                                                            altitudeM: altitude,
+                                                            speedMs: speed,
+                                                            telemetryIntervalS: 2,
+                                                            directionDeg: drawnBearing || 45,
+                                                            isSimulating: isPlaying,
+                                                            simulatedProgress: droneProgress / 100,
+                                                            currentLat: currentDronePoint?.lat || activeMapCenter[0],
+                                                            currentLng: currentDronePoint?.lng || activeMapCenter[1],
+                                                            currentAlt: altitude,
+                                                            batteryPct: batteryLevel,
+                                                            plantationName: 'Main Farm Sector',
+                                                            sectorName: selectedAreaIds.join(', ') || 'Active Sector',
+                                                            selectedTrenches: [],
+                                                            isRecordingVideo: false,
+                                                            recordingSeconds: 0,
+                                                            opticalZoom: 1,
+                                                            gimbalPitchDeg: -45
+                                                        }}
+                                                        soilSensors={[]}
+                                                        waterSensors={[]}
+                                                        workersGps={[]}
+                                                        mapCenter={activeMapCenter}
+                                                        isKa={isKa}
+                                                        onSwitchTo2D={() => setMapViewMode('satellite')}
+                                                    />
+                                                </div>
+                                            ) : (
+                                                /* 🗺️ VECTOR SVG MAP */
+                                                <svg
+                                                    ref={drawingSvgRef}
+                                                    onClick={handleSvgClick}
+                                                    className="w-full h-full cursor-crosshair select-none"
+                                                >
+                                                    {/* Grid lines */}
+                                                    <defs>
+                                                        <pattern id="drone-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                                                            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
+                                                        </pattern>
+                                                    </defs>
+                                                    <rect width="100%" height="100%" fill="url(#drone-grid)" />
 
-                                                {/* Draw Trenches / Rows */}
-                                                {availableTrenches.map(trench => {
-                                                    const isSelected = selectedTrenchIds.includes(trench.id);
-                                                    const coords = (Array.isArray(trench.geometry) ? trench.geometry : []) as [number, number][];
-                                                    if (coords.length < 2) return null;
-                                                    const ptsStr = coords.map(c => projectToSvg(c[0], c[1]).join(',')).join(' ');
-                                                    return (
-                                                        <polyline
-                                                            key={trench.id}
-                                                            points={ptsStr}
-                                                            fill="none"
-                                                            stroke={isSelected ? '#f59e0b' : '#94a3b8'}
-                                                            strokeWidth={isSelected ? 3 : 1.5}
-                                                            strokeDasharray={isSelected ? 'none' : '3, 3'}
-                                                            className="cursor-pointer"
-                                                            onClick={(e) => {
-                                                                if (!isDrawingDirection) {
-                                                                    e.stopPropagation();
-                                                                    setSelectedTrenchIds(prev => 
-                                                                        prev.includes(trench.id) ? prev.filter(x => x !== trench.id) : [...prev, trench.id]
-                                                                    );
-                                                                }
-                                                            }}
-                                                        />
-                                                    );
-                                                })}
+                                                    {/* Draw Area Boundaries */}
+                                                    {availableAreas.map(area => {
+                                                        const isSelected = selectedAreaIds.includes(area.id);
+                                                        const coords = (Array.isArray(area.geometry) ? area.geometry : []) as [number, number][];
+                                                        if (coords.length < 3) return null;
+                                                        const ptsStr = coords.map(c => projectToSvg(c[0], c[1]).join(',')).join(' ');
+                                                        return (
+                                                            <polygon
+                                                                key={area.id}
+                                                                points={ptsStr}
+                                                                fill={isSelected ? 'rgba(56, 189, 248, 0.25)' : 'rgba(74, 222, 128, 0.1)'}
+                                                                stroke={isSelected ? '#38bdf8' : '#22c55e'}
+                                                                strokeWidth={isSelected ? 2 : 1}
+                                                                className="cursor-pointer transition-colors"
+                                                                onClick={(e) => {
+                                                                    if (!isDrawingDirection) {
+                                                                        e.stopPropagation();
+                                                                        setSelectedAreaIds(prev => 
+                                                                            prev.includes(area.id) ? prev.filter(x => x !== area.id) : [...prev, area.id]
+                                                                        );
+                                                                    }
+                                                                }}
+                                                            />
+                                                        );
+                                                    })}
 
-                                                {/* Drawn Direction Vector (Start -> Finish) */}
-                                                {directionStart && directionEnd && (
-                                                    <g>
-                                                        {(() => {
-                                                            const p1 = projectToSvg(directionStart[0], directionStart[1]);
-                                                            const p2 = projectToSvg(directionEnd[0], directionEnd[1]);
-                                                            return (
-                                                                <>
-                                                                    <line
-                                                                        x1={p1[0]}
-                                                                        y1={p1[1]}
-                                                                        x2={p2[0]}
-                                                                        y2={p2[1]}
-                                                                        stroke="#f59e0b"
-                                                                        strokeWidth="3"
-                                                                        strokeDasharray="4, 4"
+                                                    {/* Draw Trenches / Rows */}
+                                                    {availableTrenches.map(trench => {
+                                                        const isSelected = selectedTrenchIds.includes(trench.id);
+                                                        const coords = (Array.isArray(trench.geometry) ? trench.geometry : []) as [number, number][];
+                                                        if (coords.length < 2) return null;
+                                                        const ptsStr = coords.map(c => projectToSvg(c[0], c[1]).join(',')).join(' ');
+                                                        return (
+                                                            <polyline
+                                                                key={trench.id}
+                                                                points={ptsStr}
+                                                                fill="none"
+                                                                stroke={isSelected ? '#f59e0b' : '#94a3b8'}
+                                                                strokeWidth={isSelected ? 3 : 1.5}
+                                                                strokeDasharray={isSelected ? 'none' : '3, 3'}
+                                                                className="cursor-pointer"
+                                                                onClick={(e) => {
+                                                                    if (!isDrawingDirection) {
+                                                                        e.stopPropagation();
+                                                                        setSelectedTrenchIds(prev => 
+                                                                            prev.includes(trench.id) ? prev.filter(x => x !== trench.id) : [...prev, trench.id]
+                                                                        );
+                                                                    }
+                                                                }}
+                                                            />
+                                                        );
+                                                    })}
+
+                                                    {/* Drawn Direction Vector (Start -> Finish) */}
+                                                    {directionStart && directionEnd && (
+                                                        <g>
+                                                            {(() => {
+                                                                const p1 = projectToSvg(directionStart[0], directionStart[1]);
+                                                                const p2 = projectToSvg(directionEnd[0], directionEnd[1]);
+                                                                return (
+                                                                    <>
+                                                                        <line
+                                                                            x1={p1[0]}
+                                                                            y1={p1[1]}
+                                                                            x2={p2[0]}
+                                                                            y2={p2[1]}
+                                                                            stroke="#f59e0b"
+                                                                            strokeWidth="3"
+                                                                            strokeDasharray="4, 4"
+                                                                        />
+                                                                        {/* Start Point (A) */}
+                                                                        <circle cx={p1[0]} cy={p1[1]} r="6" fill="#22c55e" stroke="#ffffff" strokeWidth="2" />
+                                                                        <text x={p1[0]} y={p1[1] - 8} fill="#22c55e" fontSize="9" fontWeight="bold" textAnchor="middle">
+                                                                            {isKa ? "საწყისი (A)" : "START (A)"}
+                                                                        </text>
+
+                                                                        {/* Finish Point (B) */}
+                                                                        <circle cx={p2[0]} cy={p2[1]} r="6" fill="#ef4444" stroke="#ffffff" strokeWidth="2" />
+                                                                        <text x={p2[0]} y={p2[1] - 8} fill="#ef4444" fontSize="9" fontWeight="bold" textAnchor="middle">
+                                                                            {isKa ? "დასასრული (B)" : "FINISH (B)"}
+                                                                        </text>
+                                                                    </>
+                                                                );
+                                                            })()}
+                                                        </g>
+                                                    )}
+
+                                                    {/* Generated Flight Waypoints & Path */}
+                                                    {waypoints.length > 1 && (
+                                                        <g>
+                                                            <polyline
+                                                                points={waypoints.map(w => projectToSvg(w.lat, w.lng).join(',')).join(' ')}
+                                                                fill="none"
+                                                                stroke="#38bdf8"
+                                                                strokeWidth="1.5"
+                                                                strokeOpacity="0.8"
+                                                            />
+                                                            {waypoints.map((w, i) => {
+                                                                const p = projectToSvg(w.lat, w.lng);
+                                                                return (
+                                                                    <circle
+                                                                        key={i}
+                                                                        cx={p[0]}
+                                                                        cy={p[1]}
+                                                                        r={i === currentWaypointIdx ? 5 : 2}
+                                                                        fill={i === currentWaypointIdx ? '#f59e0b' : '#38bdf8'}
                                                                     />
-                                                                    {/* Start Point (A) */}
-                                                                    <circle cx={p1[0]} cy={p1[1]} r="6" fill="#22c55e" stroke="#ffffff" strokeWidth="2" />
-                                                                    <text x={p1[0]} y={p1[1] - 8} fill="#22c55e" fontSize="9" fontWeight="bold" textAnchor="middle">
-                                                                        {isKa ? "საწყისი (A)" : "START (A)"}
-                                                                    </text>
+                                                                );
+                                                            })}
+                                                        </g>
+                                                    )}
 
-                                                                    {/* Finish Point (B) */}
-                                                                    <circle cx={p2[0]} cy={p2[1]} r="6" fill="#ef4444" stroke="#ffffff" strokeWidth="2" />
-                                                                    <text x={p2[0]} y={p2[1] - 8} fill="#ef4444" fontSize="9" fontWeight="bold" textAnchor="middle">
-                                                                        {isKa ? "დასასრული (B)" : "FINISH (B)"}
-                                                                    </text>
-                                                                </>
-                                                            );
-                                                        })()}
-                                                    </g>
-                                                )}
-
-                                                {/* Generated Flight Waypoints & Path */}
-                                                {waypoints.length > 1 && (
-                                                    <g>
-                                                        <polyline
-                                                            points={waypoints.map(w => projectToSvg(w.lat, w.lng).join(',')).join(' ')}
-                                                            fill="none"
-                                                            stroke="#38bdf8"
-                                                            strokeWidth="1.5"
-                                                            strokeOpacity="0.8"
-                                                        />
-                                                        {waypoints.map((w, i) => {
-                                                            const p = projectToSvg(w.lat, w.lng);
-                                                            return (
-                                                                <circle
-                                                                    key={i}
-                                                                    cx={p[0]}
-                                                                    cy={p[1]}
-                                                                    r={i === currentWaypointIdx ? 5 : 2}
-                                                                    fill={i === currentWaypointIdx ? '#f59e0b' : '#38bdf8'}
-                                                                />
-                                                            );
-                                                        })}
-                                                    </g>
-                                                )}
-
-                                                {/* Moving Drone Marker */}
-                                                {currentDronePoint && (
-                                                    <g>
-                                                        {(() => {
-                                                            const dp = projectToSvg(currentDronePoint.lat, currentDronePoint.lng);
-                                                            return (
-                                                                <g transform={`translate(${dp[0]}, ${dp[1]})`}>
-                                                                    <circle r="9" fill="#0284c7" fillOpacity="0.4" className="animate-ping" />
-                                                                    <circle r="6" fill="#38bdf8" stroke="#ffffff" strokeWidth="1.5" />
-                                                                    <text x="0" y="14" fill="#38bdf8" fontSize="8" fontWeight="bold" textAnchor="middle">
-                                                                        {isKa ? "დრონი" : "DRONE"}
-                                                                    </text>
-                                                                </g>
-                                                            );
-                                                        })()}
-                                                    </g>
-                                                )}
-                                            </svg>
+                                                    {/* Moving Drone Marker */}
+                                                    {currentDronePoint && (
+                                                        <g>
+                                                            {(() => {
+                                                                const dp = projectToSvg(currentDronePoint.lat, currentDronePoint.lng);
+                                                                return (
+                                                                    <g transform={`translate(${dp[0]}, ${dp[1]})`}>
+                                                                        <circle r="9" fill="#0284c7" fillOpacity="0.4" className="animate-ping" />
+                                                                        <circle r="6" fill="#38bdf8" stroke="#ffffff" strokeWidth="1.5" />
+                                                                        <text x="0" y="14" fill="#38bdf8" fontSize="8" fontWeight="bold" textAnchor="middle">
+                                                                            {isKa ? "დრონი" : "DRONE"}
+                                                                        </text>
+                                                                    </g>
+                                                                );
+                                                            })()}
+                                                        </g>
+                                                    )}
+                                                </svg>
+                                            )}
 
                                             {/* Overlay Drawing Helper */}
                                             {isDrawingDirection && (
-                                                <div className="absolute top-2 left-2 bg-amber-500/90 text-slate-950 px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider animate-bounce">
+                                                <div className="absolute top-2 left-2 z-20 bg-amber-500/90 text-slate-950 px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider animate-bounce shadow-md">
                                                     {!directionStart 
                                                         ? (isKa ? "დააწკაპუნეთ რუკაზე: საწყისი წერტილი" : "Click Map: Set Starting Point") 
                                                         : (isKa ? "დააწკაპუნეთ რუკაზე: ბოლო წერტილი" : "Click Map: Set Finish Point")}
@@ -994,9 +1140,27 @@ export const DroneSimulationModal: React.FC<DroneSimulationModalProps> = ({
                                                     <Sprout size={13} className="text-amber-400" />
                                                     <span>{isKa ? "სამიზნე თხრილები / მწკრივები" : "Target Trenches / Tree Rows"}</span>
                                                 </span>
-                                                <span className="text-[10px] text-amber-400 font-mono font-bold">
-                                                    {selectedTrenchIds.length} {isKa ? "არჩეულია" : "selected"}
-                                                </span>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-[10px] text-slate-400 font-bold">{isKa ? "რაოდენობა:" : "Count:"}</span>
+                                                    <input
+                                                        type="number"
+                                                        min={1}
+                                                        max={100}
+                                                        value={customTrenchNumber}
+                                                        onChange={(e) => {
+                                                            const count = Math.max(1, Number(e.target.value));
+                                                            setCustomTrenchNumber(count);
+                                                            const ids = availableTrenches.slice(0, count).map(t => t.id);
+                                                            setSelectedTrenchIds(ids);
+                                                            setFlightMode('trenches');
+                                                        }}
+                                                        className="w-14 px-1.5 py-0.5 bg-slate-950 border border-amber-500/50 rounded-lg text-amber-400 font-mono text-xs font-black text-right outline-none focus:border-amber-400"
+                                                        title={isKa ? "ჩაწერეთ თხრილების რაოდენობა" : "Write number of trenches"}
+                                                    />
+                                                    <span className="text-[10px] text-amber-400 font-mono font-bold">
+                                                        ({selectedTrenchIds.length})
+                                                    </span>
+                                                </div>
                                             </div>
 
                                             <div className="max-h-28 overflow-y-auto space-y-1 custom-scrollbar pr-1">
@@ -1041,18 +1205,28 @@ export const DroneSimulationModal: React.FC<DroneSimulationModalProps> = ({
                                         </div>
                                     </div>
 
-                                    {/* Parameters & Flight Modes */}
+                                    {/* Parameters & Flight Modes - with both Sliders and Direct Number Inputs */}
                                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                                         <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-2.5">
                                             <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 mb-1">
                                                 <span>{isKa ? "სიმაღლე" : "Altitude"}</span>
-                                                <span className="text-sky-400 font-mono font-black">{altitude}m</span>
+                                                <div className="flex items-center gap-0.5">
+                                                    <input
+                                                        type="number"
+                                                        min={20}
+                                                        max={150}
+                                                        value={altitude}
+                                                        onChange={(e) => setAltitude(Number(e.target.value))}
+                                                        className="w-12 px-1 py-0 bg-slate-950 border border-slate-700 rounded text-sky-400 font-mono text-[10px] text-right font-black outline-none"
+                                                    />
+                                                    <span className="text-sky-400 font-mono font-bold text-[10px]">m</span>
+                                                </div>
                                             </div>
                                             <input 
                                                 type="range" 
                                                 min={20} 
                                                 max={100} 
-                                                step={5}
+                                                step={5} 
                                                 value={altitude} 
                                                 onChange={(e) => setAltitude(Number(e.target.value))}
                                                 className="w-full accent-sky-500 cursor-pointer"
@@ -1062,7 +1236,17 @@ export const DroneSimulationModal: React.FC<DroneSimulationModalProps> = ({
                                         <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-2.5">
                                             <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 mb-1">
                                                 <span>{isKa ? "სიჩქარე" : "Speed"}</span>
-                                                <span className="text-sky-400 font-mono font-black">{speed}m/s</span>
+                                                <div className="flex items-center gap-0.5">
+                                                    <input
+                                                        type="number"
+                                                        min={2}
+                                                        max={25}
+                                                        value={speed}
+                                                        onChange={(e) => setSpeed(Number(e.target.value))}
+                                                        className="w-12 px-1 py-0 bg-slate-950 border border-slate-700 rounded text-sky-400 font-mono text-[10px] text-right font-black outline-none"
+                                                    />
+                                                    <span className="text-sky-400 font-mono font-bold text-[10px]">m/s</span>
+                                                </div>
                                             </div>
                                             <input 
                                                 type="range" 
@@ -1078,7 +1262,17 @@ export const DroneSimulationModal: React.FC<DroneSimulationModalProps> = ({
                                         <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-2.5">
                                             <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 mb-1">
                                                 <span>{isKa ? "დაშორება" : "Lane Spacing"}</span>
-                                                <span className="text-sky-400 font-mono font-black">{spacing}m</span>
+                                                <div className="flex items-center gap-0.5">
+                                                    <input
+                                                        type="number"
+                                                        min={5}
+                                                        max={60}
+                                                        value={spacing}
+                                                        onChange={(e) => setSpacing(Number(e.target.value))}
+                                                        className="w-12 px-1 py-0 bg-slate-950 border border-slate-700 rounded text-sky-400 font-mono text-[10px] text-right font-black outline-none"
+                                                    />
+                                                    <span className="text-sky-400 font-mono font-bold text-[10px]">m</span>
+                                                </div>
                                             </div>
                                             <input 
                                                 type="range" 

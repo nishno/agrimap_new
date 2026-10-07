@@ -31,6 +31,8 @@ import { generateAgriBusinessAnalysis, analyzePlantDisease, generateDocumentComp
 import DataStateAuditor from './components/SystemManagement/DataStateAuditor';
 import { SyncConflictModal } from './components/SystemManagement/SyncConflictModal';
 import HardwareLabs from './components/SystemManagement/HardwareLabs';
+import { HardwareTestingSandboxMap } from './components/SystemManagement/HardwareLabs/HardwareTestingSandboxMap';
+import { FloatingLabsSwitcher } from './components/SystemManagement/FloatingLabsSwitcher';
 import RootAdminView from './components/RootAdminView';
 import { MapComponentProps } from './components/MapComponent';
 import { safeStorage } from './services/storageService';
@@ -180,7 +182,7 @@ const App: React.FC = () => {
         const saved = localStorage.getItem('agri-planter-mode');
         return (saved as AppMode) || 'dashboard';
     });
-    const [labTab, setLabTab] = useState<'hardware' | 'theme' | 'letters' | 'analytics'>('hardware');
+    const [labTab, setLabTab] = useState<'hardware' | 'devices_map' | 'theme' | 'letters' | 'analytics'>('hardware');
     const { 
         currentUser, 
         setCurrentUser, 
@@ -1538,6 +1540,52 @@ const App: React.FC = () => {
              }
         }
     }, [appMode, activeOrg]);
+
+    // Handle committing tested hardware assets from LABS as a new layer in Map Planner
+    useEffect(() => {
+        const handleCommitLabsLayer = (e: any) => {
+            const { layerName, features } = e?.detail || {};
+            if (!layerName || !Array.isArray(features) || features.length === 0) return;
+
+            const newLayerId = `layer-labs-${Date.now()}`;
+            const newLayer: Layer = {
+                id: newLayerId,
+                name: layerName,
+                isFolder: false,
+                isVisible: true,
+                organizationId: activeOrgId || undefined
+            };
+
+            // Associate features with this layer
+            const enrichedFeatures = features.map((f: PlantationFeature, idx: number) => ({
+                ...f,
+                id: f.id || `labs-asset-${Date.now()}-${idx}`,
+                layerId: newLayerId,
+                organizationId: activeOrgId || undefined,
+                isVisible: true
+            }));
+
+            // Add layer
+            setLayers(prev => [...prev, newLayer]);
+            // Add features
+            setPlantationFeatures(prev => [...prev, ...enrichedFeatures]);
+
+            // Save to local storage cache
+            const currentCache = safeStorage.safeParse(localStorage.getItem('mock_plantationFeatures'), []);
+            localStorage.setItem('mock_plantationFeatures', JSON.stringify([...currentCache, ...enrichedFeatures]));
+
+            toast.success(`🚀 Layer "${layerName}" successfully deployed to Map Planner with ${enrichedFeatures.length} assets!`, {
+                duration: 6000,
+                action: {
+                    label: 'Go to Map Planner',
+                    onClick: () => setAppMode('design')
+                }
+            });
+        };
+
+        window.addEventListener('agrimap:commit_labs_layer', handleCommitLabsLayer);
+        return () => window.removeEventListener('agrimap:commit_labs_layer', handleCommitLabsLayer);
+    }, [activeOrgId]);
 
     const userMemberships = useMemo(() => {
         const filtered = memberships.filter(m => m.userId === currentUser?.id);
@@ -6352,9 +6400,26 @@ const App: React.FC = () => {
                     />
                 );
             case 'labs':
+                if (labTab === 'devices_map') {
+                    return (
+                        <main className="flex-1 relative w-full h-full overflow-hidden flex flex-col" style={{ backgroundColor: 'var(--bg-canvas, #090e17)', color: 'var(--text-main, #f1f5f9)' }}>
+                            {/* Floating Top Labs Switcher Bar (Movable & Minimizable) */}
+                            <FloatingLabsSwitcher 
+                                labTab={labTab} 
+                                onSelectLabTab={(tab: string) => setLabTab(tab as any)} 
+                            />
+
+                            <HardwareTestingSandboxMap 
+                                plantationFeatures={currentOrgFeatures}
+                                mapCenter={mapProps.center || [41.9023, 44.5]}
+                                onSwitchTab={() => setLabTab('hardware')}
+                            />
+                        </main>
+                    );
+                }
                 return (
                     <main className="flex-1 overflow-y-auto p-4 md:p-8 transition-colors" style={{ backgroundColor: 'var(--bg-canvas, #090e17)', color: 'var(--text-main, #f1f5f9)' }}>
-                        <div className="max-w-6xl mx-auto space-y-8">
+                        <div className="max-w-7xl mx-auto space-y-8">
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
                                 <div>
                                     <div className="flex items-center gap-3">
@@ -6364,27 +6429,34 @@ const App: React.FC = () => {
                                         </span>
                                     </div>
                                     <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] mt-1">
-                                        Custom design themes, hardware connectivity, and next-generation engines.
+                                        Custom design themes, hardware peripheral device lists, low-level drivers, and next-generation engines.
                                     </p>
                                 </div>
 
                                 {/* Labs Tab Switcher */}
                                 <div className="flex flex-wrap items-center p-1.5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-inner gap-1">
                                     <button
+                                        onClick={() => setLabTab('devices_map')}
+                                        data-active="false"
+                                        className="px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all standing-light standing-beam cursor-pointer text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+                                    >
+                                        🗺️ Devices Map
+                                    </button>
+                                    <button
                                         onClick={() => setLabTab('hardware')}
                                         data-active={labTab === 'hardware' ? "true" : "false"}
-                                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all standing-light standing-beam ${
+                                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all standing-light standing-beam cursor-pointer ${
                                             labTab === 'hardware'
                                                 ? 'bg-blue-600 text-white shadow-md underglow-box-active active'
                                                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
                                         }`}
                                     >
-                                        🔌 Hardware Labs & Integrations
+                                        🔌 Hardware & Devices
                                     </button>
                                     <button
                                         onClick={() => setLabTab('theme')}
                                         data-active={labTab === 'theme' ? "true" : "false"}
-                                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all standing-light standing-beam ${
+                                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all standing-light standing-beam cursor-pointer ${
                                             labTab === 'theme'
                                                 ? 'bg-emerald-600 text-white shadow-md underglow-box-active active'
                                                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
@@ -6395,7 +6467,7 @@ const App: React.FC = () => {
                                     <button
                                         onClick={() => setLabTab('letters')}
                                         data-active={labTab === 'letters' ? "true" : "false"}
-                                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all standing-light standing-beam flex items-center gap-1.5 ${
+                                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all standing-light standing-beam flex items-center gap-1.5 cursor-pointer ${
                                             labTab === 'letters'
                                                 ? 'bg-amber-500 text-slate-950 shadow-md underglow-box-active active font-black'
                                                 : 'text-amber-400 hover:text-amber-300 hover:bg-amber-500/10'
@@ -6406,7 +6478,7 @@ const App: React.FC = () => {
                                     <button
                                         onClick={() => setLabTab('analytics')}
                                         data-active={labTab === 'analytics' ? "true" : "false"}
-                                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all standing-light standing-beam ${
+                                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all standing-light standing-beam cursor-pointer ${
                                             labTab === 'analytics'
                                                 ? 'bg-indigo-600 text-white shadow-md underglow-box-active active'
                                                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
@@ -6417,21 +6489,27 @@ const App: React.FC = () => {
                                 </div>
                             </div>
                             
-                            {labTab === 'theme' && (
-                                <ThemeColorStudio />
-                            )}
-
-                            {labTab === 'letters' && (
-                                <LetterColorStudio />
-                            )}
-
                             {labTab === 'hardware' && (
                                 <HardwareLabs 
                                     employees={employees || []} 
                                     organizationId={activeOrgId || undefined}
                                     onAddDevice={handleAddDevice}
                                     installedDevices={hardwareDevices.filter(d => d.organizationId === activeOrgId)}
+                                    plantationFeatures={currentOrgFeatures}
+                                    mapCenter={mapProps.center || [41.9023, 44.5]}
+                                    fullScreenMap={false}
+                                    initialTab="bluetooth"
+                                    onOpenDevicesMap={() => setLabTab('devices_map')}
+                                    onSelectLabTab={(tab: string) => setLabTab(tab as any)}
                                 />
+                            )}
+
+                            {labTab === 'theme' && (
+                                <ThemeColorStudio />
+                            )}
+
+                            {labTab === 'letters' && (
+                                <LetterColorStudio />
                             )}
 
                             {labTab === 'analytics' && (

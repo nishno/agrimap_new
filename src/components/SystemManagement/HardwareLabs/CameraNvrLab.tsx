@@ -1,13 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Video, Camera, Play, Pause, Maximize2, Move, ZoomIn, ZoomOut, 
     Layers, Plus, Trash2, MapPin, Eye, EyeOff, Compass, Shield, Settings, 
     RefreshCw, Download, Check, AlertCircle, Sparkles, Search, Wifi,
     Server, HardDrive, Key, Lock, CheckCircle2, ArrowRight, ExternalLink,
-    Globe, Sliders, ShieldCheck, PlayCircle, Radio, Activity, Cpu, Filter, Copy
+    Globe, Sliders, ShieldCheck, PlayCircle, Radio, Activity, Cpu, Filter, 
+    Copy, BookOpen, AlertTriangle, Mountain, Plane, CloudRain, Droplets,
+    Zap, CornerDownRight, ChevronDown, ChevronUp, Navigation
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { safeStorage } from '../../../services/storageService';
+import type { PlantationFeature } from '../../../types';
+import { CameraVerificationModal, type DeviceConnectionTarget } from './CameraVerificationModal';
+import { PlantationCameraMap } from './PlantationCameraMap';
+import { CameraProtocolGuideModal } from './CameraProtocolGuideModal';
+import { CameraPlannerModal } from './CameraPlannerModal';
+import { TerrainSlopeSculptorModal } from '../../TerrainSlopeSculptorModal';
+import DroneSimulationModal from '../../DroneSimulationModal';
+import { CameraLiveMonitorWindow } from './CameraLiveMonitorWindow';
+import { AllCamerasWideModal } from './AllCamerasWideModal';
 
 export interface PlantationCamera {
     id: string;
@@ -24,6 +35,10 @@ export interface PlantationCamera {
     azimuthDeg: number;
     fovAngleDeg: number;
     rangeM: number;
+    tiltAngleDeg: number; // e.g. 4 degrees down-tilt
+    focalLengthMm?: number;
+    opticalZoomLevel?: number;
+    blindZoneRadiusM?: number;
     isPtz: boolean;
     isNightVision: boolean;
     status: 'ONLINE' | 'STANDBY' | 'RECORDING';
@@ -32,203 +47,64 @@ export interface PlantationCamera {
 export interface DiscoveredNetworkDevice {
     id: string;
     alias: string;
-    type: 'NVR' | 'DVR' | 'IP_CAMERA' | 'PTZ_CAMERA' | 'THERMAL_CAMERA';
-    brand: 'Hikvision' | 'Dahua' | 'Uniview' | 'Axis' | 'ONVIF';
+    type: 'NVR' | 'DVR' | 'IP_CAMERA' | 'PTZ_CAMERA' | 'THERMAL_CAMERA' | 'DRONE' | 'GPS_ROVER' | 'SOIL_SENSOR' | 'WEATHER_STATION' | 'IOT_GATEWAY';
+    brand: string;
     model: string;
     ip: string;
     httpPort: number;
     rtspPort: number;
-    serverPort: number; // e.g. 8000 for Hikvision SADP/ISAPI, 37777 for Dahua
+    serverPort: number; // 8000 for Hikvision, 14550 for MAVLink, 2101 for NTRIP, 502 for Modbus, 22222 for WeatherLink
     mac: string;
     subnetMask: string;
     gateway: string;
     channelsCount?: number;
+    channels?: {
+        channel: number;
+        name: string;
+        model: string;
+        ip: string;
+        rtspUrl: string;
+        resolution: string;
+        status: 'ONLINE' | 'STANDBY' | 'NO_SIGNAL';
+        isNightVision?: boolean;
+        isPtz?: boolean;
+    }[];
     firmwareVersion: string;
     activationStatus: 'ACTIVATED' | 'INACTIVE' | 'LOCKED';
     lastSeen: string;
     pingMs: number;
+    isVerified?: boolean;
+    telemetry?: any;
 }
 
 interface CameraNvrLabProps {
     mapCenter?: [number, number];
+    plantationFeatures?: PlantationFeature[];
     onDeployCameraToMap?: (cam: PlantationCamera) => void;
 }
 
-const DEFAULT_DISCOVERED_DEVICES: DiscoveredNetworkDevice[] = [
-    {
-        id: 'dev-hik-nvr-01',
-        alias: 'Main Orchard AcuSense NVR',
-        type: 'NVR',
-        brand: 'Hikvision',
-        model: 'DS-7616NXI-I2 / S (16-Channel 4K AcuSense)',
-        ip: '192.168.1.120',
-        httpPort: 80,
-        rtspPort: 554,
-        serverPort: 8000,
-        mac: 'BC:54:51:A4:12:8E',
-        subnetMask: '255.255.255.0',
-        gateway: '192.168.1.1',
-        channelsCount: 16,
-        firmwareVersion: 'V4.61.025 build 231120',
-        activationStatus: 'ACTIVATED',
-        lastSeen: 'Just now',
-        pingMs: 2
-    },
-    {
-        id: 'dev-dahua-nvr-02',
-        alias: 'Greenhouse & Logistics NVR',
-        type: 'NVR',
-        brand: 'Dahua',
-        model: 'DHI-NVR5216-16P-I (WizSense 4K 16CH)',
-        ip: '192.168.1.140',
-        httpPort: 80,
-        rtspPort: 554,
-        serverPort: 37777,
-        mac: 'E0:50:8B:72:43:91',
-        subnetMask: '255.255.255.0',
-        gateway: '192.168.1.1',
-        channelsCount: 16,
-        firmwareVersion: 'V4.001.0000000.1.R',
-        activationStatus: 'ACTIVATED',
-        lastSeen: '1 min ago',
-        pingMs: 4
-    },
-    {
-        id: 'dev-hik-dvr-03',
-        alias: 'Cold Storage & Pack Shed DVR',
-        type: 'DVR',
-        brand: 'Hikvision',
-        model: 'DS-7208HUHI-K2 (8-Channel Turbo HD / Analog DVR)',
-        ip: '192.168.1.130',
-        httpPort: 80,
-        rtspPort: 554,
-        serverPort: 8000,
-        mac: 'C4:2F:90:38:D1:55',
-        subnetMask: '255.255.255.0',
-        gateway: '192.168.1.1',
-        channelsCount: 8,
-        firmwareVersion: 'V4.26.010 build 220815',
-        activationStatus: 'ACTIVATED',
-        lastSeen: 'Just now',
-        pingMs: 3
-    },
-    {
-        id: 'dev-hik-cam-01',
-        alias: 'Main Gate & Weigh Station ColorVu',
-        type: 'IP_CAMERA',
-        brand: 'Hikvision',
-        model: 'DS-2CD2087G2-LU (4K ColorVu 2.8mm)',
-        ip: '192.168.1.121',
-        httpPort: 80,
-        rtspPort: 554,
-        serverPort: 8000,
-        mac: 'BC:54:51:B2:77:01',
-        subnetMask: '255.255.255.0',
-        gateway: '192.168.1.1',
-        firmwareVersion: 'V5.7.3 build 220914',
-        activationStatus: 'ACTIVATED',
-        lastSeen: 'Just now',
-        pingMs: 1
-    },
-    {
-        id: 'dev-hik-cam-02',
-        alias: 'North Blueberry Field Block A',
-        type: 'IP_CAMERA',
-        brand: 'Hikvision',
-        model: 'DS-2CD2386G2-ISU (AcuSense 4K 4mm)',
-        ip: '192.168.1.122',
-        httpPort: 80,
-        rtspPort: 554,
-        serverPort: 8000,
-        mac: 'BC:54:51:C9:88:14',
-        subnetMask: '255.255.255.0',
-        gateway: '192.168.1.1',
-        firmwareVersion: 'V5.7.12 build 230412',
-        activationStatus: 'ACTIVATED',
-        lastSeen: 'Just now',
-        pingMs: 5
-    },
-    {
-        id: 'dev-hik-cam-04',
-        alias: 'Irrigation Pump Station 25x PTZ',
-        type: 'PTZ_CAMERA',
-        brand: 'Hikvision',
-        model: 'DS-2DE4425IW-DE (4MP 25x IR Speed Dome)',
-        ip: '192.168.1.124',
-        httpPort: 80,
-        rtspPort: 554,
-        serverPort: 8000,
-        mac: 'BC:54:51:D1:02:9A',
-        subnetMask: '255.255.255.0',
-        gateway: '192.168.1.1',
-        firmwareVersion: 'V5.6.18 build 211028',
-        activationStatus: 'ACTIVATED',
-        lastSeen: 'Just now',
-        pingMs: 6
-    },
-    {
-        id: 'dev-uniview-nvr-01',
-        alias: 'East Perimeter UNV NVR',
-        type: 'NVR',
-        brand: 'Uniview',
-        model: 'NVR302-16E2-P16 (16-Channel 4K PoE)',
-        ip: '192.168.1.150',
-        httpPort: 80,
-        rtspPort: 554,
-        serverPort: 8088,
-        mac: '48:EA:63:15:33:A2',
-        subnetMask: '255.255.255.0',
-        gateway: '192.168.1.1',
-        channelsCount: 16,
-        firmwareVersion: 'B3323P35',
-        activationStatus: 'ACTIVATED',
-        lastSeen: '2 min ago',
-        pingMs: 7
-    },
-    {
-        id: 'dev-dahua-cam-01',
-        alias: 'Cold Storage Loading Bay Bullet',
-        type: 'IP_CAMERA',
-        brand: 'Dahua',
-        model: 'IPC-HFW5842E-ZE (4K WizMind Vari-Focal)',
-        ip: '192.168.1.141',
-        httpPort: 80,
-        rtspPort: 554,
-        serverPort: 37777,
-        mac: 'E0:50:8B:99:A1:34',
-        subnetMask: '255.255.255.0',
-        gateway: '192.168.1.1',
-        firmwareVersion: 'V2.840.0000000.12.R',
-        activationStatus: 'ACTIVATED',
-        lastSeen: 'Just now',
-        pingMs: 3
-    },
-    {
-        id: 'dev-hik-thermal-01',
-        alias: 'Orchard Boundary Thermal & Frost Guard',
-        type: 'THERMAL_CAMERA',
-        brand: 'Hikvision',
-        model: 'DS-2TD2617-6/PA (Bi-Spectrum Thermal/Optical Bullet)',
-        ip: '192.168.1.126',
-        httpPort: 80,
-        rtspPort: 554,
-        serverPort: 8000,
-        mac: 'BC:54:51:FA:44:88',
-        subnetMask: '255.255.255.0',
-        gateway: '192.168.1.1',
-        firmwareVersion: 'V5.5.42 build 220516',
-        activationStatus: 'ACTIVATED',
-        lastSeen: 'Just now',
-        pingMs: 4
-    }
-];
-
 export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
-    mapCenter = [41.9023, -72.3774],
+    mapCenter = [41.9023, 44.5],
+    plantationFeatures = [],
     onDeployCameraToMap
 }) => {
     const baseLat = mapCenter[0] || 41.9023;
-    const baseLng = mapCenter[1] || -72.3774;
+    const baseLng = mapCenter[1] || 44.5;
+
+    // Load draft features from storage if props are empty so map always has drawn plantation
+    const effectivePlantationFeatures = useMemo(() => {
+        if (plantationFeatures && plantationFeatures.length > 0) {
+            return plantationFeatures;
+        }
+        try {
+            const rawDraft = safeStorage.getItem('agrimap_draft_features');
+            if (rawDraft) {
+                const parsed = JSON.parse(rawDraft);
+                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            }
+        } catch (_) {}
+        return [];
+    }, [plantationFeatures]);
 
     const [activeTab, setActiveTab] = useState<'live_grid' | 'network_search' | 'planner' | 'nvr_settings'>('live_grid');
     const [gridLayout, setGridLayout] = useState<'1x1' | '2x2' | '3x3'>('2x2');
@@ -236,13 +112,16 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
     const [ptzSpeed, setPtzSpeed] = useState<number>(50);
     const [isNightModeActive, setIsNightModeActive] = useState<boolean>(false);
     const [showPassword, setShowPassword] = useState<boolean>(false);
-    const [isTestingNvrAuth, setIsTestingNvrAuth] = useState<boolean>(false);
-    const [nvrAuthResult, setNvrAuthResult] = useState<{
-        success: boolean;
-        message: string;
-        details?: string;
-        pingMs?: number;
-    } | null>(null);
+
+    // 3-Phase Verification Modal State
+    const [verificationTarget, setVerificationTarget] = useState<DeviceConnectionTarget | null>(null);
+    const [isVerificationModalOpen, setIsVerificationModalOpen] = useState<boolean>(false);
+
+    // Protocol & Code Guide Modal State
+    const [isProtocolGuideOpen, setIsProtocolGuideOpen] = useState<boolean>(false);
+    const [isCameraPlannerModalOpen, setIsCameraPlannerModalOpen] = useState<boolean>(false);
+    const [isTerrainSculptorOpen, setIsTerrainSculptorOpen] = useState<boolean>(false);
+    const [isDroneSimModalOpen, setIsDroneSimModalOpen] = useState<boolean>(false);
 
     // NVR / DVR Config with alias, host, ports, username, and password
     const [nvrConfig, setNvrConfig] = useState(() => {
@@ -251,8 +130,8 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
             try { 
                 const parsed = JSON.parse(saved);
                 return {
-                    alias: parsed.alias || 'Main Orchard AcuSense NVR',
-                    nvrModel: parsed.nvrModel || 'Hikvision DS-7616NXI-I2 / S (AcuSense NVR)',
+                    alias: parsed.alias || 'Main Orchard AcuSense NVR (DS-7716NI)',
+                    nvrModel: parsed.nvrModel || 'Hikvision DS-7716NI-I4 / 16P (4K AcuSense NVR)',
                     host: parsed.host || '192.168.1.120',
                     httpPort: parsed.httpPort || 80,
                     rtspPort: parsed.rtspPort || 554,
@@ -261,13 +140,14 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
                     password: parsed.password || 'PlantationAdmin2026!',
                     channelCount: parsed.channelCount || 16,
                     protocol: parsed.protocol || 'RTSP_OVER_WEBRTC',
-                    recordingMode: parsed.recordingMode || 'CONTINUOUS_PLUS_AI_MOTION'
+                    recordingMode: parsed.recordingMode || 'CONTINUOUS_PLUS_AI_MOTION',
+                    isVerified: parsed.isVerified || false
                 };
             } catch (e) {}
         }
         return {
-            alias: 'Main Orchard AcuSense NVR',
-            nvrModel: 'Hikvision DS-7616NXI-I2 / S (AcuSense NVR)',
+            alias: 'Main Orchard AcuSense NVR (DS-7716NI)',
+            nvrModel: 'Hikvision DS-7716NI-I4 / 16P (4K AcuSense NVR)',
             host: '192.168.1.120',
             httpPort: 80,
             rtspPort: 554,
@@ -276,7 +156,8 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
             password: 'PlantationAdmin2026!',
             channelCount: 16,
             protocol: 'RTSP_OVER_WEBRTC',
-            recordingMode: 'CONTINUOUS_PLUS_AI_MOTION'
+            recordingMode: 'CONTINUOUS_PLUS_AI_MOTION',
+            isVerified: true
         };
     });
 
@@ -301,6 +182,7 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
                 azimuthDeg: 45,
                 fovAngleDeg: 102,
                 rangeM: 65,
+                tiltAngleDeg: 4, // 4 degrees down-tilt as requested
                 isPtz: false,
                 isNightVision: true,
                 status: 'RECORDING'
@@ -319,6 +201,7 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
                 azimuthDeg: 135,
                 fovAngleDeg: 89,
                 rangeM: 90,
+                tiltAngleDeg: 5,
                 isPtz: false,
                 isNightVision: true,
                 status: 'RECORDING'
@@ -337,6 +220,7 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
                 azimuthDeg: 270,
                 fovAngleDeg: 110,
                 rangeM: 45,
+                tiltAngleDeg: 4,
                 isPtz: false,
                 isNightVision: true,
                 status: 'RECORDING'
@@ -355,6 +239,7 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
                 azimuthDeg: 180,
                 fovAngleDeg: 60,
                 rangeM: 160,
+                tiltAngleDeg: 6,
                 isPtz: true,
                 isNightVision: true,
                 status: 'ONLINE'
@@ -377,6 +262,7 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
         azimuthDeg: 90,
         fovAngleDeg: 105,
         rangeM: 75,
+        tiltAngleDeg: 4, // Default 4 degrees tilt angle
         isPtz: false,
         isNightVision: true,
         status: 'STANDBY'
@@ -388,35 +274,47 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
         if (saved) {
             try { return JSON.parse(saved); } catch (e) {}
         }
-        return DEFAULT_DISCOVERED_DEVICES;
+        return [];
     });
 
     const [isScanningNetwork, setIsScanningNetwork] = useState<boolean>(false);
     const [scanProgress, setScanProgress] = useState<number>(0);
     const [scanStatusText, setScanStatusText] = useState<string>('Idle');
     const [subnetInput, setSubnetInput] = useState<string>('192.168.1.0/24');
-    const [discoveryProtocol, setDiscoveryProtocol] = useState<'ALL' | 'SADP' | 'ONVIF' | 'DAHUA' | 'PORT_SWEEP'>('ALL');
-    const [deviceTypeFilter, setDeviceTypeFilter] = useState<'ALL' | 'RECORDERS' | 'CAMERAS'>('ALL');
+    const [deviceTypeFilter, setDeviceTypeFilter] = useState<'ALL' | 'RECORDERS' | 'CAMERAS' | 'DRONES' | 'GPS_ROVERS' | 'SOIL_SENSORS' | 'WEATHER_STATIONS' | 'IOT_GATEWAYS'>('ALL');
     const [searchQuery, setSearchQuery] = useState<string>('');
     const [showManualAddModal, setShowManualAddModal] = useState<boolean>(false);
+    const [expandedNvrIds, setExpandedNvrIds] = useState<string[]>(['dev-hik-nvr-7716']);
+    const [liveStreamCamera, setLiveStreamCamera] = useState<PlantationCamera | null>(null);
+    const [isAllCamerasWideOpen, setIsAllCamerasWideOpen] = useState<boolean>(false);
+
+    // Manual Add Device State (supports both local LAN & remote WAN/Global IP)
     const [manualDevice, setManualDevice] = useState<{
+        isWanRemote: boolean;
         alias: string;
         type: 'NVR' | 'DVR' | 'IP_CAMERA' | 'PTZ_CAMERA';
         brand: 'Hikvision' | 'Dahua' | 'Uniview' | 'Axis' | 'ONVIF';
         model: string;
-        ip: string;
+        host: string;
         httpPort: number;
         rtspPort: number;
         serverPort: number;
+        username: string;
+        password: string;
+        channelCount: number;
     }>({
-        alias: 'New Field Recorder / Camera',
+        isWanRemote: false,
+        alias: 'New Hikvision NVR (DS-7716NI)',
         type: 'NVR',
         brand: 'Hikvision',
-        model: 'Hikvision DS-7608NXI-K2 / 8P',
-        ip: '192.168.1.160',
+        model: 'Hikvision DS-7716NI-I4 / 16P (4K NVR)',
+        host: '192.168.1.120',
         httpPort: 80,
         rtspPort: 554,
-        serverPort: 8000
+        serverPort: 8000,
+        username: 'admin',
+        password: '',
+        channelCount: 16
     });
 
     // Persist cameras
@@ -429,73 +327,749 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
         safeStorage.setItem('agrimap_discovered_camera_devices', JSON.stringify(discoveredDevices));
     }, [discoveredDevices]);
 
-    const handleSaveNvrConfig = (cfg: any) => {
-        if (!cfg.username || !cfg.password) {
-            toast.error('Both Username and Password are required to authenticate and connect to NVR/DVR.');
-            return;
-        }
-        setNvrConfig(cfg);
-        safeStorage.setItem('agrimap_hikvision_nvr_config', JSON.stringify(cfg));
-        toast.success(`NVR "${cfg.alias || 'System'}" credentials & network configuration saved.`);
-    };
-
-    const handleTestNvrConnection = () => {
+    // Handle 3-Phase Verification for NVR Settings
+    const handleTriggerNvrVerification = () => {
         if (!nvrConfig.host) {
-            toast.error('Please enter a valid IP address / host for the NVR/DVR.');
+            toast.error('Host IP address or Domain is required.');
             return;
         }
-        if (!nvrConfig.username || !nvrConfig.password) {
-            toast.error('Authentication requires both a Username and Password. Without them, connecting is impossible.');
-            setNvrAuthResult({
-                success: false,
-                message: 'Authentication Missing: Username and password are required to establish an RTSP / ISAPI handshake.',
-                details: 'NVR / DVR rejects unauthenticated connections on port ' + (nvrConfig.isapiPort || 8000)
-            });
-            return;
-        }
-
-        setIsTestingNvrAuth(true);
-        setNvrAuthResult(null);
-
-        const latency = Math.floor(Math.random() * 12) + 4; // 4-15ms realistic LAN latency
-
-        setTimeout(() => {
-            setIsTestingNvrAuth(false);
-            const isSuccess = Boolean(nvrConfig.host && nvrConfig.username && nvrConfig.password);
-            if (isSuccess) {
-                setNvrAuthResult({
-                    success: true,
-                    message: `Successfully connected & authenticated as "${nvrConfig.username}"`,
-                    details: `NVR Host: ${nvrConfig.host}:${nvrConfig.httpPort} • RTSP Port: ${nvrConfig.rtspPort} • SDK Port: ${nvrConfig.isapiPort} • Active Channels: ${nvrConfig.channelCount || 16} detected`,
-                    pingMs: latency
-                });
-                toast.success(`Connected to "${nvrConfig.alias || nvrConfig.host}" (${latency}ms latency). Authentication verified.`);
-            } else {
-                setNvrAuthResult({
-                    success: false,
-                    message: 'Connection Failed: Could not authenticate credentials.',
-                    details: 'Ensure the host is reachable on the local subnet and passwords match the device admin account.'
-                });
-                toast.error('Connection to NVR failed. Check IP and password.');
-            }
-        }, 1200);
+        setVerificationTarget({
+            alias: nvrConfig.alias || 'Primary NVR System',
+            host: nvrConfig.host,
+            httpPort: nvrConfig.httpPort || 80,
+            rtspPort: nvrConfig.rtspPort || 554,
+            isapiPort: nvrConfig.isapiPort || 8000,
+            username: nvrConfig.username || 'admin',
+            password: nvrConfig.password || '',
+            model: nvrConfig.nvrModel,
+            brand: 'Hikvision',
+            type: 'NVR',
+            channelCount: nvrConfig.channelCount || 16,
+            isWanRemote: !nvrConfig.host.startsWith('192.168.') && !nvrConfig.host.startsWith('10.') && !nvrConfig.host.startsWith('172.')
+        });
+        setIsVerificationModalOpen(true);
     };
 
-    const handleDeployPlannedCamera = () => {
-        const newCam = { ...plannedCam, id: `cam-${Date.now()}` };
-        setCameras(prev => [...prev, newCam]);
+    // Save verified target back to NVR config
+    const handleVerificationSuccess = (verified: DeviceConnectionTarget & { channels: number; pingMs: number }) => {
+        const updated = {
+            ...nvrConfig,
+            alias: verified.alias,
+            host: verified.host,
+            httpPort: verified.httpPort,
+            rtspPort: verified.rtspPort,
+            isapiPort: verified.isapiPort,
+            username: verified.username,
+            password: verified.password || '',
+            nvrModel: verified.model || nvrConfig.nvrModel,
+            channelCount: verified.channels,
+            isVerified: true
+        };
+        setNvrConfig(updated);
+        safeStorage.setItem('agrimap_hikvision_nvr_config', JSON.stringify(updated));
+        toast.success(`NVR "${verified.alias}" is verified and active! All 3 phases verified.`);
+    };
+
+    // Handle Comprehensive Multi-Protocol Network Scan (NVRs, Cameras, Drones, GPS, Soil Sensors, Weather Stations)
+    const handleStartNetworkScan = async () => {
+        setIsScanningNetwork(true);
+        setScanProgress(10);
+        setScanStatusText(`Scanning subnet ${subnetInput} for active ARP hosts & gateway...`);
+
+        const intervals = [
+            { pct: 20, text: 'Broadcasting Hikvision SADP inquiry on UDP port 37020...' },
+            { pct: 40, text: 'Multicasting ONVIF WS-Discovery to 239.255.255.250:3702 & RTSP :554...' },
+            { pct: 60, text: 'Listening for MAVLink telemetry heartbeat on UDP :14550 (Ag Drones)...' },
+            { pct: 75, text: 'Probing RTK GNSS Base NTRIP :2101 and TCP raw stream :9001...' },
+            { pct: 88, text: 'Querying LoRaWAN / Modbus TCP :502 Soil Sensors & WeatherLink :22222...' },
+            { pct: 96, text: 'Enumerating NVR PoE channels & Edge AI vision endpoints...' }
+        ];
+
+        for (const step of intervals) {
+            await new Promise(r => setTimeout(r, 450));
+            setScanProgress(step.pct);
+            setScanStatusText(step.text);
+        }
+
+        setIsScanningNetwork(false);
+        setScanProgress(100);
+
+        // Rich Multi-Device Discovered Set
+        const newDiscovered: DiscoveredNetworkDevice[] = [
+            // 1. Hikvision 4K AcuSense NVR with PoE Channels
+            {
+                id: 'dev-hik-nvr-7716',
+                alias: nvrConfig.alias || 'Hikvision DS-7716NI-I4 AcuSense NVR',
+                type: 'NVR',
+                brand: 'Hikvision',
+                model: 'DS-7716NI-I4 / 16P (16-Channel 4K AcuSense NVR)',
+                ip: nvrConfig.host || '192.168.1.120',
+                httpPort: nvrConfig.httpPort || 80,
+                rtspPort: nvrConfig.rtspPort || 554,
+                serverPort: nvrConfig.isapiPort || 8000,
+                mac: 'BC:54:51:A4:12:8E',
+                subnetMask: '255.255.255.0',
+                gateway: '192.168.1.1',
+                channelsCount: 16,
+                firmwareVersion: 'V4.74.015 build 240210',
+                activationStatus: 'ACTIVATED',
+                lastSeen: 'Just now',
+                pingMs: 4,
+                isVerified: true,
+                channels: [
+                    {
+                        channel: 1,
+                        name: 'North Perimeter Mast (ColorVu 4K)',
+                        model: 'DS-2CD2087G2-LU',
+                        ip: '192.168.1.121',
+                        rtspUrl: 'rtsp://192.168.1.120:554/Streaming/Channels/101',
+                        resolution: '3840x2160 @ 25fps',
+                        status: 'ONLINE',
+                        isNightVision: true,
+                        isPtz: false
+                    },
+                    {
+                        channel: 2,
+                        name: 'South Main Gate & Weighbridge (AcuSense)',
+                        model: 'DS-2CD2386G2-ISU',
+                        ip: '192.168.1.122',
+                        rtspUrl: 'rtsp://192.168.1.120:554/Streaming/Channels/201',
+                        resolution: '3840x2160 @ 25fps',
+                        status: 'ONLINE',
+                        isNightVision: true,
+                        isPtz: false
+                    },
+                    {
+                        channel: 3,
+                        name: 'Central Irrigation Pump Station (Thermal/Optical)',
+                        model: 'DS-2TD1217B Bi-Spectrum',
+                        ip: '192.168.1.123',
+                        rtspUrl: 'rtsp://192.168.1.120:554/Streaming/Channels/301',
+                        resolution: '1920x1080 @ 30fps',
+                        status: 'ONLINE',
+                        isNightVision: true,
+                        isPtz: false
+                    },
+                    {
+                        channel: 4,
+                        name: 'East Boundary Hillside Security (25x PTZ)',
+                        model: 'DS-2DE4425IW-DE',
+                        ip: '192.168.1.124',
+                        rtspUrl: 'rtsp://192.168.1.120:554/Streaming/Channels/401',
+                        resolution: '2560x1440 @ 30fps',
+                        status: 'ONLINE',
+                        isNightVision: true,
+                        isPtz: true
+                    }
+                ]
+            },
+            // 2. Dahua WizSense 16Ch NVR
+            {
+                id: 'dev-dahua-nvr-5216',
+                alias: 'Storage & Logistics WizSense NVR',
+                type: 'NVR',
+                brand: 'Dahua',
+                model: 'NVR5216-4KS2 WizSense (16-Channel 4K AI)',
+                ip: '192.168.1.125',
+                httpPort: 80,
+                rtspPort: 554,
+                serverPort: 37777,
+                mac: '3C:EF:8C:7D:91:2B',
+                subnetMask: '255.255.255.0',
+                gateway: '192.168.1.1',
+                channelsCount: 16,
+                firmwareVersion: 'DH_NVR5XXX-4KS2_V4.002.0000000.3.R',
+                activationStatus: 'ACTIVATED',
+                lastSeen: 'Just now',
+                pingMs: 6,
+                isVerified: false,
+                channels: [
+                    {
+                        channel: 1,
+                        name: 'Tractor Depot & Machinery Workshop',
+                        model: 'IPC-HFW5442T-ASE',
+                        ip: '192.168.1.131',
+                        rtspUrl: 'rtsp://192.168.1.125:554/cam/realmonitor?channel=1&subtype=0',
+                        resolution: '2688x1520 @ 30fps',
+                        status: 'ONLINE',
+                        isNightVision: true,
+                        isPtz: false
+                    },
+                    {
+                        channel: 2,
+                        name: 'Cold Storage Loading Ramp',
+                        model: 'IPC-HDW5842T-ZE',
+                        ip: '192.168.1.132',
+                        rtspUrl: 'rtsp://192.168.1.125:554/cam/realmonitor?channel=2&subtype=0',
+                        resolution: '3840x2160 @ 25fps',
+                        status: 'ONLINE',
+                        isNightVision: true,
+                        isPtz: false
+                    }
+                ]
+            },
+            // 3. Standalone Hikvision ColorVu 4K Bullet
+            {
+                id: 'dev-cam-colorvu-01',
+                alias: 'Orchard West Perimeter ColorVu 4K',
+                type: 'IP_CAMERA',
+                brand: 'Hikvision',
+                model: 'DS-2CD2087G2-LU (4K ColorVu F1.0 Lens)',
+                ip: '192.168.1.126',
+                httpPort: 80,
+                rtspPort: 554,
+                serverPort: 8000,
+                mac: 'BC:54:51:B2:34:AA',
+                subnetMask: '255.255.255.0',
+                gateway: '192.168.1.1',
+                firmwareVersion: 'V5.7.13 build 231120',
+                activationStatus: 'ACTIVATED',
+                lastSeen: 'Just now',
+                pingMs: 3,
+                isVerified: true
+            },
+            // 4. Standalone Dahua TiOC 25x PTZ
+            {
+                id: 'dev-cam-ptz-dahua',
+                alias: 'Hilltop Patrol 25x Optical PTZ',
+                type: 'PTZ_CAMERA',
+                brand: 'Dahua',
+                model: 'SD49425XB-HNR (4MP 25x WizSense Auto-Tracking)',
+                ip: '192.168.1.127',
+                httpPort: 80,
+                rtspPort: 554,
+                serverPort: 37777,
+                mac: '3C:EF:8C:11:45:90',
+                subnetMask: '255.255.255.0',
+                gateway: '192.168.1.1',
+                firmwareVersion: 'DH_SD49XXX_V2.812.0000000.1.R',
+                activationStatus: 'ACTIVATED',
+                lastSeen: 'Just now',
+                pingMs: 7,
+                isVerified: true
+            },
+            // 5. Thermal Bi-Spectrum Frost/Fire Warning Camera
+            {
+                id: 'dev-cam-thermal-01',
+                alias: 'Microclimate Thermal Turret (Frost/Fire Alert)',
+                type: 'THERMAL_CAMERA',
+                brand: 'Hikvision',
+                model: 'DS-2TD1217B Bi-Spectrum (Thermal & Optical DeepinView)',
+                ip: '192.168.1.128',
+                httpPort: 80,
+                rtspPort: 554,
+                serverPort: 8000,
+                mac: 'BC:54:51:FE:89:10',
+                subnetMask: '255.255.255.0',
+                gateway: '192.168.1.1',
+                firmwareVersion: 'V5.5.42 build 230915',
+                activationStatus: 'ACTIVATED',
+                lastSeen: 'Just now',
+                pingMs: 5,
+                isVerified: false
+            },
+            // 6. Agricultural Drone Ground Station
+            {
+                id: 'dev-drone-agras-t50',
+                alias: 'DJI Agras T50 Spraying & Survey Drone Hub',
+                type: 'DRONE',
+                brand: 'DJI',
+                model: 'Agras T50 Ground Station & D-RTK 2 Link',
+                ip: '192.168.1.135',
+                httpPort: 8080,
+                rtspPort: 8554,
+                serverPort: 14550, // MAVLink UDP
+                mac: '48:A4:72:6E:9A:14',
+                subnetMask: '255.255.255.0',
+                gateway: '192.168.1.1',
+                firmwareVersion: 'v01.03.0118',
+                activationStatus: 'ACTIVATED',
+                lastSeen: 'Just now',
+                pingMs: 12,
+                isVerified: true,
+                telemetry: {
+                    batteryPct: 94,
+                    flightMode: 'AUTO_SURVEY_STANDBY',
+                    satellites: 28,
+                    gpsFix: 'RTK_FIXED (0.02m)'
+                }
+            },
+            // 7. Multi-Band RTK GNSS Base Station
+            {
+                id: 'dev-gps-emlid-rs2',
+                alias: 'Emlid Reach RS2+ Centimeter RTK Base Station',
+                type: 'GPS_ROVER',
+                brand: 'Emlid',
+                model: 'Reach RS2+ Multi-Band L1/L2/L5 GNSS Receiver',
+                ip: '192.168.1.140',
+                httpPort: 80,
+                rtspPort: 0,
+                serverPort: 2101, // NTRIP Caster / 9001 TCP Raw
+                mac: 'B8:27:EB:42:71:0D',
+                subnetMask: '255.255.255.0',
+                gateway: '192.168.1.1',
+                firmwareVersion: 'ReachView 32.1',
+                activationStatus: 'ACTIVATED',
+                lastSeen: 'Just now',
+                pingMs: 4,
+                isVerified: true,
+                telemetry: {
+                    satellites: 32,
+                    gpsFix: 'BASE_BROADCASTING',
+                    accuracyM: 0.01
+                }
+            },
+            // 8. Industrial Soil Sensor Gateway with Multi-Depth Probes
+            {
+                id: 'dev-soil-dragino-lps8n',
+                alias: 'Dragino LPS8N Soil Moisture/EC/Temp Gateway',
+                type: 'SOIL_SENSOR',
+                brand: 'Dragino',
+                model: 'LPS8N 8-Channel LoRaWAN / Modbus TCP Gateway',
+                ip: '192.168.1.145',
+                httpPort: 80,
+                rtspPort: 0,
+                serverPort: 502, // Modbus TCP
+                mac: 'A8:40:41:1B:32:89',
+                subnetMask: '255.255.255.0',
+                gateway: '192.168.1.1',
+                firmwareVersion: 'dragino-2-v2.8.2',
+                activationStatus: 'ACTIVATED',
+                lastSeen: 'Just now',
+                pingMs: 8,
+                isVerified: true,
+                telemetry: {
+                    moisturePct: 38.4,
+                    soilPh: 6.8,
+                    soilEcDsm: 1.32,
+                    tempC: 18.2,
+                    depthCm: 30
+                }
+            },
+            // 9. Davis Agro-Meteorological Weather Station
+            {
+                id: 'dev-weather-davis-vantage',
+                alias: 'Central Plantation Agro-Weather Station',
+                type: 'WEATHER_STATION',
+                brand: 'Davis Instruments',
+                model: 'Vantage Pro2 Plus (WeatherLink IP TCP Stream)',
+                ip: '192.168.1.150',
+                httpPort: 80,
+                rtspPort: 0,
+                serverPort: 22222, // WeatherLink IP TCP
+                mac: '00:1D:0A:34:91:EE',
+                subnetMask: '255.255.255.0',
+                gateway: '192.168.1.1',
+                firmwareVersion: 'WL-IP v3.1.2',
+                activationStatus: 'ACTIVATED',
+                lastSeen: 'Just now',
+                pingMs: 5,
+                isVerified: true,
+                telemetry: {
+                    tempC: 21.4,
+                    humidityPct: 58,
+                    windSpeedKmh: 14.2,
+                    solarRadiationWm2: 680,
+                    rainMm: 0.0
+                }
+            },
+            // 10. Farm Edge AI Vision Gateway
+            {
+                id: 'dev-ai-jetson-orin',
+                alias: 'NVIDIA Jetson Orin Nano Farm Edge AI Hub',
+                type: 'IOT_GATEWAY',
+                brand: 'NVIDIA',
+                model: 'Jetson Orin Nano 8GB (Real-Time YOLOv11 Tree & Pest Vision)',
+                ip: '192.168.1.160',
+                httpPort: 8080,
+                rtspPort: 8554,
+                serverPort: 8080,
+                mac: '48:B0:2D:61:94:AF',
+                subnetMask: '255.255.255.0',
+                gateway: '192.168.1.1',
+                firmwareVersion: 'JetPack 6.0 (L4T 36.2.0)',
+                activationStatus: 'ACTIVATED',
+                lastSeen: 'Just now',
+                pingMs: 2,
+                isVerified: true
+            }
+        ];
+
+        setDiscoveredDevices(newDiscovered);
+        toast.success(`LAN discovery complete: 10 hardware endpoints identified across ${subnetInput}`);
+    };
+
+    // Deploy NVR PoE Channel directly to Plantation Map
+    const handleDeployChannelToMap = (ch: any, nvr: DiscoveredNetworkDevice) => {
+        const offsetLat = (ch.channel === 1 ? 0.001 : ch.channel === 2 ? -0.001 : ch.channel === 3 ? 0.0006 : -0.0006);
+        const offsetLng = (ch.channel === 1 ? -0.0008 : ch.channel === 2 ? 0.0008 : ch.channel === 3 ? 0.0012 : -0.0012);
         
-        // Notify plantation map
+        const newCam: PlantationCamera = {
+            id: `cam-poe-${Date.now()}-${ch.channel}`,
+            name: `${nvr.brand} CH0${ch.channel} - ${ch.name}`,
+            channel: ch.channel,
+            model: ch.model,
+            ipAddress: ch.ip,
+            rtspPort: 554,
+            streamUrl: ch.rtspUrl,
+            locationName: `Perimeter Zone CH0${ch.channel}`,
+            lat: baseLat + offsetLat,
+            lng: baseLng + offsetLng,
+            mountHeightM: 6,
+            azimuthDeg: 90 * ch.channel,
+            fovAngleDeg: ch.isPtz ? 65 : 102,
+            rangeM: ch.isPtz ? 130 : 80,
+            tiltAngleDeg: 4,
+            isPtz: !!ch.isPtz,
+            isNightVision: true,
+            status: 'ONLINE'
+        };
+        const updated = [...cameras, newCam];
+        setCameras(updated);
+        safeStorage.setItem('agrimap_plantation_cameras', JSON.stringify(updated));
+        
+        // Also persist to sandbox test cameras for the map
+        try {
+            const currentSandbox = safeStorage.getItem('agrimap_sandbox_test_cameras');
+            const parsed = currentSandbox ? JSON.parse(currentSandbox) : [];
+            safeStorage.setItem('agrimap_sandbox_test_cameras', JSON.stringify([...parsed, newCam]));
+        } catch (_) {}
+
+        onDeployCameraToMap?.(newCam);
+        toast.success(`NVR Channel 0${ch.channel} (${ch.name}) deployed to map!`);
+    };
+
+    // Universal Deploy Handler for any Discovered Device
+    const handleDeployDeviceToMap = (device: DiscoveredNetworkDevice) => {
+        if (device.type === 'WEATHER_STATION') {
+            const newStation = {
+                id: `weather-${Date.now()}`,
+                name: device.alias,
+                model: device.model,
+                ipAddress: device.ip,
+                port: device.serverPort || 22222,
+                lat: baseLat + 0.0008,
+                lng: baseLng - 0.0006,
+                tempC: device.telemetry?.tempC || 21.4,
+                humidityPct: device.telemetry?.humidityPct || 58,
+                windSpeedKmh: device.telemetry?.windSpeedKmh || 14.2,
+                windDirectionDeg: 240,
+                solarRadiationWm2: device.telemetry?.solarRadiationWm2 || 680,
+                rainMm: device.telemetry?.rainMm || 0.0,
+                pressureHpa: 1015.4,
+                status: 'ONLINE',
+                lastUpdated: 'Just now'
+            };
+            try {
+                const current = safeStorage.getItem('agrimap_sandbox_test_weather_stations');
+                const parsed = current ? JSON.parse(current) : [];
+                safeStorage.setItem('agrimap_sandbox_test_weather_stations', JSON.stringify([...parsed, newStation]));
+            } catch (_) {}
+            toast.success(`Agro-Weather Station "${device.alias}" deployed to map!`);
+        } else if (device.type === 'SOIL_SENSOR') {
+            const newSoil = {
+                id: `soil-${Date.now()}`,
+                name: device.alias,
+                type: 'SOIL_MOISTURE_NPK',
+                lat: baseLat + 0.0009,
+                lng: baseLng - 0.0007,
+                moistureVwc: device.telemetry?.moisturePct || 38.4,
+                temperatureC: device.telemetry?.tempC || 18.2,
+                ecMsCm: device.telemetry?.soilEcDsm || 1.32,
+                nitrogenPpm: 46,
+                phosphorusPpm: 24,
+                potassiumPpm: 175,
+                batteryPct: 96,
+                signalRssi: -65,
+                depthCm: device.telemetry?.depthCm || 30,
+                status: 'OPTIMAL'
+            };
+            try {
+                const current = safeStorage.getItem('agrimap_sandbox_test_soil');
+                const parsed = current ? JSON.parse(current) : [];
+                safeStorage.setItem('agrimap_sandbox_test_soil', JSON.stringify([...parsed, newSoil]));
+            } catch (_) {}
+            toast.success(`Soil Moisture/EC Probe "${device.alias}" deployed to map!`);
+        } else if (device.type === 'DRONE') {
+            toast.success(`Drone Base "${device.alias}" paired with MAVLink UDP :14550! Active telemetry stream linked.`);
+        } else if (device.type === 'GPS_ROVER') {
+            const newWorker = {
+                id: `gps-base-${Date.now()}`,
+                workerName: device.alias,
+                badgeCode: `RTK-BASE`,
+                role: 'RTK GNSS Base Station',
+                lat: baseLat - 0.0005,
+                lng: baseLng - 0.0003,
+                speedKmh: 0,
+                batteryPct: 98,
+                heartRateBpm: 0,
+                status: 'ACTIVE'
+            };
+            try {
+                const current = safeStorage.getItem('agrimap_sandbox_test_workers');
+                const parsed = current ? JSON.parse(current) : [];
+                safeStorage.setItem('agrimap_sandbox_test_workers', JSON.stringify([...parsed, newWorker]));
+            } catch (_) {}
+            toast.success(`RTK GPS Base "${device.alias}" deployed to map!`);
+        } else {
+            // Camera
+            const newCam: PlantationCamera = {
+                id: `cam-${Date.now()}`,
+                name: device.alias,
+                channel: cameras.length + 1,
+                model: `${device.brand} ${device.model}`,
+                ipAddress: device.ip,
+                rtspPort: device.rtspPort || 554,
+                locationName: `Perimeter Zone ${device.ip}`,
+                lat: baseLat + 0.0006,
+                lng: baseLng + 0.0006,
+                mountHeightM: 6,
+                azimuthDeg: 90,
+                fovAngleDeg: device.type === 'PTZ_CAMERA' ? 65 : 102,
+                rangeM: device.type === 'PTZ_CAMERA' ? 140 : 80,
+                tiltAngleDeg: 4,
+                isPtz: device.type === 'PTZ_CAMERA',
+                isNightVision: true,
+                status: 'ONLINE'
+            };
+            const updated = [...cameras, newCam];
+            setCameras(updated);
+            safeStorage.setItem('agrimap_plantation_cameras', JSON.stringify(updated));
+            try {
+                const currentSandbox = safeStorage.getItem('agrimap_sandbox_test_cameras');
+                const parsed = currentSandbox ? JSON.parse(currentSandbox) : [];
+                safeStorage.setItem('agrimap_sandbox_test_cameras', JSON.stringify([...parsed, newCam]));
+            } catch (_) {}
+            onDeployCameraToMap?.(newCam);
+            toast.success(`Camera "${device.alias}" deployed to Plantation Map!`);
+        }
+    };
+
+    // Watch Live Stream in dedicated floating monitor window
+    const handleWatchLiveStream = (camOrDevice: PlantationCamera | DiscoveredNetworkDevice) => {
+        let targetCam: PlantationCamera;
+        if ('tiltAngleDeg' in camOrDevice) {
+            targetCam = camOrDevice as PlantationCamera;
+        } else {
+            const dev = camOrDevice as DiscoveredNetworkDevice;
+            targetCam = {
+                id: dev.id,
+                name: dev.alias,
+                channel: 1,
+                model: `${dev.brand} ${dev.model}`,
+                ipAddress: dev.ip,
+                rtspPort: dev.rtspPort || 554,
+                locationName: `${dev.alias} (${dev.ip})`,
+                lat: baseLat,
+                lng: baseLng,
+                mountHeightM: 6,
+                azimuthDeg: 90,
+                fovAngleDeg: dev.type === 'PTZ_CAMERA' ? 65 : 102,
+                rangeM: 80,
+                tiltAngleDeg: 4,
+                isPtz: dev.type === 'PTZ_CAMERA',
+                isNightVision: true,
+                status: 'ONLINE'
+            };
+        }
+        setLiveStreamCamera(targetCam);
+    };
+
+    // Trigger verification for a discovered device
+    const handleVerifyDiscoveredDevice = (device: DiscoveredNetworkDevice) => {
+        setVerificationTarget({
+            alias: device.alias,
+            host: device.ip,
+            httpPort: device.httpPort,
+            rtspPort: device.rtspPort,
+            isapiPort: device.serverPort,
+            username: 'admin',
+            password: nvrConfig.password || '',
+            model: `${device.brand} ${device.model}`,
+            brand: device.brand,
+            type: device.type,
+            channelCount: device.channelsCount || 16,
+            isWanRemote: false
+        });
+        setIsVerificationModalOpen(true);
+    };
+
+    // Hidden Camera IDs for map visibility toggle
+    const [hiddenCameraIds, setHiddenCameraIds] = useState<string[]>(() => {
+        const saved = safeStorage.getItem('agrimap_hidden_camera_ids');
+        if (saved) {
+            try { return JSON.parse(saved); } catch (e) {}
+        }
+        return [];
+    });
+
+    useEffect(() => {
+        safeStorage.setItem('agrimap_hidden_camera_ids', JSON.stringify(hiddenCameraIds));
+    }, [hiddenCameraIds]);
+
+    const handleToggleHideCamera = (id: string) => {
+        setHiddenCameraIds(prev => {
+            const isHidden = prev.includes(id);
+            const next = isHidden ? prev.filter(x => x !== id) : [...prev, id];
+            toast.info(isHidden ? 'Camera coverage cone unhidden on map.' : 'Camera coverage cone hidden from map.');
+            return next;
+        });
+    };
+
+    const handleAddCameraAt = (lat: number, lng: number) => {
+        const channelNum = cameras.length + 1;
+        const newCam: PlantationCamera = {
+            id: `cam-${Date.now()}-${channelNum}`,
+            name: `Surveillance Camera #${channelNum}`,
+            channel: channelNum,
+            model: 'Hikvision DS-2CD2087G2-LU (4K ColorVu)',
+            ipAddress: `192.168.1.${120 + channelNum}`,
+            rtspPort: 554,
+            locationName: `Perimeter Mast #${channelNum}`,
+            lat,
+            lng,
+            mountHeightM: 6,
+            azimuthDeg: 90,
+            fovAngleDeg: 102,
+            rangeM: 75,
+            tiltAngleDeg: 4,
+            isPtz: false,
+            isNightVision: true,
+            status: 'ONLINE'
+        };
+        const updated = [...cameras, newCam];
+        setCameras(updated);
+        safeStorage.setItem('agrimap_plantation_cameras', JSON.stringify(updated));
+        setSelectedCameraId(newCam.id);
+        toast.success(`Camera #${channelNum} placed at [${lat.toFixed(5)}, ${lng.toFixed(5)}] • Tilt 4°`);
+    };
+
+    const handleUpdateCamera = (updatedCam: PlantationCamera) => {
+        setCameras(prev => {
+            const next = prev.map(c => c.id === updatedCam.id ? updatedCam : c);
+            safeStorage.setItem('agrimap_plantation_cameras', JSON.stringify(next));
+            return next;
+        });
+    };
+
+    const handleDeleteCamera = (cameraId: string) => {
+        setCameras(prev => {
+            const next = prev.filter(c => c.id !== cameraId);
+            safeStorage.setItem('agrimap_plantation_cameras', JSON.stringify(next));
+            return next;
+        });
+        if (selectedCameraId === cameraId) {
+            setSelectedCameraId(cameras[0]?.id || '');
+        }
+    };
+
+    const handleAddPerimeterSetup = () => {
+        const offset = 0.0015;
+        const batch: PlantationCamera[] = [
+            {
+                id: `cam-${Date.now()}-N`,
+                name: 'North Gate AcuSense',
+                channel: cameras.length + 1,
+                model: 'Hikvision DS-2CD2087G2-LU (4K ColorVu)',
+                ipAddress: `192.168.1.${130 + cameras.length}`,
+                rtspPort: 554,
+                locationName: 'North Gate Mast',
+                lat: baseLat + offset,
+                lng: baseLng,
+                mountHeightM: 8,
+                azimuthDeg: 180,
+                fovAngleDeg: 102,
+                rangeM: 80,
+                tiltAngleDeg: 4,
+                isPtz: false,
+                isNightVision: true,
+                status: 'ONLINE'
+            },
+            {
+                id: `cam-${Date.now()}-S`,
+                name: 'South Orchard Boundary',
+                channel: cameras.length + 2,
+                model: 'Hikvision DS-2CD2386G2-ISU (AcuSense 4K)',
+                ipAddress: `192.168.1.${131 + cameras.length}`,
+                rtspPort: 554,
+                locationName: 'South Perimeter Mast',
+                lat: baseLat - offset,
+                lng: baseLng,
+                mountHeightM: 7,
+                azimuthDeg: 0,
+                fovAngleDeg: 89,
+                rangeM: 75,
+                tiltAngleDeg: 4,
+                isPtz: false,
+                isNightVision: true,
+                status: 'ONLINE'
+            },
+            {
+                id: `cam-${Date.now()}-E`,
+                name: 'East Trench PTZ Station',
+                channel: cameras.length + 3,
+                model: 'Hikvision DS-2DE4425IW-DE (25x PTZ)',
+                ipAddress: `192.168.1.${132 + cameras.length}`,
+                rtspPort: 554,
+                locationName: 'East Trench Tower',
+                lat: baseLat,
+                lng: baseLng + offset,
+                mountHeightM: 10,
+                azimuthDeg: 270,
+                fovAngleDeg: 60,
+                rangeM: 160,
+                tiltAngleDeg: 5,
+                isPtz: true,
+                isNightVision: true,
+                status: 'ONLINE'
+            },
+            {
+                id: `cam-${Date.now()}-W`,
+                name: 'West Boundary Telephoto',
+                channel: cameras.length + 4,
+                model: 'Hikvision DS-2CD2T86G2-4I (6mm Telephoto)',
+                ipAddress: `192.168.1.${133 + cameras.length}`,
+                rtspPort: 554,
+                locationName: 'West Fence Mast',
+                lat: baseLat,
+                lng: baseLng - offset,
+                mountHeightM: 6,
+                azimuthDeg: 90,
+                fovAngleDeg: 53,
+                rangeM: 110,
+                tiltAngleDeg: 4,
+                isPtz: false,
+                isNightVision: true,
+                status: 'ONLINE'
+            }
+        ];
+        const updated = [...cameras, ...batch];
+        setCameras(updated);
+        safeStorage.setItem('agrimap_plantation_cameras', JSON.stringify(updated));
+        setSelectedCameraId(batch[0].id);
+        toast.success('Added 4-camera perimeter setup (N, S, E, W) with ColorVu, AcuSense & PTZ.');
+    };
+
+    // Deploy Planned Camera to Plantation Map
+    const handleDeployPlannedCamera = () => {
+        const newCam: PlantationCamera = { 
+            ...plannedCam, 
+            id: `cam-${Date.now()}`,
+            channel: cameras.length + 1
+        };
+        const updated = [...cameras, newCam];
+        setCameras(updated);
+        safeStorage.setItem('agrimap_plantation_cameras', JSON.stringify(updated));
+        
         if (onDeployCameraToMap) {
             onDeployCameraToMap(newCam);
         }
 
-        // Global broadcast
         if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('agrimap:camera_deployed', { detail: newCam }));
         }
 
-        toast.success(`Camera "${newCam.name}" deployed to plantation surveillance map with FOV cone!`);
+        toast.success(`Camera "${newCam.name}" (Tilt ${newCam.tiltAngleDeg}°) deployed to plantation surveillance map!`);
         setActiveTab('live_grid');
     };
 
@@ -503,162 +1077,129 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
         toast.info(`PTZ Command sent to Hikvision ISAPI: ${action} (Speed ${ptzSpeed}%)`);
     };
 
-    // Adopt Discovered Device as Active NVR
-    const handleAdoptAsNvr = (device: DiscoveredNetworkDevice) => {
-        const updatedConfig = {
-            ...nvrConfig,
-            alias: device.alias,
-            nvrModel: `${device.brand} ${device.model}`,
-            host: device.ip,
-            httpPort: device.httpPort,
-            rtspPort: device.rtspPort,
-            isapiPort: device.serverPort,
-            channelCount: device.channelsCount || 16
-        };
-        setNvrConfig(updatedConfig);
-        safeStorage.setItem('agrimap_hikvision_nvr_config', JSON.stringify(updatedConfig));
-        setActiveTab('nvr_settings');
-        toast.success(`Adopted "${device.alias}" (${device.ip}) as primary NVR/DVR. Enter password to connect!`);
-    };
-
-    // Add Discovered Camera to Live Grid
-    const handleAddDiscoveredCameraToGrid = (device: DiscoveredNetworkDevice) => {
-        const existing = cameras.find(c => c.ipAddress === device.ip);
-        if (existing) {
-            toast.info(`Camera "${existing.name}" is already in your live cameras grid.`);
-            setSelectedCameraId(existing.id);
-            setActiveTab('live_grid');
-            return;
-        }
-
-        const nextChannel = cameras.length + 1;
-        const newCam: PlantationCamera = {
-            id: `cam-${Date.now()}`,
-            name: device.alias || `${device.brand} ${device.model}`,
-            channel: nextChannel,
-            model: device.model,
-            ipAddress: device.ip,
-            rtspPort: device.rtspPort || 554,
-            locationName: `Discovered Device (Subnet ${device.ip})`,
-            lat: baseLat + (Math.random() - 0.5) * 0.003,
-            lng: baseLng + (Math.random() - 0.5) * 0.003,
-            mountHeightM: 6,
-            azimuthDeg: 90,
-            fovAngleDeg: device.type === 'PTZ_CAMERA' ? 60 : 100,
-            rangeM: device.type === 'PTZ_CAMERA' ? 140 : 70,
-            isPtz: device.type === 'PTZ_CAMERA',
-            isNightVision: true,
-            status: 'ONLINE'
-        };
-
-        setCameras(prev => [...prev, newCam]);
-        setSelectedCameraId(newCam.id);
-        setActiveTab('live_grid');
-        toast.success(`Discovered device "${newCam.name}" added to Live Grid (CH${newCam.channel}).`);
-    };
-
-    // Network Scan Routine
-    const handleStartNetworkScan = () => {
-        setIsScanningNetwork(true);
-        setScanProgress(5);
-        setScanStatusText(`Initializing broadcast socket on ${subnetInput}...`);
-
-        const intervals = [
-            { pct: 20, text: 'Sending Hikvision SADP UDP 37020 broadcast packets...' },
-            { pct: 45, text: 'Querying ONVIF WS-Discovery (UDP 3702) endpoints...' },
-            { pct: 70, text: 'Probing Dahua/Uniview DVR ports (37777, 8088, 8000)...' },
-            { pct: 88, text: 'Performing ARP resolution & RTSP 554 handshake sweeps...' },
-            { pct: 100, text: 'Discovery complete!' }
-        ];
-
-        let idx = 0;
-        const timer = setInterval(() => {
-            if (idx < intervals.length) {
-                setScanProgress(intervals[idx].pct);
-                setScanStatusText(intervals[idx].text);
-                idx++;
-            } else {
-                clearInterval(timer);
-                setIsScanningNetwork(false);
-                setDiscoveredDevices(DEFAULT_DISCOVERED_DEVICES);
-                toast.success(`Discovered ${DEFAULT_DISCOVERED_DEVICES.length} NVR, DVR and IP camera devices on ${subnetInput}!`);
-            }
-        }, 500);
-    };
-
-    // Filter discovered devices
     const filteredDiscoveredDevices = discoveredDevices.filter(dev => {
-        if (deviceTypeFilter === 'RECORDERS' && dev.type !== 'NVR' && dev.type !== 'DVR') {
-            return false;
-        }
-        if (deviceTypeFilter === 'CAMERAS' && (dev.type === 'NVR' || dev.type === 'DVR')) {
-            return false;
-        }
+        if (deviceTypeFilter === 'RECORDERS' && dev.type !== 'NVR' && dev.type !== 'DVR') return false;
+        if (deviceTypeFilter === 'CAMERAS' && (dev.type === 'NVR' || dev.type === 'DVR')) return false;
         if (searchQuery.trim()) {
             const q = searchQuery.toLowerCase();
-            return (
-                dev.alias.toLowerCase().includes(q) ||
-                dev.ip.toLowerCase().includes(q) ||
-                dev.model.toLowerCase().includes(q) ||
-                dev.brand.toLowerCase().includes(q) ||
-                dev.mac.toLowerCase().includes(q)
-            );
+            return dev.alias.toLowerCase().includes(q) || dev.ip.includes(q) || dev.model.toLowerCase().includes(q);
         }
         return true;
     });
 
     const selectedCam = cameras.find(c => c.id === selectedCameraId) || cameras[0];
 
+    // Compute blind zone metric for planned camera:
+    // d_blind = height / tan(tiltAngle + verticalFov / 2)
+    const plannedBlindZoneM = useMemo(() => {
+        const tilt = Math.max(1, plannedCam.tiltAngleDeg || 4);
+        const hFov = plannedCam.fovAngleDeg || 90;
+        const vFov = 2 * Math.atan(Math.tan((hFov * Math.PI) / 360) * (9 / 16)) * (180 / Math.PI);
+        const lowerAngleRad = ((tilt + vFov / 2) * Math.PI) / 180;
+        const blindDist = plannedCam.mountHeightM / Math.tan(lowerAngleRad);
+        return Math.max(1, Number(blindDist.toFixed(1)));
+    }, [plannedCam.tiltAngleDeg, plannedCam.fovAngleDeg, plannedCam.mountHeightM]);
+
     return (
         <div className="space-y-6">
+            {/* 3-Phase Device Verification Modal */}
+            {verificationTarget && (
+                <CameraVerificationModal
+                    isOpen={isVerificationModalOpen}
+                    onClose={() => setIsVerificationModalOpen(false)}
+                    target={verificationTarget}
+                    onSuccess={handleVerificationSuccess}
+                />
+            )}
+
+            {/* Protocol & Code Examples Guide Modal */}
+            <CameraProtocolGuideModal
+                isOpen={isProtocolGuideOpen}
+                onClose={() => setIsProtocolGuideOpen(false)}
+            />
+
             {/* Header & Sub-tab switcher */}
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
                 <div>
                     <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tighter flex items-center gap-2">
                         <Video className="text-blue-600" size={24} />
-                        Cameras: CCTV, NVR/DVR System & Device Discovery
+                        CCTV Cameras & Hikvision DS-7716NI NVR System
                     </h3>
                     <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mt-0.5">
-                        Live RTSP/WebRTC feeds, PTZ telemetry, local network scanner (SADP/ONVIF/DVR), and field FOV planner
+                        Direct LAN/WAN integration, 3-Phase verification (Ping → Auth → Stream), and Plantation FOV Map Planner
                     </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl">
+                <div className="flex flex-wrap items-center gap-2">
+                    {/* Add & Plan Camera Modal Link */}
                     <button
-                        onClick={() => setActiveTab('live_grid')}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
-                            activeTab === 'live_grid' ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                        }`}
+                        onClick={() => setIsCameraPlannerModalOpen(true)}
+                        className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md shadow-blue-900/30 cursor-pointer"
+                        title="Open Satellite & 3D Frustum Camera Planner"
                     >
-                        <Video size={14} /> Live Grid ({cameras.length})
+                        <Camera size={14} /> Add & Plan Camera (Satellite / 3D)
                     </button>
+
+                    {/* 3D Area & Slope Sculptor Link */}
                     <button
-                        onClick={() => setActiveTab('network_search')}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 relative ${
-                            activeTab === 'network_search' ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                        }`}
+                        onClick={() => setIsTerrainSculptorOpen(true)}
+                        className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md shadow-emerald-900/30 cursor-pointer"
+                        title="Open 3D Area & Slope Sculptor"
                     >
-                        <Search size={14} /> Search Network
-                        <span className="px-1.5 py-0.2 bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 rounded-full text-[9px] font-bold">
-                            SADP/ONVIF
-                        </span>
+                        <Mountain size={14} /> 3D Area & Slope Sculptor
                     </button>
+
+                    {/* Drone Aerial Planner Link */}
                     <button
-                        onClick={() => setActiveTab('planner')}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
-                            activeTab === 'planner' ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                        }`}
+                        onClick={() => setIsDroneSimModalOpen(true)}
+                        className="px-3 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md shadow-cyan-900/30 cursor-pointer"
+                        title="Open Drone Aerial Survey Planner"
                     >
-                        <Compass size={14} /> Camera Planner
+                        <Plane size={14} /> Drone Aerial Planner
                     </button>
+
                     <button
-                        onClick={() => setActiveTab('nvr_settings')}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
-                            activeTab === 'nvr_settings' ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                        }`}
+                        onClick={() => setIsProtocolGuideOpen(true)}
+                        className="px-3 py-2 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 text-indigo-700 dark:text-indigo-300 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm"
+                        title="View SADP, ONVIF, ISAPI & RTSP Code in Node.js, Python, Go, C#"
                     >
-                        <Settings size={14} /> NVR & DVR Settings
+                        <BookOpen size={14} /> Code Reference
                     </button>
+
+                    <div className="flex flex-wrap items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl">
+                        <button
+                            onClick={() => setActiveTab('live_grid')}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                                activeTab === 'live_grid' ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                            }`}
+                        >
+                            <Video size={14} /> Live Grid ({cameras.length})
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('network_search')}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                                activeTab === 'network_search' ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                            }`}
+                        >
+                            <Search size={14} /> Network Discovery
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('planner')}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                                activeTab === 'planner' ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                            }`}
+                        >
+                            <Compass size={14} /> Plantation FOV Planner
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('nvr_settings')}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                                activeTab === 'nvr_settings' ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                            }`}
+                        >
+                            <Settings size={14} /> NVR Settings
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -675,6 +1216,11 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
                             <span className="text-[10px] text-slate-400 font-mono">
                                 ({nvrConfig.alias || nvrConfig.nvrModel})
                             </span>
+                            {nvrConfig.isVerified && (
+                                <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                                    <CheckCircle2 size={10} /> 3-PHASE VERIFIED
+                                </span>
+                            )}
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -710,9 +1256,9 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
 
                             <button
                                 onClick={() => setActiveTab('network_search')}
-                                className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider bg-blue-600 hover:bg-blue-500 text-white transition-all flex items-center gap-1"
+                                className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider bg-blue-600 hover:bg-blue-500 text-white transition-all flex items-center gap-1 cursor-pointer"
                             >
-                                <Search size={12} /> Search More Cameras
+                                <Plus size={12} /> Add More Cameras
                             </button>
                         </div>
                     </div>
@@ -728,42 +1274,42 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
                                     key={cam.id}
                                     onClick={() => setSelectedCameraId(cam.id)}
                                     className={`relative bg-slate-950 rounded-2xl overflow-hidden border transition-all cursor-pointer group aspect-video flex flex-col justify-between p-3 ${
-                                        isSelected ? 'ring-2 ring-blue-500 border-blue-400' : 'border-slate-800 hover:border-slate-700'
+                                        isSelected ? 'ring-2 ring-blue-500 border-blue-400 shadow-xl' : 'border-slate-800 hover:border-slate-700'
                                     }`}
                                 >
-                                    {/* Simulated Live View Canvas */}
+                                    {/* Video Stream Canvas */}
                                     <div className={`absolute inset-0 transition-opacity ${
                                         isNightModeActive ? 'bg-emerald-950/40 mix-blend-color' : 'bg-slate-900/60'
                                     }`}>
-                                        <div className="w-full h-full flex flex-col items-center justify-center opacity-70 group-hover:opacity-100 transition-opacity">
-                                            <Camera size={36} className="text-slate-600 mb-2" />
-                                            <p className="text-xs font-black uppercase text-slate-300 tracking-wider">
+                                        <div className="w-full h-full flex flex-col items-center justify-center opacity-75 group-hover:opacity-100 transition-opacity">
+                                            <Camera size={36} className="text-slate-500 mb-2" />
+                                            <p className="text-xs font-black uppercase text-slate-200 tracking-wider">
                                                 {cam.name}
                                             </p>
-                                            <p className="text-[9px] font-mono text-slate-400 mt-0.5">
-                                                CH0{cam.channel} • {cam.ipAddress}:{cam.rtspPort} • H.265+ @ 25fps
+                                            <p className="text-[10px] font-mono text-slate-400 mt-0.5">
+                                                CH0{cam.channel} • {cam.ipAddress}:{cam.rtspPort} • Tilt: {cam.tiltAngleDeg || 4}° • 25 FPS
                                             </p>
                                         </div>
                                     </div>
 
                                     {/* Overlay Top Bar */}
                                     <div className="relative z-10 flex items-center justify-between">
-                                        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-black/70 backdrop-blur-md rounded-md border border-white/10 text-[9px] font-bold text-white">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                                            CH{cam.channel}: {cam.locationName}
-                                        </div>
-                                        <div className="px-2 py-0.5 bg-black/70 backdrop-blur-md rounded-md text-[8px] font-mono text-emerald-400">
-                                            LIVE • 4.2 Mbps
-                                        </div>
+                                        <span className="px-2 py-0.5 rounded-lg bg-black/60 backdrop-blur-md text-[10px] font-mono font-bold text-white flex items-center gap-1.5">
+                                            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                                            CH0{cam.channel} • LIVE
+                                        </span>
+                                        <span className="px-2 py-0.5 rounded-lg bg-black/60 backdrop-blur-md text-[9px] font-mono text-slate-300">
+                                            {cam.locationName}
+                                        </span>
                                     </div>
 
                                     {/* Overlay Bottom Bar */}
-                                    <div className="relative z-10 flex items-center justify-between text-[8px] font-mono text-slate-300">
-                                        <span className="bg-black/60 px-1.5 py-0.5 rounded">
-                                            {new Date().toLocaleDateString()} {new Date().toLocaleTimeString()}
+                                    <div className="relative z-10 flex items-center justify-between text-[10px] font-mono text-slate-400">
+                                        <span className="px-2 py-0.5 rounded bg-black/60 backdrop-blur-md">
+                                            Bearing {cam.azimuthDeg}° • Range {cam.rangeM}m
                                         </span>
-                                        <span className="bg-black/60 px-1.5 py-0.5 rounded text-amber-400 font-bold uppercase">
-                                            {cam.model.split(' ')[0]} {cam.isPtz ? 'PTZ' : 'FIXED'}
+                                        <span className="px-2 py-0.5 rounded bg-black/60 backdrop-blur-md text-emerald-400">
+                                            Tilt {cam.tiltAngleDeg || 4}°
                                         </span>
                                     </div>
                                 </div>
@@ -771,294 +1317,139 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
                         })}
                     </div>
 
-                    {/* PTZ & Camera Controls Drawer */}
+                    {/* PTZ Telemetry Controls Strip */}
                     {selectedCam && (
-                        <div className="p-5 bg-slate-900 text-white rounded-[2rem] border border-slate-800 shadow-xl space-y-4">
-                            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                        <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 bg-blue-50 dark:bg-blue-950/60 rounded-xl text-blue-600">
+                                    <Compass size={20} />
+                                </div>
                                 <div>
-                                    <h4 className="text-sm font-black uppercase tracking-tight text-white flex items-center gap-2">
-                                        PTZ & Live Controls: <span className="text-blue-400">{selectedCam.name}</span>
+                                    <h4 className="text-xs font-black uppercase text-slate-900 dark:text-white">
+                                        {selectedCam.name} (CH0{selectedCam.channel})
                                     </h4>
                                     <p className="text-[10px] text-slate-400 font-mono">
-                                        IP: {selectedCam.ipAddress}:{selectedCam.rtspPort} • Channel {selectedCam.channel} • Auth: {nvrConfig.username ? `${nvrConfig.username} (Configured)` : 'Anonymous'}
+                                        Model: {selectedCam.model} • Mount Height: {selectedCam.mountHeightM}m • Tilt: {selectedCam.tiltAngleDeg || 4}°
                                     </p>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        onClick={() => toast.success(`Snapshot captured from ${selectedCam.name}`)}
-                                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all"
-                                    >
-                                        <Camera size={14} /> Snapshot
-                                    </button>
                                 </div>
                             </div>
 
-                            {/* PTZ Pad */}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
-                                <div className="flex flex-col items-center">
-                                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">
-                                        PTZ Directional Control
-                                    </span>
-                                    <div className="grid grid-cols-3 gap-1.5 w-36">
-                                        <div />
-                                        <button
-                                            onClick={() => handlePtzAction('TILT_UP')}
-                                            className="p-3 bg-slate-800 hover:bg-blue-600 rounded-xl text-xs font-bold transition-all text-center"
-                                        >
-                                            ▲
-                                        </button>
-                                        <div />
-                                        <button
-                                            onClick={() => handlePtzAction('PAN_LEFT')}
-                                            className="p-3 bg-slate-800 hover:bg-blue-600 rounded-xl text-xs font-bold transition-all text-center"
-                                        >
-                                            ◀
-                                        </button>
-                                        <button
-                                            onClick={() => handlePtzAction('HOME_PRESET')}
-                                            className="p-3 bg-slate-700 hover:bg-emerald-600 rounded-xl text-[9px] font-black uppercase transition-all text-center"
-                                        >
-                                            ●
-                                        </button>
-                                        <button
-                                            onClick={() => handlePtzAction('PAN_RIGHT')}
-                                            className="p-3 bg-slate-800 hover:bg-blue-600 rounded-xl text-xs font-bold transition-all text-center"
-                                        >
-                                            ▶
-                                        </button>
-                                        <div />
-                                        <button
-                                            onClick={() => handlePtzAction('TILT_DOWN')}
-                                            className="p-3 bg-slate-800 hover:bg-blue-600 rounded-xl text-xs font-bold transition-all text-center"
-                                        >
-                                            ▼
-                                        </button>
-                                        <div />
-                                    </div>
-                                </div>
-
-                                <div className="space-y-3">
-                                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block">
-                                        Optical Zoom & Speed
-                                    </span>
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={() => handlePtzAction('ZOOM_IN')}
-                                            className="flex-1 py-2 bg-slate-800 hover:bg-blue-600 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1 transition-all"
-                                        >
-                                            <ZoomIn size={14} /> Zoom +
-                                        </button>
-                                        <button
-                                            onClick={() => handlePtzAction('ZOOM_OUT')}
-                                            className="flex-1 py-2 bg-slate-800 hover:bg-blue-600 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1 transition-all"
-                                        >
-                                            <ZoomOut size={14} /> Zoom -
-                                        </button>
-                                    </div>
-
-                                    <div>
-                                        <div className="flex justify-between text-[9px] font-mono text-slate-400 mb-1">
-                                            <span>Speed Multiplier</span>
-                                            <span>{ptzSpeed}%</span>
-                                        </div>
-                                        <input
-                                            type="range"
-                                            min="10"
-                                            max="100"
-                                            value={ptzSpeed}
-                                            onChange={(e) => setPtzSpeed(Number(e.target.value))}
-                                            className="w-full accent-blue-500"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block">
-                                        Guard Presets & Patrol
-                                    </span>
-                                    <div className="grid grid-cols-2 gap-2 text-[10px] font-black uppercase">
-                                        <button
-                                            onClick={() => handlePtzAction('PRESET_01_GATE')}
-                                            className="p-2 bg-slate-800 hover:bg-blue-600 rounded-xl transition-all"
-                                        >
-                                            P1: Main Gate
-                                        </button>
-                                        <button
-                                            onClick={() => handlePtzAction('PRESET_02_ORCHARD')}
-                                            className="p-2 bg-slate-800 hover:bg-blue-600 rounded-xl transition-all"
-                                        >
-                                            P2: Orchard View
-                                        </button>
-                                        <button
-                                            onClick={() => handlePtzAction('PRESET_03_COLD_STORAGE')}
-                                            className="p-2 bg-slate-800 hover:bg-blue-600 rounded-xl transition-all"
-                                        >
-                                            P3: Cold Storage
-                                        </button>
-                                        <button
-                                            onClick={() => handlePtzAction('PRESET_04_PUMP')}
-                                            className="p-2 bg-slate-800 hover:bg-blue-600 rounded-xl transition-all"
-                                        >
-                                            P4: Pump House
-                                        </button>
-                                    </div>
-                                </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => handlePtzAction('PAN_LEFT')}
+                                    className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer"
+                                >
+                                    ◀ Pan Left
+                                </button>
+                                <button
+                                    onClick={() => handlePtzAction('TILT_UP')}
+                                    className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer"
+                                >
+                                    ▲ Tilt Up
+                                </button>
+                                <button
+                                    onClick={() => handlePtzAction('TILT_DOWN')}
+                                    className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer"
+                                >
+                                    ▼ Tilt Down
+                                </button>
+                                <button
+                                    onClick={() => handlePtzAction('PAN_RIGHT')}
+                                    className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer"
+                                >
+                                    Pan Right ▶
+                                </button>
+                                <button
+                                    onClick={() => handlePtzAction('ZOOM_IN')}
+                                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold cursor-pointer"
+                                >
+                                    Zoom +
+                                </button>
                             </div>
                         </div>
                     )}
                 </div>
             )}
 
-            {/* TAB 2: LOCAL NETWORK SEARCH TOOL (SADP, ONVIF, NVR, DVR, CAMERAS) */}
+            {/* TAB 2: LOCAL NETWORK DISCOVERY & DEVICE PROBING */}
             {activeTab === 'network_search' && (
                 <div className="space-y-6">
-                    {/* Scanner Control Deck */}
-                    <div className="p-6 bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm space-y-5">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+                    {/* Search Controls Card */}
+                    <div className="p-6 bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-100 dark:border-slate-800">
                             <div>
-                                <span className="text-[9px] font-black uppercase tracking-widest text-blue-600 flex items-center gap-1.5">
-                                    <Wifi size={12} /> Local Network Broadcast & Port Discovery
+                                <span className="text-[9px] font-black uppercase tracking-widest text-blue-600 block">
+                                    Local Subnet Broadcast Scanner
                                 </span>
-                                <h4 className="text-base font-black text-slate-900 dark:text-white uppercase mt-0.5">
-                                    Search NVR, DVR & IP Cameras on Local LAN
+                                <h4 className="text-base font-black uppercase text-slate-900 dark:text-white">
+                                    Hikvision SADP (UDP 37020) & ONVIF WS-Discovery (UDP 3702)
                                 </h4>
-                                <p className="text-xs text-slate-500 mt-0.5">
-                                    Broadcasts Hikvision SADP (UDP 37020), ONVIF WS-Discovery (UDP 3702), and sweeps DVR/RTSP ports (8000, 37777, 554, 80) across the subnet.
+                                <p className="text-[11px] text-slate-500 mt-0.5">
+                                    Broadcast probe packets across the local subnet to locate unconfigured or active NVRs, DVRs, and IP cameras.
                                 </p>
                             </div>
 
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={() => setShowManualAddModal(true)}
-                                    className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all"
+                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm cursor-pointer"
                                 >
-                                    <Plus size={14} /> Manual IP Add
-                                </button>
-                                <button
-                                    onClick={handleStartNetworkScan}
-                                    disabled={isScanningNetwork}
-                                    className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-md transition-all ${
-                                        isScanningNetwork
-                                            ? 'bg-blue-400 text-white cursor-not-allowed'
-                                            : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/25 active:scale-95'
-                                    }`}
-                                >
-                                    <RefreshCw size={14} className={isScanningNetwork ? 'animate-spin' : ''} />
-                                    {isScanningNetwork ? 'Scanning Network...' : 'Scan Local Network'}
+                                    <Plus size={14} /> Add Device Manually (LAN / WAN)
                                 </button>
                             </div>
                         </div>
 
-                        {/* Search Parameters Row */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                            {/* Subnet Input & Quick Chips */}
-                            <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 flex items-center justify-between">
-                                    <span>Target Subnet / Range</span>
-                                    <span className="font-mono text-[9px] text-blue-500">CIDR /24</span>
+                        {/* Scanner Input Row */}
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
+                            <div className="sm:col-span-5">
+                                <label className="text-[9px] font-black uppercase text-slate-400 block mb-1">
+                                    Target Subnet / Interface
                                 </label>
                                 <input
                                     type="text"
                                     value={subnetInput}
                                     onChange={(e) => setSubnetInput(e.target.value)}
-                                    placeholder="192.168.1.0/24"
-                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold font-mono text-slate-900 dark:text-white"
+                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-white"
                                 />
-                                <div className="flex gap-1">
-                                    {['192.168.1.0/24', '192.168.0.0/24', '10.0.0.0/24'].map(ip => (
-                                        <button
-                                            key={ip}
-                                            onClick={() => setSubnetInput(ip)}
-                                            className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[8px] font-mono text-slate-500 hover:text-blue-600"
-                                        >
-                                            {ip.replace('.0/24', '.x')}
-                                        </button>
-                                    ))}
-                                </div>
                             </div>
 
-                            {/* Protocol Filter */}
-                            <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 block">
-                                    Discovery Protocol
+                            <div className="sm:col-span-4">
+                                <label className="text-[9px] font-black uppercase text-slate-400 block mb-1">
+                                    Filter Device Type
                                 </label>
                                 <select
-                                    value={discoveryProtocol}
-                                    onChange={(e: any) => setDiscoveryProtocol(e.target.value)}
-                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white"
+                                    value={deviceTypeFilter}
+                                    onChange={(e: any) => setDeviceTypeFilter(e.target.value)}
+                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white"
                                 >
-                                    <option value="ALL">All Protocols (SADP / ONVIF / Port Sweep)</option>
-                                    <option value="SADP">Hikvision SADP Broadcast (UDP 37020)</option>
-                                    <option value="ONVIF">ONVIF WS-Discovery (UDP 3702)</option>
-                                    <option value="DAHUA">Dahua / DVR Config Protocol (Port 37777)</option>
-                                    <option value="PORT_SWEEP">Direct TCP RTSP/HTTP Probe (554/80/8000)</option>
+                                    <option value="ALL">All Network Devices</option>
+                                    <option value="RECORDERS">NVR & DVR Recorders Only</option>
+                                    <option value="CAMERAS">IP & PTZ Cameras Only</option>
                                 </select>
                             </div>
 
-                            {/* Device Type Filter */}
-                            <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 block">
-                                    Filter Device Type
-                                </label>
-                                <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs font-black uppercase">
-                                    <button
-                                        onClick={() => setDeviceTypeFilter('ALL')}
-                                        className={`flex-1 py-1.5 rounded-lg transition-all ${
-                                            deviceTypeFilter === 'ALL' ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-sm' : 'text-slate-500'
-                                        }`}
-                                    >
-                                        All ({discoveredDevices.length})
-                                    </button>
-                                    <button
-                                        onClick={() => setDeviceTypeFilter('RECORDERS')}
-                                        className={`flex-1 py-1.5 rounded-lg transition-all ${
-                                            deviceTypeFilter === 'RECORDERS' ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-sm' : 'text-slate-500'
-                                        }`}
-                                    >
-                                        NVR/DVR ({discoveredDevices.filter(d => d.type === 'NVR' || d.type === 'DVR').length})
-                                    </button>
-                                    <button
-                                        onClick={() => setDeviceTypeFilter('CAMERAS')}
-                                        className={`flex-1 py-1.5 rounded-lg transition-all ${
-                                            deviceTypeFilter === 'CAMERAS' ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-sm' : 'text-slate-500'
-                                        }`}
-                                    >
-                                        Cameras ({discoveredDevices.filter(d => d.type !== 'NVR' && d.type !== 'DVR').length})
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Text Search Box */}
-                            <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 block">
-                                    Quick Search / Filter
-                                </label>
-                                <div className="relative">
-                                    <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
-                                    <input
-                                        type="text"
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        placeholder="Search IP, Model, Alias, MAC..."
-                                        className="w-full pl-8 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white"
-                                    />
-                                </div>
+                            <div className="sm:col-span-3 pt-4 sm:pt-0">
+                                <button
+                                    onClick={handleStartNetworkScan}
+                                    disabled={isScanningNetwork}
+                                    className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
+                                >
+                                    <RefreshCw size={14} className={isScanningNetwork ? 'animate-spin' : ''} />
+                                    {isScanningNetwork ? 'Broadcasting...' : 'Start Subnet Scan'}
+                                </button>
                             </div>
                         </div>
 
-                        {/* Scanner Progress Bar when active */}
+                        {/* Scan Progress Bar */}
                         {isScanningNetwork && (
-                            <div className="p-4 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 rounded-2xl space-y-2">
-                                <div className="flex items-center justify-between text-xs font-bold text-blue-900 dark:text-blue-300">
-                                    <div className="flex items-center gap-2">
-                                        <Radio size={14} className="animate-pulse text-blue-600" />
-                                        <span>{scanStatusText}</span>
-                                    </div>
-                                    <span className="font-mono">{scanProgress}%</span>
+                            <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1.5">
+                                <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                                    <span>{scanStatusText}</span>
+                                    <span>{scanProgress}%</span>
                                 </div>
-                                <div className="w-full bg-blue-200 dark:bg-blue-900/50 rounded-full h-2 overflow-hidden">
+                                <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                                     <div 
-                                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                        className="h-full bg-blue-600 transition-all duration-300"
                                         style={{ width: `${scanProgress}%` }}
                                     />
                                 </div>
@@ -1066,167 +1457,110 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
                         )}
                     </div>
 
-                    {/* Discovered Devices Grid & Table */}
+                    {/* Discovered Devices Table / List */}
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
-                            <h4 className="text-sm font-black uppercase tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
-                                <HardDrive size={16} className="text-blue-600" />
-                                Discovered Hardware Devices ({filteredDiscoveredDevices.length})
+                            <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider">
+                                Discovered Hardware ({filteredDiscoveredDevices.length})
                             </h4>
-                            <span className="text-[10px] text-slate-500 font-mono">
-                                Subnet: {subnetInput} • Protocol: {discoveryProtocol}
+                            <span className="text-[10px] font-mono text-slate-400">
+                                Connect via 3-Phase Verification (Ping → Auth → Stream)
                             </span>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {filteredDiscoveredDevices.map(device => {
-                                const isRecorder = device.type === 'NVR' || device.type === 'DVR';
-                                const isCurrentActiveNvr = nvrConfig.host === device.ip;
-                                const isAlreadyInLiveGrid = cameras.some(c => c.ipAddress === device.ip);
-
-                                return (
-                                    <div 
-                                        key={device.id}
-                                        className={`p-5 rounded-2xl border transition-all flex flex-col justify-between space-y-4 ${
-                                            isCurrentActiveNvr
-                                                ? 'bg-blue-50/50 dark:bg-blue-950/20 border-blue-400 ring-2 ring-blue-500/20'
-                                                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 shadow-sm'
-                                        }`}
+                        {filteredDiscoveredDevices.length === 0 ? (
+                            <div className="p-10 bg-white dark:bg-slate-900 rounded-[2rem] border border-dashed border-slate-300 dark:border-slate-800 text-center space-y-3">
+                                <Radio size={36} className="mx-auto text-slate-400" />
+                                <h4 className="text-sm font-black uppercase text-slate-700 dark:text-slate-300">
+                                    No Broadcast Devices Discovered Yet
+                                </h4>
+                                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                                    If your browser runs in a cloud sandbox, raw UDP broadcast cannot reach your physical LAN switch directly. You can <strong>add your Hikvision DS-7716NI IP manually</strong> or run the provided local bridge daemon.
+                                </p>
+                                <div className="flex items-center justify-center gap-3 pt-2">
+                                    <button
+                                        onClick={() => setShowManualAddModal(true)}
+                                        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black uppercase tracking-wider"
                                     >
-                                        {/* Card Top: Type, Brand & Status */}
-                                        <div>
-                                            <div className="flex items-center justify-between gap-2 mb-2">
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${
-                                                        device.type === 'NVR'
-                                                            ? 'bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800'
-                                                            : device.type === 'DVR'
-                                                            ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
-                                                            : device.type === 'PTZ_CAMERA'
-                                                            ? 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
-                                                            : device.type === 'THERMAL_CAMERA'
-                                                            ? 'bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800'
-                                                            : 'bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
-                                                    }`}>
-                                                        {device.type.replace('_', ' ')}
-                                                    </span>
-                                                    <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded-md text-[9px] font-bold text-slate-600 dark:text-slate-300">
-                                                        {device.brand}
-                                                    </span>
+                                        Add NVR / Camera by IP
+                                    </button>
+                                    <button
+                                        onClick={() => setIsProtocolGuideOpen(true)}
+                                        className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-black uppercase tracking-wider"
+                                    >
+                                        View Python / Node Bridge Code
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {filteredDiscoveredDevices.map(device => (
+                                    <div
+                                        key={device.id}
+                                        className="p-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-4"
+                                    >
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-3 bg-blue-50 dark:bg-blue-950/60 text-blue-600 rounded-xl">
+                                                    {device.type === 'NVR' || device.type === 'DVR' ? <Server size={22} /> : <Camera size={22} />}
                                                 </div>
-
-                                                <div className="flex items-center gap-1 text-[9px] font-bold font-mono">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                                    <span className="text-emerald-600 dark:text-emerald-400">{device.pingMs}ms</span>
+                                                <div>
+                                                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block">
+                                                        {device.brand} • {device.type}
+                                                    </span>
+                                                    <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase">
+                                                        {device.alias}
+                                                    </h4>
+                                                    <p className="text-[10px] font-mono text-slate-500 mt-0.5">
+                                                        {device.model}
+                                                    </p>
                                                 </div>
                                             </div>
 
-                                            {/* Device Alias & Model */}
-                                            <h5 className="text-sm font-black text-slate-900 dark:text-white uppercase leading-snug">
-                                                {device.alias}
-                                            </h5>
-                                            <p className="text-[11px] text-slate-500 font-semibold mt-0.5">
-                                                {device.model}
-                                            </p>
+                                            <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                                                {device.pingMs}ms LAN
+                                            </span>
                                         </div>
 
-                                        {/* IP & Technical Parameters */}
-                                        <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl space-y-1.5 text-[10px] font-mono">
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-slate-400 uppercase">IP Address:</span>
-                                                <span className="font-bold text-blue-600 dark:text-blue-400">{device.ip}</span>
+                                        <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl font-mono text-xs text-slate-600 dark:text-slate-300 grid grid-cols-2 gap-2">
+                                            <div>
+                                                <span className="text-[9px] text-slate-400 block">IP ADDRESS:</span>
+                                                <span className="font-bold text-slate-900 dark:text-white">{device.ip}</span>
                                             </div>
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-slate-400 uppercase">Ports:</span>
-                                                <span className="text-slate-700 dark:text-slate-300">
-                                                    HTTP:{device.httpPort} | RTSP:{device.rtspPort} | SDK:{device.serverPort}
-                                                </span>
+                                            <div>
+                                                <span className="text-[9px] text-slate-400 block">PORTS:</span>
+                                                <span>HTTP: {device.httpPort} | RTSP: {device.rtspPort}</span>
                                             </div>
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-slate-400 uppercase">MAC:</span>
-                                                <span className="text-slate-500">{device.mac}</span>
+                                            <div>
+                                                <span className="text-[9px] text-slate-400 block">MAC ADDRESS:</span>
+                                                <span>{device.mac}</span>
                                             </div>
-                                            {device.channelsCount && (
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-slate-400 uppercase">Channels:</span>
-                                                    <span className="font-bold text-purple-600 dark:text-purple-400">{device.channelsCount} Channels</span>
-                                                </div>
-                                            )}
+                                            <div>
+                                                <span className="text-[9px] text-slate-400 block">CHANNELS:</span>
+                                                <span>{device.channelsCount || 16} Channels</span>
+                                            </div>
                                         </div>
 
-                                        {/* Card Actions */}
-                                        <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
-                                            {isRecorder ? (
-                                                <button
-                                                    onClick={() => handleAdoptAsNvr(device)}
-                                                    className={`w-full py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all ${
-                                                        isCurrentActiveNvr
-                                                            ? 'bg-emerald-600 text-white shadow-sm'
-                                                            : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
-                                                    }`}
-                                                >
-                                                    {isCurrentActiveNvr ? (
-                                                        <>
-                                                            <CheckCircle2 size={14} /> Active Connected NVR
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <Server size={14} /> Set as Active NVR / DVR
-                                                        </>
-                                                    )}
-                                                </button>
-                                            ) : (
-                                                <button
-                                                    onClick={() => handleAddDiscoveredCameraToGrid(device)}
-                                                    className={`w-full py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all ${
-                                                        isAlreadyInLiveGrid
-                                                            ? 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
-                                                            : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
-                                                    }`}
-                                                >
-                                                    {isAlreadyInLiveGrid ? (
-                                                        <>
-                                                            <Check size={14} /> In Live Grid (View)
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <Plus size={14} /> Add to Live Matrix
-                                                        </>
-                                                    )}
-                                                </button>
-                                            )}
-
-                                            <div className="flex gap-2">
-                                                <button
-                                                    onClick={() => {
-                                                        toast.success(`Ping response from ${device.ip}: HTTP 200 OK (${device.pingMs}ms latency)`);
-                                                    }}
-                                                    className="flex-1 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all text-center"
-                                                >
-                                                    Ping Probe
-                                                </button>
-                                                <a
-                                                    href={`http://${device.ip}:${device.httpPort}`}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    className="flex-1 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1"
-                                                >
-                                                    Web Admin <ExternalLink size={10} />
-                                                </a>
-                                            </div>
+                                        <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                            <button
+                                                onClick={() => handleVerifyDiscoveredDevice(device)}
+                                                className="flex-1 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                                            >
+                                                <ShieldCheck size={14} /> Connect (3-Phase Verify)
+                                            </button>
                                         </div>
                                     </div>
-                                );
-                            })}
-                        </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
 
-            {/* TAB 3: CAMERA PLANNER & PLANTATION FOV PLACEMENT */}
+            {/* TAB 3: CAMERA PLANNER WITH INTERACTIVE PLANTATION VECTOR MAP */}
             {activeTab === 'planner' && (
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                    {/* Planner Parameters (5 cols) */}
+                    {/* Left: Planning Controls & Camera Parameters (5 cols) */}
                     <div className="lg:col-span-5 p-6 bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
                         <div>
                             <span className="text-[9px] font-black uppercase tracking-widest text-blue-600 block">
@@ -1236,7 +1570,7 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
                                 Plan New Camera Placement
                             </h4>
                             <p className="text-[10px] text-slate-500 mt-0.5">
-                                Configure optic lens, mount pole height, surveillance range, and field of view cone before field installation.
+                                Configure optic lens, mount pole height, surveillance range, and <strong>tilt angle (e.g. 4°)</strong> before installation.
                             </p>
                         </div>
 
@@ -1261,6 +1595,7 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
                                         let range = 60;
                                         if (m.includes('2.8mm')) { angle = 115; range = 45; }
                                         else if (m.includes('4mm')) { angle = 89; range = 75; }
+                                        else if (m.includes('6mm')) { angle = 53; range = 110; }
                                         else if (m.includes('PTZ')) { angle = 60; range = 160; }
                                         setPlannedCam({ ...plannedCam, model: m, fovAngleDeg: angle, rangeM: range });
                                     }}
@@ -1268,9 +1603,43 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
                                 >
                                     <option value="Hikvision DS-2CD2087G2-LU (ColorVu 2.8mm)">Hikvision ColorVu 2.8mm (115° Ultra-Wide Angle)</option>
                                     <option value="Hikvision DS-2CD2386G2-ISU (AcuSense 4mm)">Hikvision AcuSense 4mm (89° Standard Orchard Range)</option>
+                                    <option value="Hikvision DS-2CD2T86G2-4I (6mm Telephoto)">Hikvision 6mm Telephoto (53° Medium Row Corridor)</option>
                                     <option value="Hikvision DS-2DE4425IW-DE (25x PTZ)">Hikvision 25x Optical PTZ (60° Telephoto Perimeter)</option>
                                     <option value="Hikvision Bi-Spectrum Thermal">Hikvision Bi-Spectrum Thermal (Frost/Fire Alert)</option>
                                 </select>
+                            </div>
+
+                            {/* TILT ANGLE SLIDER & NUMBER INPUT */}
+                            <div className="p-3 bg-blue-50/50 dark:bg-blue-950/40 rounded-xl border border-blue-200 dark:border-blue-900/60 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[10px] font-black uppercase text-blue-700 dark:text-blue-300 flex items-center gap-1">
+                                        <Sliders size={12} /> Zone Tilt Angle ({plannedCam.tiltAngleDeg || 4}°)
+                                    </label>
+                                    <span className="text-[10px] font-mono font-bold text-red-500">
+                                        Blind Zone: &lt; {plannedBlindZoneM}m
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <input
+                                        type="range"
+                                        min="1"
+                                        max="45"
+                                        value={plannedCam.tiltAngleDeg || 4}
+                                        onChange={(e) => setPlannedCam({ ...plannedCam, tiltAngleDeg: Number(e.target.value) })}
+                                        className="flex-1 accent-blue-600"
+                                    />
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="45"
+                                        value={plannedCam.tiltAngleDeg || 4}
+                                        onChange={(e) => setPlannedCam({ ...plannedCam, tiltAngleDeg: Number(e.target.value) })}
+                                        className="w-14 px-2 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-center"
+                                    />
+                                </div>
+                                <p className="text-[9px] text-slate-500">
+                                    Tilt angle controls camera downward pitch. At 4°, camera projects far into rows with a blind zone directly beneath the pole.
+                                </p>
                             </div>
 
                             <div className="grid grid-cols-2 gap-3">
@@ -1294,7 +1663,7 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
                                     <input
                                         type="range"
                                         min="20"
-                                        max="200"
+                                        max="250"
                                         value={plannedCam.rangeM}
                                         onChange={(e) => setPlannedCam({ ...plannedCam, rangeM: Number(e.target.value) })}
                                         className="w-full accent-blue-600"
@@ -1308,10 +1677,10 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
                                     <input
                                         type="number"
                                         min="2"
-                                        max="15"
+                                        max="20"
                                         value={plannedCam.mountHeightM}
                                         onChange={(e) => setPlannedCam({ ...plannedCam, mountHeightM: Number(e.target.value) })}
-                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold"
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold font-mono"
                                     />
                                 </div>
                                 <div>
@@ -1322,22 +1691,22 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
                                         max="180"
                                         value={plannedCam.fovAngleDeg}
                                         onChange={(e) => setPlannedCam({ ...plannedCam, fovAngleDeg: Number(e.target.value) })}
-                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold"
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold font-mono"
                                     />
                                 </div>
                             </div>
 
                             <button
                                 onClick={handleDeployPlannedCamera}
-                                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                                className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                             >
                                 <Check size={16} /> Deploy Camera to Plantation Map
                             </button>
                         </div>
                     </div>
 
-                    {/* Coverage Calculations & Visual FOV Cone (7 cols) */}
-                    <div className="lg:col-span-7 p-6 bg-slate-900 text-white rounded-[2rem] border border-slate-800 shadow-xl space-y-5">
+                    {/* Right: Interactive Plantation Vector Map (7 cols) - Replaces static circle */}
+                    <div className="lg:col-span-7 p-6 bg-slate-900 text-white rounded-[2rem] border border-slate-800 shadow-xl space-y-4">
                         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                             <div>
                                 <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400 block">
@@ -1352,72 +1721,56 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
                             </span>
                         </div>
 
-                        {/* Calculated Metrics */}
+                        {/* Calculated Metrics Summary */}
                         <div className="grid grid-cols-3 gap-3">
                             <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 text-center">
                                 <span className="text-[8px] font-black uppercase text-slate-400">Total Ground Area</span>
-                                <p className="text-lg font-black font-mono text-white mt-1">
+                                <p className="text-base sm:text-lg font-black font-mono text-white mt-1">
                                     {Math.round((Math.PI * Math.pow(plannedCam.rangeM, 2) * (plannedCam.fovAngleDeg / 360)))} m²
                                 </p>
                             </div>
                             <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 text-center">
                                 <span className="text-[8px] font-black uppercase text-slate-400">Facial ID Range</span>
-                                <p className="text-lg font-black font-mono text-emerald-400 mt-1">
+                                <p className="text-base sm:text-lg font-black font-mono text-emerald-400 mt-1">
                                     {Math.round(plannedCam.rangeM * 0.35)} m
                                 </p>
                             </div>
                             <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 text-center">
                                 <span className="text-[8px] font-black uppercase text-slate-400">Blind Zone</span>
-                                <p className="text-lg font-black font-mono text-amber-400 mt-1">
-                                    &lt; {Math.round(plannedCam.mountHeightM * 0.6)} m
+                                <p className="text-base sm:text-lg font-black font-mono text-amber-400 mt-1">
+                                    &lt; {plannedBlindZoneM} m
                                 </p>
                             </div>
                         </div>
 
-                        {/* SVG FOV Cone Diagram */}
-                        <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 flex flex-col items-center">
-                            <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest mb-2">
-                                Top-Down 2D Projection Cone (Azimuth: {plannedCam.azimuthDeg}°)
-                            </span>
-                            <svg className="w-56 h-56" viewBox="0 0 200 200">
-                                {/* Base Grid Circle */}
-                                <circle cx="100" cy="100" r="90" fill="none" stroke="#1e293b" strokeWidth="1" strokeDasharray="3 3" />
-                                <circle cx="100" cy="100" r="50" fill="none" stroke="#1e293b" strokeWidth="1" />
-                                
-                                {/* Cardinal Points */}
-                                <text x="100" y="15" fill="#64748b" fontSize="8" textAnchor="middle">N (0°)</text>
-                                <text x="185" y="103" fill="#64748b" fontSize="8" textAnchor="middle">E (90°)</text>
-                                <text x="100" y="195" fill="#64748b" fontSize="8" textAnchor="middle">S (180°)</text>
-                                <text x="15" y="103" fill="#64748b" fontSize="8" textAnchor="middle">W (270°)</text>
-
-                                {/* FOV Wedge */}
-                                {(() => {
-                                    const cx = 100;
-                                    const cy = 100;
-                                    const r = 80;
-                                    const startAngle = (plannedCam.azimuthDeg - plannedCam.fovAngleDeg / 2 - 90) * (Math.PI / 180);
-                                    const endAngle = (plannedCam.azimuthDeg + plannedCam.fovAngleDeg / 2 - 90) * (Math.PI / 180);
-                                    const x1 = cx + r * Math.cos(startAngle);
-                                    const y1 = cy + r * Math.sin(startAngle);
-                                    const x2 = cx + r * Math.cos(endAngle);
-                                    const y2 = cy + r * Math.sin(endAngle);
-                                    const largeArc = plannedCam.fovAngleDeg > 180 ? 1 : 0;
-                                    const pathData = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
-                                    return (
-                                        <g>
-                                            <path d={pathData} fill="rgba(59, 130, 246, 0.25)" stroke="#3b82f6" strokeWidth="2" />
-                                            {/* Camera Center Icon */}
-                                            <circle cx={cx} cy={cy} r="6" fill="#3b82f6" stroke="#ffffff" strokeWidth="2" />
-                                        </g>
-                                    );
-                                })()}
-                            </svg>
-                        </div>
+                        {/* Interactive Real Plantation Vector Map */}
+                        <PlantationCameraMap
+                            plantationFeatures={effectivePlantationFeatures}
+                            cameras={cameras}
+                            plannedCam={plannedCam}
+                            selectedCameraId={selectedCameraId}
+                            onSelectCamera={(cam) => {
+                                setSelectedCameraId(cam.id);
+                                setPlannedCam({ ...cam });
+                                toast.info(`Selected ${cam.name} on plantation map.`);
+                            }}
+                            onUpdatePlannedCamPosition={(lat, lng) => {
+                                setPlannedCam(prev => ({ ...prev, lat, lng }));
+                                toast.success(`Planned camera moved to [${lat.toFixed(5)}, ${lng.toFixed(5)}] on plantation.`);
+                            }}
+                            onAddCameraAtPosition={handleAddCameraAt}
+                            onUpdateCamera={handleUpdateCamera}
+                            onDeleteCamera={handleDeleteCamera}
+                            onToggleHideCamera={handleToggleHideCamera}
+                            onAddPerimeterSetup={handleAddPerimeterSetup}
+                            hiddenCameraIds={hiddenCameraIds}
+                            mapCenter={[baseLat, baseLng]}
+                        />
                     </div>
                 </div>
             )}
 
-            {/* TAB 4: NVR & DVR SETTINGS WITH ALIAS, IP, PORTS, USERNAME & PASSWORD */}
+            {/* TAB 4: NVR & DVR SETTINGS WITH 3-PHASE VERIFICATION TRIGGER */}
             {activeTab === 'nvr_settings' && (
                 <div className="max-w-3xl mx-auto space-y-6">
                     <div className="p-6 sm:p-8 bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
@@ -1427,16 +1780,16 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
                                     Hardware Network Settings
                                 </span>
                                 <h4 className="text-lg font-black uppercase text-slate-900 dark:text-white">
-                                    NVR / DVR Credentials & Network Configuration
+                                    Hikvision NVR Credentials & Network Configuration
                                 </h4>
                                 <p className="text-xs text-slate-500 mt-0.5">
-                                    Configure Device Alias, IP Address, Communication Ports, Username, and Password required for authenticated RTSP & ISAPI streaming.
+                                    Configure Device IP Address (Local or Remote WAN), Communication Ports, and Credentials for authenticated RTSP & ISAPI.
                                 </p>
                             </div>
 
                             <button
                                 onClick={() => setActiveTab('network_search')}
-                                className="px-3.5 py-2 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/80 text-blue-700 dark:text-blue-300 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all self-start sm:self-auto"
+                                className="px-3.5 py-2 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/80 text-blue-700 dark:text-blue-300 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all self-start sm:self-auto cursor-pointer"
                             >
                                 <Search size={14} /> Search Local Network
                             </button>
@@ -1463,252 +1816,155 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
                                 </label>
                                 <input
                                     type="text"
-                                    value={nvrConfig.nvrModel}
-                                    placeholder="e.g. Hikvision DS-7616NXI-I2 / S"
+                                    value={nvrConfig.nvrModel || ''}
+                                    placeholder="Hikvision DS-7716NI-I4 / 16P"
                                     onChange={(e) => setNvrConfig({ ...nvrConfig, nvrModel: e.target.value })}
                                     className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white"
                                 />
                             </div>
                         </div>
 
-                        {/* Network IP & Ports Section */}
-                        <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-4">
-                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block">
-                                Network Addressing & Stream Ports
-                            </span>
+                        {/* Host & Port Configuration */}
+                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                            <div className="sm:col-span-2">
+                                <label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 block mb-1">
+                                    Host IP Address or WAN Domain
+                                </label>
+                                <input
+                                    type="text"
+                                    value={nvrConfig.host || ''}
+                                    placeholder="192.168.1.120 or orchard.ddns.net"
+                                    onChange={(e) => setNvrConfig({ ...nvrConfig, host: e.target.value })}
+                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold font-mono text-slate-900 dark:text-white"
+                                />
+                            </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                                <div>
-                                    <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">
-                                        IP Address / Host
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={nvrConfig.host}
-                                        placeholder="192.168.1.120"
-                                        onChange={(e) => setNvrConfig({ ...nvrConfig, host: e.target.value })}
-                                        className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold font-mono text-slate-900 dark:text-white"
-                                    />
-                                </div>
+                            <div>
+                                <label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 block mb-1">
+                                    HTTP Port
+                                </label>
+                                <input
+                                    type="number"
+                                    value={nvrConfig.httpPort || 80}
+                                    onChange={(e) => setNvrConfig({ ...nvrConfig, httpPort: Number(e.target.value) })}
+                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold font-mono text-slate-900 dark:text-white"
+                                />
+                            </div>
 
-                                <div>
-                                    <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">
-                                        HTTP Web Port
-                                    </label>
-                                    <input
-                                        type="number"
-                                        value={nvrConfig.httpPort}
-                                        onChange={(e) => setNvrConfig({ ...nvrConfig, httpPort: Number(e.target.value) })}
-                                        className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold font-mono text-slate-900 dark:text-white"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">
-                                        RTSP Stream Port
-                                    </label>
-                                    <input
-                                        type="number"
-                                        value={nvrConfig.rtspPort}
-                                        onChange={(e) => setNvrConfig({ ...nvrConfig, rtspPort: Number(e.target.value) })}
-                                        className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold font-mono text-slate-900 dark:text-white"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">
-                                        SDK / Server Port
-                                    </label>
-                                    <input
-                                        type="number"
-                                        value={nvrConfig.isapiPort}
-                                        onChange={(e) => setNvrConfig({ ...nvrConfig, isapiPort: Number(e.target.value) })}
-                                        className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold font-mono text-slate-900 dark:text-white"
-                                    />
-                                </div>
+                            <div>
+                                <label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 block mb-1">
+                                    RTSP Port
+                                </label>
+                                <input
+                                    type="number"
+                                    value={nvrConfig.rtspPort || 554}
+                                    onChange={(e) => setNvrConfig({ ...nvrConfig, rtspPort: Number(e.target.value) })}
+                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold font-mono text-slate-900 dark:text-white"
+                                />
                             </div>
                         </div>
 
-                        {/* Critical Security & Authentication: Username & Password */}
-                        <div className="p-5 bg-blue-50/60 dark:bg-blue-950/30 rounded-2xl border border-blue-100 dark:border-blue-900/50 space-y-4">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <ShieldCheck className="text-blue-600" size={18} />
-                                    <span className="text-xs font-black uppercase tracking-tight text-blue-950 dark:text-blue-200">
-                                        Authentication Credentials (Required for Connection)
-                                    </span>
-                                </div>
-                                <span className="text-[9px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/60 px-2 py-0.5 rounded-full">
-                                    ISAPI / RTSP Digest Auth
-                                </span>
-                            </div>
-
-                            <p className="text-[11px] text-blue-800 dark:text-blue-300">
-                                Modern NVR, DVR, and IP cameras strictly require valid authentication credentials. Without a username and password, RTSP stream handshakes and ISAPI telemetry requests are denied.
-                            </p>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="text-[10px] font-black uppercase text-slate-600 dark:text-slate-300 block mb-1">
-                                        Username
-                                    </label>
-                                    <div className="relative">
-                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                                            <Key size={14} />
-                                        </div>
-                                        <input
-                                            type="text"
-                                            value={nvrConfig.username || ''}
-                                            placeholder="admin"
-                                            onChange={(e) => setNvrConfig({ ...nvrConfig, username: e.target.value })}
-                                            className="w-full pl-9 pr-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold font-mono text-slate-900 dark:text-white"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="text-[10px] font-black uppercase text-slate-600 dark:text-slate-300 block mb-1">
-                                        Password
-                                    </label>
-                                    <div className="relative">
-                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                                            <Lock size={14} />
-                                        </div>
-                                        <input
-                                            type={showPassword ? 'text' : 'password'}
-                                            value={nvrConfig.password || ''}
-                                            placeholder="Enter NVR / DVR password..."
-                                            onChange={(e) => setNvrConfig({ ...nvrConfig, password: e.target.value })}
-                                            className="w-full pl-9 pr-10 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold font-mono text-slate-900 dark:text-white"
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowPassword(!showPassword)}
-                                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-white"
-                                        >
-                                            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Stream Protocol & Channels Settings */}
+                        {/* Credentials */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 block mb-1">
-                                    Streaming Delivery Protocol
+                                    Admin Username
                                 </label>
-                                <select
-                                    value={nvrConfig.protocol || 'RTSP_OVER_WEBRTC'}
-                                    onChange={(e) => setNvrConfig({ ...nvrConfig, protocol: e.target.value })}
-                                    className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white"
-                                >
-                                    <option value="RTSP_OVER_WEBRTC">RTSP over WebRTC Gateway (Zero Latency &lt; 200ms)</option>
-                                    <option value="RTSP_TCP">RTSP TCP Direct Stream (H.264/H.265+)</option>
-                                    <option value="ONVIF">ONVIF Profile S/T Media2 Service</option>
-                                    <option value="HLS">HLS Low Latency Chunked Streaming</option>
-                                </select>
+                                <input
+                                    type="text"
+                                    value={nvrConfig.username || ''}
+                                    placeholder="admin"
+                                    onChange={(e) => setNvrConfig({ ...nvrConfig, username: e.target.value })}
+                                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold font-mono text-slate-900 dark:text-white"
+                                />
                             </div>
 
                             <div>
                                 <label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 block mb-1">
-                                    Total Channel Capacity
+                                    Password
                                 </label>
-                                <select
-                                    value={nvrConfig.channelCount || 16}
-                                    onChange={(e) => setNvrConfig({ ...nvrConfig, channelCount: Number(e.target.value) })}
-                                    className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white"
-                                >
-                                    <option value={4}>4 Channels (Mini NVR/DVR)</option>
-                                    <option value={8}>8 Channels (Mid-Size Field NVR)</option>
-                                    <option value={16}>16 Channels (Standard Plantation NVR)</option>
-                                    <option value={32}>32 Channels (Large Enterprise AcuSense)</option>
-                                    <option value={64}>64 Channels (Master Surveillance Server)</option>
-                                </select>
+                                <div className="relative">
+                                    <input
+                                        type={showPassword ? 'text' : 'password'}
+                                        value={nvrConfig.password || ''}
+                                        placeholder="Enter device password"
+                                        onChange={(e) => setNvrConfig({ ...nvrConfig, password: e.target.value })}
+                                        className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold font-mono text-slate-900 dark:text-white pr-10"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+                                    >
+                                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
-                        {/* Test Connection Result Box */}
-                        {nvrAuthResult && (
-                            <div className={`p-4 rounded-2xl border text-xs font-bold flex items-start gap-3 ${
-                                nvrAuthResult.success
-                                    ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
-                                    : 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800 text-red-900 dark:text-red-200'
-                            }`}>
-                                {nvrAuthResult.success ? (
-                                    <CheckCircle2 size={18} className="text-emerald-600 mt-0.5 flex-shrink-0" />
-                                ) : (
-                                    <AlertCircle size={18} className="text-red-600 mt-0.5 flex-shrink-0" />
-                                )}
-                                <div className="space-y-0.5 flex-1">
-                                    <div className="flex items-center justify-between">
-                                        <p className="font-black uppercase">{nvrAuthResult.message}</p>
-                                        {nvrAuthResult.pingMs && (
-                                            <span className="font-mono text-[10px] bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5 rounded text-emerald-800 dark:text-emerald-300">
-                                                {nvrAuthResult.pingMs}ms latency
-                                            </span>
-                                        )}
-                                    </div>
-                                    {nvrAuthResult.details && (
-                                        <p className="text-[11px] font-normal opacity-90">{nvrAuthResult.details}</p>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Action Buttons: Test Connection & Save */}
-                        <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                        {/* Action Buttons: 3-Phase Verification Engine */}
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
                             <button
-                                type="button"
-                                onClick={handleTestNvrConnection}
-                                disabled={isTestingNvrAuth}
-                                className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 border transition-all ${
-                                    isTestingNvrAuth
-                                        ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 cursor-not-allowed'
-                                        : 'bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-white border-slate-200 dark:border-slate-700'
-                                }`}
+                                onClick={handleTriggerNvrVerification}
+                                className="w-full sm:w-auto px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 cursor-pointer active:scale-95"
                             >
-                                <RefreshCw size={14} className={isTestingNvrAuth ? 'animate-spin' : ''} />
-                                {isTestingNvrAuth ? 'Testing Authentication...' : 'Test Connection & Ping'}
+                                <ShieldCheck size={16} /> Start 3-Phase Verification (Ping → Auth → Stream)
                             </button>
 
                             <button
-                                type="button"
-                                onClick={() => handleSaveNvrConfig(nvrConfig)}
-                                className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                                onClick={() => {
+                                    safeStorage.setItem('agrimap_hikvision_nvr_config', JSON.stringify(nvrConfig));
+                                    toast.success('NVR Configuration saved to local storage.');
+                                }}
+                                className="w-full sm:w-auto px-6 py-2.5 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer"
                             >
-                                <Check size={16} /> Save NVR & DVR Configuration
+                                Save Settings
                             </button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* MODAL: MANUAL IP ADD FOR HARDWARE WITHOUT UDP BROADCAST */}
+            {/* MODAL: MANUAL DEVICE ADDITION (LOCAL LAN OR GLOBAL WAN/PUBLIC IP) */}
             {showManualAddModal && (
-                <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 p-6 max-w-lg w-full space-y-4 shadow-2xl">
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in select-none">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[2.5rem] w-full max-w-lg shadow-2xl p-6 space-y-4">
                         <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-                            <h4 className="text-sm font-black uppercase text-slate-900 dark:text-white flex items-center gap-2">
-                                <Plus size={16} className="text-blue-600" />
-                                Add Device by Direct IP Address
-                            </h4>
+                            <div>
+                                <span className="text-[9px] font-black uppercase tracking-widest text-blue-600 block">
+                                    Hardware Deployment
+                                </span>
+                                <h4 className="text-base font-black uppercase text-slate-900 dark:text-white">
+                                    Add Device (Local LAN or Global WAN IP)
+                                </h4>
+                            </div>
                             <button
                                 onClick={() => setShowManualAddModal(false)}
-                                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white"
+                                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white"
                             >
-                                ✕
+                                <Trash2 size={16} />
                             </button>
                         </div>
 
-                        <p className="text-xs text-slate-500">
-                            Add an NVR, DVR, or IP camera directly if your network has VLANs, VPNs, or switches that filter UDP broadcast packets.
-                        </p>
+                        {/* Local vs Remote Toggle */}
+                        <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl text-xs font-black uppercase">
+                            <button
+                                onClick={() => setManualDevice({ ...manualDevice, isWanRemote: false, host: '192.168.1.120' })}
+                                className={`flex-1 py-2 rounded-xl transition-all ${!manualDevice.isWanRemote ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-sm' : 'text-slate-400'}`}
+                            >
+                                🏢 Local Network (LAN)
+                            </button>
+                            <button
+                                onClick={() => setManualDevice({ ...manualDevice, isWanRemote: true, host: '92.42.18.77' })}
+                                className={`flex-1 py-2 rounded-xl transition-all ${manualDevice.isWanRemote ? 'bg-white dark:bg-slate-900 text-blue-600 shadow-sm' : 'text-slate-400'}`}
+                            >
+                                🌐 Remote / WAN / Global IP
+                            </button>
+                        </div>
 
                         <div className="space-y-3">
                             <div>
-                                <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Device Alias / Label</label>
+                                <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Device Friendly Name</label>
                                 <input
                                     type="text"
                                     value={manualDevice.alias}
@@ -1719,21 +1975,7 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
 
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Device Type</label>
-                                    <select
-                                        value={manualDevice.type}
-                                        onChange={(e: any) => setManualDevice({ ...manualDevice, type: e.target.value })}
-                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold"
-                                    >
-                                        <option value="NVR">NVR (Network Video Recorder)</option>
-                                        <option value="DVR">DVR (Digital Video Recorder)</option>
-                                        <option value="IP_CAMERA">IP Fixed Bullet / Turret</option>
-                                        <option value="PTZ_CAMERA">PTZ Speed Dome Camera</option>
-                                    </select>
-                                </div>
-
-                                <div>
-                                    <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Manufacturer</label>
+                                    <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Brand</label>
                                     <select
                                         value={manualDevice.brand}
                                         onChange={(e: any) => setManualDevice({ ...manualDevice, brand: e.target.value })}
@@ -1746,20 +1988,67 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
                                         <option value="ONVIF">Generic ONVIF</option>
                                     </select>
                                 </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Device Type</label>
+                                    <select
+                                        value={manualDevice.type}
+                                        onChange={(e: any) => setManualDevice({ ...manualDevice, type: e.target.value })}
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold"
+                                    >
+                                        <option value="NVR">NVR Network Video Recorder</option>
+                                        <option value="DVR">DVR Digital Video Recorder</option>
+                                        <option value="IP_CAMERA">IP Camera (Bullet / Dome)</option>
+                                        <option value="PTZ_CAMERA">PTZ Speed Dome Camera</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">
+                                    {manualDevice.isWanRemote ? 'Global WAN IP Address or DDNS Domain' : 'Local IPv4 Address'}
+                                </label>
+                                <input
+                                    type="text"
+                                    value={manualDevice.host}
+                                    placeholder={manualDevice.isWanRemote ? 'e.g. 92.42.18.77 or orchard.ddns.net' : 'e.g. 192.168.1.120'}
+                                    onChange={(e) => setManualDevice({ ...manualDevice, host: e.target.value })}
+                                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold font-mono"
+                                />
                             </div>
 
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Device IP Address</label>
+                                    <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Admin Username</label>
                                     <input
                                         type="text"
-                                        value={manualDevice.ip}
-                                        placeholder="192.168.1.160"
-                                        onChange={(e) => setManualDevice({ ...manualDevice, ip: e.target.value })}
+                                        value={manualDevice.username}
+                                        placeholder="admin"
+                                        onChange={(e) => setManualDevice({ ...manualDevice, username: e.target.value })}
                                         className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold font-mono"
                                     />
                                 </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">Password</label>
+                                    <input
+                                        type="password"
+                                        value={manualDevice.password}
+                                        placeholder="Required for Phase 2 Auth"
+                                        onChange={(e) => setManualDevice({ ...manualDevice, password: e.target.value })}
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold font-mono"
+                                    />
+                                </div>
+                            </div>
 
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">HTTP Port</label>
+                                    <input
+                                        type="number"
+                                        value={manualDevice.httpPort}
+                                        onChange={(e) => setManualDevice({ ...manualDevice, httpPort: Number(e.target.value) })}
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold font-mono"
+                                    />
+                                </div>
                                 <div>
                                     <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">RTSP Stream Port</label>
                                     <input
@@ -1772,6 +2061,7 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
                             </div>
                         </div>
 
+                        {/* Submit & Trigger 3-Phase Verification */}
                         <div className="flex gap-2 pt-2">
                             <button
                                 onClick={() => setShowManualAddModal(false)}
@@ -1781,36 +2071,78 @@ export const CameraNvrLab: React.FC<CameraNvrLabProps> = ({
                             </button>
                             <button
                                 onClick={() => {
-                                    const newDevice: DiscoveredNetworkDevice = {
-                                        id: `manual-${Date.now()}`,
+                                    if (!manualDevice.host) {
+                                        toast.error('Host IP address is required.');
+                                        return;
+                                    }
+                                    setShowManualAddModal(false);
+                                    setVerificationTarget({
                                         alias: manualDevice.alias,
-                                        type: manualDevice.type,
-                                        brand: manualDevice.brand,
-                                        model: manualDevice.model,
-                                        ip: manualDevice.ip,
+                                        host: manualDevice.host,
                                         httpPort: manualDevice.httpPort,
                                         rtspPort: manualDevice.rtspPort,
-                                        serverPort: manualDevice.serverPort,
-                                        mac: `00:1A:2B:${Math.floor(Math.random()*89+10)}:${Math.floor(Math.random()*89+10)}:${Math.floor(Math.random()*89+10)}`,
-                                        subnetMask: '255.255.255.0',
-                                        gateway: '192.168.1.1',
-                                        channelsCount: (manualDevice.type === 'NVR' || manualDevice.type === 'DVR') ? 16 : undefined,
-                                        firmwareVersion: 'Manual-Target',
-                                        activationStatus: 'ACTIVATED',
-                                        lastSeen: 'Just now',
-                                        pingMs: 2
-                                    };
-                                    setDiscoveredDevices(prev => [newDevice, ...prev]);
-                                    setShowManualAddModal(false);
-                                    toast.success(`Device "${manualDevice.alias}" (${manualDevice.ip}) added to discovered hardware list.`);
+                                        isapiPort: manualDevice.serverPort,
+                                        username: manualDevice.username,
+                                        password: manualDevice.password,
+                                        model: manualDevice.model,
+                                        brand: manualDevice.brand,
+                                        type: manualDevice.type,
+                                        channelCount: manualDevice.channelCount,
+                                        isWanRemote: manualDevice.isWanRemote
+                                    });
+                                    setIsVerificationModalOpen(true);
                                 }}
-                                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase shadow-sm"
+                                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black uppercase shadow-sm flex items-center justify-center gap-1.5"
                             >
-                                Add Device
+                                <ShieldCheck size={14} /> Run 3-Phase Verification
                             </button>
                         </div>
                     </div>
                 </div>
+            )}
+            {/* Camera Planner with Satellite & 3D Frustum Modal */}
+            {isCameraPlannerModalOpen && (
+                <CameraPlannerModal
+                    isOpen={isCameraPlannerModalOpen}
+                    onClose={() => setIsCameraPlannerModalOpen(false)}
+                    plantationCoords={[baseLat, baseLng]}
+                    plantationFeatures={effectivePlantationFeatures}
+                    onSaveCamera={(cam) => {
+                        const updated = [...cameras, cam];
+                        setCameras(updated);
+                        safeStorage.setItem('agrimap_plantation_cameras', JSON.stringify(updated));
+                        onDeployCameraToMap?.(cam);
+                        toast.success(`Camera "${cam.name}" deployed to plantation!`);
+                    }}
+                    onSaveBatchCameras={(batch) => {
+                        const updated = [...cameras, ...batch];
+                        setCameras(updated);
+                        safeStorage.setItem('agrimap_plantation_cameras', JSON.stringify(updated));
+                        batch.forEach(c => onDeployCameraToMap?.(c));
+                        toast.success(`${batch.length} cameras deployed to plantation!`);
+                    }}
+                />
+            )}
+
+            {/* 3D Terrain & Slope Sculptor Modal */}
+            {isTerrainSculptorOpen && (
+                <TerrainSlopeSculptorModal
+                    isOpen={isTerrainSculptorOpen}
+                    onClose={() => setIsTerrainSculptorOpen(false)}
+                    mapCenter={[baseLat, baseLng]}
+                    plantationFeatures={effectivePlantationFeatures}
+                    cameras={cameras}
+                />
+            )}
+
+            {/* Drone Aerial Simulation Modal Link */}
+            {isDroneSimModalOpen && (
+                <DroneSimulationModal
+                    isOpen={isDroneSimModalOpen}
+                    onClose={() => setIsDroneSimModalOpen(false)}
+                    activeMapCenter={[baseLat, baseLng]}
+                    plantationFeatures={effectivePlantationFeatures}
+                />
             )}
         </div>
     );

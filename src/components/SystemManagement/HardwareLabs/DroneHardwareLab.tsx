@@ -2,10 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { 
     Send, Radio, Compass, Battery, Wifi, Shield, Play, Pause, 
     RotateCcw, CheckCircle, AlertTriangle, Video, MapPin, Gauge, 
-    Upload, Settings, Cpu, Layers 
+    Upload, Settings, Cpu, Layers, Mountain, Plane
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { safeStorage } from '../../../services/storageService';
+import DroneSimulationModal from '../../DroneSimulationModal';
+import { TerrainSlopeSculptorModal } from '../../TerrainSlopeSculptorModal';
+import { type DroneFlightMission } from '../../DroneFlightPathPlanner';
+import { adjustDroneFlightPathAGL } from '../../../utils/demTerrainViewshed';
 
 export interface DroneHardwareTelemetry {
     connectionState: 'CONNECTED' | 'SEARCHING' | 'DISCONNECTED';
@@ -73,6 +77,15 @@ export const DroneHardwareLab: React.FC<DroneHardwareLabProps> = ({
     const [comPort, setComPort] = useState('COM3 (USB Telemetry Radio 433MHz)');
     const [baudRate, setBaudRate] = useState('57600');
     const [activeHudTab, setActiveHudTab] = useState<'flight_hud' | 'mission_upload' | 'video_link' | 'safety'>('flight_hud');
+    const [isSimModalOpen, setIsSimModalOpen] = useState(false);
+    const [isSlopeSculptorOpen, setIsSlopeSculptorOpen] = useState(false);
+    const [droneMission, setDroneMission] = useState<DroneFlightMission | null>(() => {
+        try {
+            const raw = safeStorage.getItem('agrimap_drone_realtime_mission');
+            if (raw) return JSON.parse(raw);
+        } catch (_) {}
+        return null;
+    });
 
     // Simulate real drone MAVLink telemetry stream
     useEffect(() => {
@@ -247,6 +260,26 @@ export const DroneHardwareLab: React.FC<DroneHardwareLabProps> = ({
                     }`}
                 >
                     Hardware Safety Checklist
+                </button>
+
+                <div className="h-4 w-[1px] bg-slate-300 dark:bg-slate-700 mx-1 hidden sm:block" />
+
+                {/* Satellite & 3D Drone Aerial Survey Planner Link */}
+                <button
+                    onClick={() => setIsSimModalOpen(true)}
+                    className="px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider bg-cyan-600 hover:bg-cyan-500 text-white transition-all shadow-md shadow-cyan-900/30 flex items-center gap-1.5 cursor-pointer"
+                >
+                    <Plane size={13} />
+                    <span>Drone Aerial Planner (Satellite / 3D)</span>
+                </button>
+
+                {/* 3D Terrain & Slope Sculptor Link */}
+                <button
+                    onClick={() => setIsSlopeSculptorOpen(true)}
+                    className="px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-md shadow-emerald-900/30 flex items-center gap-1.5 cursor-pointer"
+                >
+                    <Mountain size={13} />
+                    <span>3D Area & Slope Sculptor</span>
                 </button>
             </div>
 
@@ -438,6 +471,29 @@ export const DroneHardwareLab: React.FC<DroneHardwareLabProps> = ({
                         </div>
                     </div>
                 </div>
+            )}
+            {/* Drone Aerial Simulation Modal Link */}
+            {isSimModalOpen && (
+                <DroneSimulationModal
+                    isOpen={isSimModalOpen}
+                    onClose={() => setIsSimModalOpen(false)}
+                    activeMapCenter={[baseLat, baseLng]}
+                    plantationFeatures={[]}
+                />
+            )}
+
+            {/* 3D Terrain & Slope Sculptor Modal */}
+            {isSlopeSculptorOpen && (
+                <TerrainSlopeSculptorModal
+                    isOpen={isSlopeSculptorOpen}
+                    onClose={() => setIsSlopeSculptorOpen(false)}
+                    mapCenter={[baseLat, baseLng]}
+                    activeDroneMission={droneMission}
+                    onUpdateDroneMission={(m) => {
+                        setDroneMission(m);
+                        safeStorage.setItem('agrimap_drone_realtime_mission', JSON.stringify(m));
+                    }}
+                />
             )}
         </div>
     );
