@@ -38,8 +38,7 @@ export const SandboxFloatingVisibilityMenu: React.FC<SandboxFloatingVisibilityMe
         { key: 'showSoilSensors', label: isKa ? 'ნიადაგის NPK & ტენიანობა' : 'Soil NPK & Moisture Sensors', count: counts?.soil },
         { key: 'showWaterSensors', label: isKa ? 'წყლის ხარჯი & ჭის დონე' : 'Water Flow & Well Level Stations', count: counts?.water },
         { key: 'showMoundSlope', label: isKa ? '3D რელიეფის ქედი & განივი ხაზები' : '3D Mound Spine & Width Lines', count: counts?.spinePoints },
-        { key: 'showSectors', label: isKa ? 'დარგვის რელიეფის კონტური' : 'Planting Mound Perimeter Outline' },
-        { key: 'showTrenches', label: isKa ? 'თხრილები & რიგები' : 'Reference Trenches' }
+        { key: 'showSectors', label: isKa ? 'დარგვის რელიეფის კონტური' : 'Planting Mound Perimeter Outline' }
     ];
 
     return (

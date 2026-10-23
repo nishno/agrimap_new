@@ -39,12 +39,14 @@ import { MarketFeedWidget } from './MarketFeedWidget';
 import { StaffAttendanceWidget } from './StaffAttendanceWidget';
 import { PlannerScheduleWidget } from './PlannerScheduleWidget';
 import { HardwareLabsWidget } from './HardwareLabsWidget';
+import { WeatherStationWidget } from './WeatherStationWidget';
+import { FloatingOnlineWeatherBadge } from './SystemManagement/HardwareLabs/FloatingOnlineWeatherBadge';
 import { TeamHubsWidget } from './TeamHubsWidget';
 import { IntercomPopUpModal } from './IntercomPopUpModal';
 import { DashboardWidgetCard } from './DashboardWidgetCard';
 import { getWidgetTitle } from '../lib/widgetLocalization';
 import { getSavedDashboardLayout, saveDashboardLayout, DEFAULT_DASHBOARD_LAYOUT } from '../utils/dashboardLayoutStorage';
-import { Maximize2, Cpu, Calendar, Grid, Sprout, ShoppingBag, Briefcase, Tractor, Users, ArrowUpToLine, ArrowUpDown, Move, ChevronUp, ChevronDown, Check, Compass, ExternalLink, Plane, Layers } from 'lucide-react';
+import { Maximize2, Cpu, Calendar, Grid, Sprout, ShoppingBag, Briefcase, Tractor, Users, ArrowUpToLine, ArrowUpDown, Move, ChevronUp, ChevronDown, Check, Compass, ExternalLink, Plane, Layers, CloudRain } from 'lucide-react';
 import { safeStorage } from '../services/storageService';
 import { MapCanvasContextMenu } from './MapCanvasContextMenu';
 import { MapWorkTaskModal } from './MapWorkTaskModal';
@@ -591,34 +593,37 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
 
   const handleDashboardMapToolsPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
-    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) {}
+    e.stopPropagation();
+    const targetEl = e.currentTarget;
+    try { targetEl.setPointerCapture(e.pointerId); } catch {}
     const rect = dashboardMapToolsRef.current?.getBoundingClientRect();
-    dashboardMapToolsDragRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      startLeft: rect ? rect.left : 24,
-      startTop: rect ? rect.top : (window.innerHeight - 80)
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startLeft = rect ? rect.left : 24;
+    const startTop = rect ? rect.top : (window.innerHeight - 80);
+    const toolsWidth = rect?.width || 220;
+
+    const onPointerMove = (moveEvt: PointerEvent) => {
+      moveEvt.preventDefault();
+      const deltaX = moveEvt.clientX - startX;
+      const deltaY = moveEvt.clientY - startY;
+      const newLeft = Math.max(10, Math.min(window.innerWidth - toolsWidth - 10, startLeft + deltaX));
+      const newTop = Math.max(10, Math.min(window.innerHeight - 70, startTop + deltaY));
+      setDashboardMapToolsPos({ x: Math.round(newLeft), y: Math.round(newTop) });
     };
-  };
 
-  const handleDashboardMapToolsPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!dashboardMapToolsDragRef.current) return;
-    e.preventDefault();
-    const deltaX = e.clientX - dashboardMapToolsDragRef.current.startX;
-    const deltaY = e.clientY - dashboardMapToolsDragRef.current.startY;
-    const newLeft = Math.max(10, Math.min(window.innerWidth - 240, dashboardMapToolsDragRef.current.startLeft + deltaX));
-    const newTop = Math.max(10, Math.min(window.innerHeight - 70, dashboardMapToolsDragRef.current.startTop + deltaY));
-    setDashboardMapToolsPos({ x: Math.round(newLeft), y: Math.round(newTop) });
-  };
+    const onPointerUp = (upEvt: PointerEvent) => {
+      try { targetEl.releasePointerCapture(upEvt.pointerId); } catch {}
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      setDashboardMapToolsPos(curr => {
+        if (curr) safeStorage.setItem('agrimap_dash_map_tools_pos', JSON.stringify(curr));
+        return curr;
+      });
+    };
 
-  const handleDashboardMapToolsPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!dashboardMapToolsDragRef.current) return;
-    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch (err) {}
-    dashboardMapToolsDragRef.current = null;
-    setDashboardMapToolsPos(curr => {
-      if (curr) safeStorage.setItem('agrimap_dash_map_tools_pos', JSON.stringify(curr));
-      return curr;
-    });
+    window.addEventListener('pointermove', onPointerMove, { passive: false });
+    window.addEventListener('pointerup', onPointerUp, { passive: false });
   };
 
   // Right-click context menu state on Dashboard map
@@ -650,6 +655,7 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
       case 'agronomy_quick': return <Sprout size={14} className="text-emerald-600" />;
       case 'tasks': return <Briefcase size={14} className="text-amber-600" />;
       case 'planner': return <Calendar size={14} className="text-blue-600" />;
+      case 'weather': return <CloudRain size={14} className="text-sky-600" />;
       case 'hardware_labs': return <Cpu size={14} className="text-purple-600" />;
       case 'team_hubs': return <Video size={14} className="text-cyan-600" />;
       case 'field_summary': return <Grid size={14} className="text-emerald-600" />;
@@ -897,6 +903,13 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
                   onNavigateMode={props.onNavigateMode}
               />
           );
+          case 'weather': return (
+              <WeatherStationWidget
+                  onNavigateMode={props.onNavigateMode}
+                  plantationFeatures={props.plantationFeatures}
+                  activeOrgId={props.activeOrgId}
+              />
+          );
           case 'hardware_labs': return (
               <HardwareLabsWidget
                   onNavigateMode={props.onNavigateMode}
@@ -1010,6 +1023,22 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
             }}
           />
 
+          {/* Live Online Agro Weather Overlay Badge on Dashboard Map (Movable, Default below Search) */}
+          <div className="absolute top-16 left-4 sm:top-16 sm:left-6 z-[2500]">
+            <FloatingOnlineWeatherBadge
+              plantationFeatures={props.plantationFeatures}
+              activeOrgId={props.activeOrgId}
+              isKa={isKa}
+              storageKey="agrimap_dash_weather_pos"
+              onFlyToCoords={(coords, name) => {
+                if (props.center) {
+                  // Dispatch fly event
+                  window.dispatchEvent(new CustomEvent('agrimap:fly-to-location', { detail: { center: coords, name } }));
+                }
+              }}
+            />
+          </div>
+
           {/* Top-Right Clean Fullscreen Toggle Button */}
           <div className="absolute top-3.5 right-14 sm:right-16 z-[1050]">
             <button
@@ -1036,12 +1065,10 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
             {/* Drag Handle */}
             <div
               onPointerDown={handleDashboardMapToolsPointerDown}
-              onPointerMove={handleDashboardMapToolsPointerMove}
-              onPointerUp={handleDashboardMapToolsPointerUp}
-              className="bg-slate-900/90 border border-slate-700/80 p-2.5 rounded-2xl cursor-grab active:cursor-grabbing hover:bg-slate-800 text-slate-400 hover:text-white transition-colors shadow-2xl backdrop-blur-md shrink-0 flex items-center justify-center select-none"
+              className="bg-slate-900/95 border border-slate-700/80 p-3 rounded-2xl cursor-grab active:cursor-grabbing hover:bg-slate-800 text-slate-400 hover:text-white transition-colors shadow-2xl backdrop-blur-md shrink-0 flex items-center justify-center select-none touch-none min-w-[40px] min-h-[40px]"
               title={isKa ? "გადაათრიეთ რუკის ხელსაწყოების პანელი ეკრანზე" : "Hold and drag to move Map Tools anywhere on screen"}
             >
-              <GripVerticalIcon size={14} />
+              <GripVerticalIcon size={16} />
             </div>
 
             {/* Dropdown Menu Popup & Trigger */}
@@ -1204,7 +1231,7 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
   );
     
   return (
-      <main className={`flex-1 bg-slate-50 overflow-y-auto ${isMapFullScreen ? 'p-0' : 'p-4 md:p-8'} safe-area-bottom`}>
+      <main className={`module-dashboard flex-1 bg-slate-50 overflow-y-auto ${isMapFullScreen ? 'p-0' : 'p-4 md:p-8'} safe-area-bottom`}>
         <div className={isMapFullScreen ? "h-full w-full" : "max-w-7xl mx-auto space-y-6 md:space-y-8 pb-24 md:pb-8"}>
           {isMapFullScreen ? (
             renderMapSection()

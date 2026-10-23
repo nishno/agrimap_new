@@ -4,7 +4,8 @@ import {
     Maximize2, RotateCcw, Eye, Navigation, Camera as CameraIcon, 
     Layers, AlertTriangle, ShieldCheck, Sun, Compass, Play, 
     Pause, Sliders, Sparkles, X, ChevronRight, Droplets, User, Mountain,
-    Plus, Crosshair, ArrowUpDown, Video, Undo2, Trash2
+    Plus, Crosshair, ArrowUpDown, Video, Undo2, Trash2,
+    SlidersHorizontal, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Check
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { PlantationFeature } from '../../../types';
@@ -22,7 +23,11 @@ import {
     checkDrone3DPathCollision,
     type HillSpineProfile,
     type SpineControlPoint,
-    setActiveSpineProfilesCache
+    type PerimeterSlopeVertex,
+    type PerimeterSlopeObject,
+    type PhotoGpsPin,
+    setActiveSpineProfilesCache,
+    setActivePerimeterSlopesCache
 } from '../../../utils/demTerrainViewshed';
 
 interface Sandbox3DTerrainCanvasProps {
@@ -37,7 +42,9 @@ interface Sandbox3DTerrainCanvasProps {
     onSelectCamera?: ((cam: PlantationCamera) => void) | ((camId: any) => void);
     onSelectDevice?: (type: 'camera' | 'soil' | 'water' | 'worker' | 'drone' | 'slope_point', data: any) => void;
     onAddSpinePoint?: (coords: { lat: number; lng: number; peakHeightM?: number; widthM?: number }) => void;
-    onUpdateSpinePoint?: (pointId: string, patch: Partial<SpineControlPoint>) => void;
+    onUpdateSpinePoint?: (pointId: string, patch: Partial<SpineControlPoint>, shouldPersist?: boolean) => void;
+    onUpdatePerimeterVertex?: (vertexId: string, patch: Partial<PerimeterSlopeVertex>) => void;
+    onDeleteSpinePoint?: (pointId: string) => void;
     mapCenter?: [number, number];
     baseLat?: number;
     baseLng?: number;
@@ -50,12 +57,21 @@ interface Sandbox3DTerrainCanvasProps {
     viewMode?: any;
     spineProfile?: HillSpineProfile;
     hillSpineProfile?: HillSpineProfile;
+    hillProfiles?: HillSpineProfile[];
+    slopeObjects?: PerimeterSlopeObject[];
     elevationExaggeration?: number;
     hiddenCameraIds?: string[];
     isSatelliteDemLoaded?: boolean;
     terrainUpdateCounter?: number;
     onDeleteLastPoint?: () => void;
     onDeleteSlope?: () => void;
+    showBaseGrid?: boolean;
+    showHill1?: boolean;
+    showSlope1?: boolean;
+    showPhotoPins?: boolean;
+    perimeterVertices?: PerimeterSlopeVertex[];
+    photoPins?: PhotoGpsPin[];
+    onSelectPhotoPin?: (pin: PhotoGpsPin) => void;
 }
 
 export const Sandbox3DTerrainCanvas: React.FC<Sandbox3DTerrainCanvasProps> = ({
@@ -71,6 +87,7 @@ export const Sandbox3DTerrainCanvas: React.FC<Sandbox3DTerrainCanvasProps> = ({
     onSelectDevice,
     onAddSpinePoint,
     onUpdateSpinePoint,
+    onUpdatePerimeterVertex,
     mapCenter,
     baseLat: propBaseLat,
     baseLng: propBaseLng,
@@ -88,7 +105,17 @@ export const Sandbox3DTerrainCanvas: React.FC<Sandbox3DTerrainCanvasProps> = ({
     isSatelliteDemLoaded = false,
     terrainUpdateCounter,
     onDeleteLastPoint,
-    onDeleteSlope
+    onDeleteSlope,
+    onDeleteSpinePoint,
+    showBaseGrid = true,
+    showHill1 = true,
+    showSlope1 = true,
+    showPhotoPins = true,
+    hillProfiles = [],
+    slopeObjects = [],
+    perimeterVertices = [],
+    photoPins = [],
+    onSelectPhotoPin
 }) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const baseLat = propBaseLat ?? (mapCenter ? mapCenter[0] : 41.9023);
@@ -96,8 +123,16 @@ export const Sandbox3DTerrainCanvas: React.FC<Sandbox3DTerrainCanvasProps> = ({
     const effectiveSpineProfile = hillSpineProfile || spineProfile;
     const effectiveSelectedCameraId = activeCameraId || selectedCameraId;
 
+    // Component-level effective hills for live 3D sync & point editing
+    const effectiveHills: HillSpineProfile[] = useMemo(() => {
+        return (hillProfiles && hillProfiles.length > 0)
+            ? hillProfiles
+            : (effectiveSpineProfile ? [effectiveSpineProfile] : []);
+    }, [hillProfiles, effectiveSpineProfile]);
+
     // View & Camera Controls
     const [viewMode, setViewMode] = useState<'orbit' | 'drone_cockpit' | 'camera_fov'>(initialViewMode);
+    const [compassHeading, setCompassHeading] = useState<number>(45);
 
     useEffect(() => {
         if (initialViewMode) {
@@ -139,10 +174,40 @@ export const Sandbox3DTerrainCanvas: React.FC<Sandbox3DTerrainCanvasProps> = ({
     const reqAnimRef = useRef<number | null>(null);
     const interactiveObjectsRef = useRef<THREE.Object3D[]>([]);
 
-    // 3D Point Addition & Slope Height Drag State
+    // 3D Point Addition & Slope Height/Move/Resize Drag State
     const [isAddingSlopePoint3D, setIsAddingSlopePoint3D] = useState<boolean>(false);
     const draggedPointIdRef = useRef<string | null>(null);
     const initialDragPosRef = useRef<{ clientY: number; initialHeight: number } | null>(null);
+    
+    interface DragOp {
+        type: 'move_point' | 'resize_wing' | 'height_handle' | 'move_vertex';
+        pointId: string;
+        ptData?: SpineControlPoint;
+        planeY: number;
+        centerVec?: THREE.Vector3;
+        side?: 'left' | 'right';
+        initialWidth?: number;
+        initialLeftW?: number;
+        initialRightW?: number;
+        initialHeight?: number;
+        initialLat?: number;
+        initialLng?: number;
+        initialClientY?: number;
+        vertexId?: string;
+        vertexData?: PerimeterSlopeVertex;
+    }
+    const dragOperationRef = useRef<DragOp | null>(null);
+    const [selectedEditPoint, setSelectedEditPoint] = useState<SpineControlPoint | null>(null);
+
+    // Live synced active point being edited in 3D modal
+    const activeEditPoint = useMemo(() => {
+        if (!selectedEditPoint) return null;
+        for (const h of effectiveHills) {
+            const found = h.points?.find(p => p.id === selectedEditPoint.id);
+            if (found) return found;
+        }
+        return selectedEditPoint;
+    }, [selectedEditPoint, effectiveHills]);
 
     // Orbit State
     const isDraggingRef = useRef<boolean>(false);
@@ -202,11 +267,11 @@ export const Sandbox3DTerrainCanvas: React.FC<Sandbox3DTerrainCanvasProps> = ({
         const width = container.clientWidth || 800;
         const height = container.clientHeight || 540;
 
-        // 1. Scene Setup
+        // 1. Scene Setup - Bright, clean studio daylight atmosphere
         const scene = new THREE.Scene();
         sceneRef.current = scene;
-        scene.background = new THREE.Color(0x060d17);
-        scene.fog = new THREE.FogExp2(0x060d17, 0.0018);
+        scene.background = new THREE.Color(0x0e1726); // Modern clear slate daylight atmosphere
+        scene.fog = new THREE.FogExp2(0x0e1726, 0.0004); // Crisp visibility, no dark suffocating haze
 
         // 2. Camera Setup
         const camera = new THREE.PerspectiveCamera(48, width / height, 1, 2500);
@@ -222,32 +287,96 @@ export const Sandbox3DTerrainCanvas: React.FC<Sandbox3DTerrainCanvasProps> = ({
         container.innerHTML = '';
         container.appendChild(renderer.domElement);
 
-        // 4. Lighting Setup (Simulate sun and ambient orchard atmosphere)
-        const ambientLight = new THREE.AmbientLight(0xdbeafe, 0.65);
+        // 4. Lighting Setup (Bright studio daylight illumination with sun, fill, bounce, and hemisphere light)
+        // High ambient light to illuminate all slope facets and eliminate murky shadows
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.25);
         scene.add(ambientLight);
 
-        const sunLight = new THREE.DirectionalLight(0xfff7ed, 1.4);
+        // Primary Sun directional light
+        const sunLight = new THREE.DirectionalLight(0xfffef0, 1.9);
         sunLight.position.set(160, 280, 140);
         sunLight.castShadow = true;
         sunLight.shadow.mapSize.width = 2048;
         sunLight.shadow.mapSize.height = 2048;
         sunLight.shadow.camera.near = 10;
-        sunLight.shadow.camera.far = 800;
-        const d = 260;
+        sunLight.shadow.camera.far = 900;
+        const d = 280;
         sunLight.shadow.camera.left = -d;
         sunLight.shadow.camera.right = d;
         sunLight.shadow.camera.top = d;
         sunLight.shadow.camera.bottom = -d;
+        sunLight.shadow.bias = 0.0001;
         scene.add(sunLight);
 
-        const hemiLight = new THREE.HemisphereLight(0x38bdf8, 0x1e293b, 0.4);
+        // Secondary Fill light from opposite quadrant (illuminates slope reverse faces and contours)
+        const fillLight = new THREE.DirectionalLight(0xc7d2fe, 0.85);
+        fillLight.position.set(-160, 220, -140);
+        scene.add(fillLight);
+
+        // Soft ground bounce light (brightens trenches and shaded under-slopes)
+        const bounceLight = new THREE.DirectionalLight(0xdcfce7, 0.45);
+        bounceLight.position.set(0, -60, 0);
+        scene.add(bounceLight);
+
+        // Sky / Ground Hemisphere light for natural ambient gradation
+        const hemiLight = new THREE.HemisphereLight(0xe0f2fe, 0x334155, 1.05);
         scene.add(hemiLight);
 
-        // 5. Generate 3D Terrain Elevation Mesh from DEM
-        interactiveObjectsRef.current = [];
-        if (effectiveSpineProfile) {
-            setActiveSpineProfilesCache([effectiveSpineProfile]);
+        // 4.5 Base Grid (Flat reference plane, 30% larger than modified terrain)
+        if (showBaseGrid) {
+            const baseGridSpanM = 480 * 1.3; // 624m x 624m (30% larger area providing free space around relief)
+            const basePlaneGeo = new THREE.PlaneGeometry(baseGridSpanM, baseGridSpanM);
+            basePlaneGeo.rotateX(-Math.PI / 2);
+            const basePlaneMat = new THREE.MeshStandardMaterial({
+                color: 0x0f172a,
+                roughness: 0.85,
+                metalness: 0.12,
+                side: THREE.DoubleSide
+            });
+            const basePlaneMesh = new THREE.Mesh(basePlaneGeo, basePlaneMat);
+            basePlaneMesh.position.y = -0.6;
+            basePlaneMesh.receiveShadow = true;
+            scene.add(basePlaneMesh);
+
+            // Technical Grid Overlay on Base Grid
+            const gridHelper = new THREE.GridHelper(baseGridSpanM, 48, 0x0ea5e9, 0x334155);
+            gridHelper.position.y = -0.3;
+            scene.add(gridHelper);
+
+            // Outer Bounding Border Line for Base Grid
+            const halfSpan = baseGridSpanM / 2;
+            const borderPts = [
+                new THREE.Vector3(-halfSpan, -0.2, -halfSpan),
+                new THREE.Vector3(halfSpan, -0.2, -halfSpan),
+                new THREE.Vector3(halfSpan, -0.2, halfSpan),
+                new THREE.Vector3(-halfSpan, -0.2, halfSpan),
+                new THREE.Vector3(-halfSpan, -0.2, -halfSpan)
+            ];
+            const borderGeo = new THREE.BufferGeometry().setFromPoints(borderPts);
+            const borderMat = new THREE.LineBasicMaterial({ color: 0x0ea5e9, transparent: true, opacity: 0.8, linewidth: 2.5 });
+            scene.add(new THREE.Line(borderGeo, borderMat));
         }
+
+        // 5. Generate 3D Terrain Elevation Mesh from DEM & Multi-Layer Hills & Slopes
+        interactiveObjectsRef.current = [];
+
+        // Normalize and cache active hills
+        const effectiveHills: HillSpineProfile[] = (hillProfiles && hillProfiles.length > 0)
+            ? hillProfiles
+            : (effectiveSpineProfile ? [effectiveSpineProfile] : []);
+        setActiveSpineProfilesCache(effectiveHills.filter(h => showHill1 && h.enabled));
+
+        // Normalize and cache active slopes
+        const effectiveSlopes: PerimeterSlopeObject[] = (slopeObjects && slopeObjects.length > 0)
+            ? slopeObjects
+            : (perimeterVertices && perimeterVertices.length > 0 ? [{
+                id: 'slope_1',
+                name: 'Slope 1 (Uneven Terrain)',
+                enabled: showSlope1,
+                vertices: perimeterVertices,
+                hasRoadZeroLevel: true
+            }] : []);
+        setActivePerimeterSlopesCache(effectiveSlopes.filter(s => showSlope1 && s.enabled));
 
         const gridSize = 64;
         const terrainSpanM = 480; // 480m x 480m field
@@ -270,25 +399,31 @@ export const Sandbox3DTerrainCanvas: React.FC<Sandbox3DTerrainCanvasProps> = ({
             const relY = (eleM - baseEle) * elevationExaggeration;
             posAttr.setY(i, relY);
 
-            // Slope-aware terrain shading: green terrace -> golden rise -> rock crest
+            // High-contrast slope-aware terrain shading:
+            // Lush orchard terrace -> golden sunlit rise -> limestone crest -> warm rock face
             const { slopeDeg } = getSlopeAndAspect(ptLat, ptLng, baseLat, baseLng);
             const normElevation = Math.max(0, Math.min(1, (eleM - baseEle) / 25));
 
             if (slopeDeg > 22) {
-                // Steep slope / ravine: rocky earth color
-                colors[i * 3 + 0] = 0.45;
-                colors[i * 3 + 1] = 0.38;
-                colors[i * 3 + 2] = 0.30;
+                // Steep slope / ravine: warm terracotta stone for clear edge perception
+                colors[i * 3 + 0] = 0.68;
+                colors[i * 3 + 1] = 0.52;
+                colors[i * 3 + 2] = 0.38;
             } else if (normElevation > 0.6) {
-                // High ridge: sunlit pasture
-                colors[i * 3 + 0] = 0.22;
-                colors[i * 3 + 1] = 0.55;
-                colors[i * 3 + 2] = 0.24;
+                // High ridge / hill crest: bright sunlit golden pasture
+                colors[i * 3 + 0] = 0.86;
+                colors[i * 3 + 1] = 0.74;
+                colors[i * 3 + 2] = 0.36;
+            } else if (normElevation > 0.25) {
+                // Gentle rise / terrace mound
+                colors[i * 3 + 0] = 0.45;
+                colors[i * 3 + 1] = 0.72;
+                colors[i * 3 + 2] = 0.32;
             } else {
-                // Orchard terrace: lush agricultural green
-                colors[i * 3 + 0] = 0.12;
-                colors[i * 3 + 1] = 0.42;
-                colors[i * 3 + 2] = 0.20;
+                // Orchard terrace: lush, vibrant agricultural green
+                colors[i * 3 + 0] = 0.22;
+                colors[i * 3 + 1] = 0.64;
+                colors[i * 3 + 2] = 0.28;
             }
         }
 
@@ -297,8 +432,8 @@ export const Sandbox3DTerrainCanvas: React.FC<Sandbox3DTerrainCanvasProps> = ({
 
         const terrainMat = new THREE.MeshStandardMaterial({
             vertexColors: true,
-            roughness: 0.85,
-            metalness: 0.1,
+            roughness: 0.65,
+            metalness: 0.06,
             wireframe: false
         });
 
@@ -345,118 +480,283 @@ export const Sandbox3DTerrainCanvas: React.FC<Sandbox3DTerrainCanvasProps> = ({
             scene.add(line);
         });
 
-        // 6.5 Render Mound Ridge Spine line, Width Cross-Sections, and Connection Points (A, B, C...) in 3D
-        if (effectiveSpineProfile && effectiveSpineProfile.points && effectiveSpineProfile.points.length >= 2) {
-            const spinePoints3D: THREE.Vector3[] = [];
-            const leftHullPoints: THREE.Vector3[] = [];
-            const rightHullPoints: THREE.Vector3[] = [];
+        // 6.5 Render Multi-Layer Mound Ridge Spines, Width Cross-Sections, and Connection Points in 3D
+        if (showHill1) {
+            effectiveHills.forEach((hillProfile) => {
+                if (!hillProfile.enabled || !hillProfile.points || hillProfile.points.length < 2) return;
+                const spinePoints3D: THREE.Vector3[] = [];
+                const leftHullPoints: THREE.Vector3[] = [];
+                const rightHullPoints: THREE.Vector3[] = [];
 
-            effectiveSpineProfile.points.forEach((pt, idx) => {
-                const letter = String.fromCharCode(65 + idx);
-                const ptX = toLocalX(pt.lng);
-                const ptZ = toLocalZ(pt.lat);
-                const ptEle = (getElevationAtCoords(pt.lat, pt.lng, baseLat, baseLng, baseEle) - baseEle) * elevationExaggeration + 1.2;
-                const pointVec = new THREE.Vector3(ptX, ptEle, ptZ);
-                spinePoints3D.push(pointVec);
+                hillProfile.points.forEach((pt, idx) => {
+                    const letter = String.fromCharCode(65 + idx);
+                    const ptX = toLocalX(pt.lng);
+                    const ptZ = toLocalZ(pt.lat);
+                    const ptEle = (getElevationAtCoords(pt.lat, pt.lng, baseLat, baseLng, baseEle) - baseEle) * elevationExaggeration + 1.2;
+                    const pointVec = new THREE.Vector3(ptX, ptEle, ptZ);
+                    spinePoints3D.push(pointVec);
 
-                // 3D Connection Point Marker Sphere
-                const markerGeo = new THREE.SphereGeometry(3.5, 16, 16);
-                const markerMat = new THREE.MeshStandardMaterial({
-                    color: 0xf59e0b,
-                    emissive: 0xd97706,
-                    metalness: 0.8,
-                    roughness: 0.2
+                    // 3D Connection Point Marker Sphere (Bright Yellow / Gold: Movable, Editable, Resizable)
+                    const markerGeo = new THREE.SphereGeometry(3.8, 18, 18);
+                    const markerMat = new THREE.MeshStandardMaterial({
+                        color: 0xfbbf24,
+                        emissive: 0xd97706,
+                        metalness: 0.8,
+                        roughness: 0.2
+                    });
+                    const markerMesh = new THREE.Mesh(markerGeo, markerMat);
+                    markerMesh.position.copy(pointVec);
+                    markerMesh.userData = { type: 'slope_point', subType: 'move_center', data: pt, hillId: hillProfile.id, pointVec, centerVec: pointVec };
+                    scene.add(markerMesh);
+                    interactiveObjectsRef.current.push(markerMesh);
+
+                    // Glowing Ring around Yellow Point showing interactive editing & dragging
+                    const ringGeo = new THREE.RingGeometry(4.4, 5.4, 24);
+                    const ringMat = new THREE.MeshBasicMaterial({ color: 0xfef08a, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
+                    const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+                    ringMesh.rotation.x = Math.PI / 2;
+                    ringMesh.position.copy(pointVec);
+                    scene.add(ringMesh);
+
+                    // Vertical Height Adjustment Handle (Gold Cone pointing up)
+                    const heightConeGeo = new THREE.ConeGeometry(2.0, 4.2, 12);
+                    const heightConeMat = new THREE.MeshStandardMaterial({
+                        color: 0xfbbf24,
+                        emissive: 0xd97706,
+                        metalness: 0.8,
+                        roughness: 0.2
+                    });
+                    const heightCone = new THREE.Mesh(heightConeGeo, heightConeMat);
+                    heightCone.position.set(ptX, ptEle + 4.5, ptZ);
+                    heightCone.userData = { type: 'slope_point', subType: 'height_handle', data: pt, hillId: hillProfile.id, centerVec: pointVec };
+                    scene.add(heightCone);
+                    interactiveObjectsRef.current.push(heightCone);
+
+                    // Floating 3D Billboard Label for Slope Point
+                    const widthM = pt.widthM || 40;
+                    const ptLabel = createBillboardText(
+                        `🏔️ ${hillProfile.name || 'Hill'} [${letter}]: +${pt.peakHeightM}m (W:${widthM}m)`,
+                        '#0f172a',
+                        '#fbbf24',
+                        '#f59e0b'
+                    );
+                    ptLabel.position.set(ptX, ptEle + 8.5, ptZ);
+                    scene.add(ptLabel);
+
+                    // Vertical Elevation Guide Line (Base to Peak)
+                    const baseGroundEle = (getElevationAtCoords(pt.lat, pt.lng, baseLat, baseLng, baseEle) - baseEle) * elevationExaggeration;
+                    const vertGeo = new THREE.BufferGeometry().setFromPoints([
+                        new THREE.Vector3(ptX, baseGroundEle, ptZ),
+                        pointVec
+                    ]);
+                    const vertLine = new THREE.Line(vertGeo, new THREE.LineBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.7 }));
+                    scene.add(vertLine);
+
+                    // 3D Cross-Section Width Line at this Point
+                    let dirX = 1;
+                    let dirZ = 0;
+                    if (idx < hillProfile.points.length - 1) {
+                        const nextPt = hillProfile.points[idx + 1];
+                        const dLng = toLocalX(nextPt.lng) - ptX;
+                        const dLat = toLocalZ(nextPt.lat) - ptZ;
+                        const len = Math.hypot(dLng, dLat) || 1;
+                        dirX = -dLat / len;
+                        dirZ = dLng / len;
+                    } else if (idx > 0) {
+                        const prevPt = hillProfile.points[idx - 1];
+                        const dLng = ptX - toLocalX(prevPt.lng);
+                        const dLat = ptZ - toLocalZ(prevPt.lat);
+                        const len = Math.hypot(dLng, dLat) || 1;
+                        dirX = -dLat / len;
+                        dirZ = dLng / len;
+                    }
+
+                    const leftW = pt.leftWidthM !== undefined ? pt.leftWidthM : (widthM / 2);
+                    const rightW = pt.rightWidthM !== undefined ? pt.rightWidthM : (widthM / 2);
+                    
+                    const leftVec = (pt.leftLat !== undefined && pt.leftLng !== undefined)
+                        ? new THREE.Vector3(toLocalX(pt.leftLng), ptEle, toLocalZ(pt.leftLat))
+                        : new THREE.Vector3(ptX + dirX * leftW, ptEle, ptZ + dirZ * leftW);
+
+                    const rightVec = (pt.rightLat !== undefined && pt.rightLng !== undefined)
+                        ? new THREE.Vector3(toLocalX(pt.rightLng), ptEle, toLocalZ(pt.rightLat))
+                        : new THREE.Vector3(ptX - dirX * rightW, ptEle, ptZ - dirZ * rightW);
+
+                    leftHullPoints.push(leftVec);
+                    rightHullPoints.push(rightVec);
+
+                    const widthBarGeo = new THREE.BufferGeometry().setFromPoints([leftVec, rightVec]);
+                    const widthBarMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, linewidth: 3 });
+                    const widthBar = new THREE.Line(widthBarGeo, widthBarMat);
+                    scene.add(widthBar);
+
+                    // Interactive Left Resize Wing Handle (drag to resize width)
+                    const leftWingGeo = new THREE.SphereGeometry(2.8, 16, 16);
+                    const leftWingMat = new THREE.MeshStandardMaterial({
+                        color: 0x06b6d4,
+                        emissive: 0x0891b2,
+                        metalness: 0.8,
+                        roughness: 0.2
+                    });
+                    const leftWingMesh = new THREE.Mesh(leftWingGeo, leftWingMat);
+                    leftWingMesh.position.copy(leftVec);
+                    leftWingMesh.userData = {
+                        type: 'slope_point',
+                        subType: 'resize_wing',
+                        side: 'left',
+                        data: pt,
+                        centerVec: pointVec,
+                        hillId: hillProfile.id
+                    };
+                    scene.add(leftWingMesh);
+                    interactiveObjectsRef.current.push(leftWingMesh);
+
+                    // Interactive Right Resize Wing Handle (drag to resize width)
+                    const rightWingGeo = new THREE.SphereGeometry(2.8, 16, 16);
+                    const rightWingMat = new THREE.MeshStandardMaterial({
+                        color: 0x06b6d4,
+                        emissive: 0x0891b2,
+                        metalness: 0.8,
+                        roughness: 0.2
+                    });
+                    const rightWingMesh = new THREE.Mesh(rightWingGeo, rightWingMat);
+                    rightWingMesh.position.copy(rightVec);
+                    rightWingMesh.userData = {
+                        type: 'slope_point',
+                        subType: 'resize_wing',
+                        side: 'right',
+                        data: pt,
+                        centerVec: pointVec,
+                        hillId: hillProfile.id
+                    };
+                    scene.add(rightWingMesh);
+                    interactiveObjectsRef.current.push(rightWingMesh);
                 });
-                const markerMesh = new THREE.Mesh(markerGeo, markerMat);
-                markerMesh.position.copy(pointVec);
-                markerMesh.userData = { type: 'slope_point', data: pt };
-                scene.add(markerMesh);
-                interactiveObjectsRef.current.push(markerMesh);
 
-                // Floating 3D Billboard Label for Slope Point
-                const widthM = pt.widthM || 40;
-                const ptLabel = createBillboardText(
-                    `🏔️ Point ${letter}: +${pt.peakHeightM}m (W:${widthM}m)`,
-                    '#0f172a',
-                    '#fbbf24',
-                    '#f59e0b'
-                );
-                ptLabel.position.set(ptX, ptEle + 8, ptZ);
-                scene.add(ptLabel);
-
-                // Vertical Elevation Guide Line (Base to Peak)
-                const baseGroundEle = (getElevationAtCoords(pt.lat, pt.lng, baseLat, baseLng, baseEle) - baseEle) * elevationExaggeration;
-                const vertGeo = new THREE.BufferGeometry().setFromPoints([
-                    new THREE.Vector3(ptX, baseGroundEle, ptZ),
-                    pointVec
-                ]);
-                const vertLine = new THREE.Line(vertGeo, new THREE.LineBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.7 }));
-                scene.add(vertLine);
-
-                // 3D Cross-Section Width Line at this Point (Showing Width W in 3D)
-                let dirX = 1;
-                let dirZ = 0;
-                if (idx < effectiveSpineProfile.points.length - 1) {
-                    const nextPt = effectiveSpineProfile.points[idx + 1];
-                    const dLng = toLocalX(nextPt.lng) - ptX;
-                    const dLat = toLocalZ(nextPt.lat) - ptZ;
-                    const len = Math.hypot(dLng, dLat) || 1;
-                    dirX = -dLat / len;
-                    dirZ = dLng / len;
-                } else if (idx > 0) {
-                    const prevPt = effectiveSpineProfile.points[idx - 1];
-                    const dLng = ptX - toLocalX(prevPt.lng);
-                    const dLat = ptZ - toLocalZ(prevPt.lat);
-                    const len = Math.hypot(dLng, dLat) || 1;
-                    dirX = -dLat / len;
-                    dirZ = dLng / len;
+                // Glowing Ridge Line Tube
+                try {
+                    const spineCurve = new THREE.CatmullRomCurve3(spinePoints3D);
+                    const spineTubeGeo = new THREE.TubeGeometry(spineCurve, 32, 1.4, 8, false);
+                    const spineTubeMat = new THREE.MeshStandardMaterial({
+                        color: 0xf59e0b,
+                        emissive: 0xb45309,
+                        roughness: 0.3
+                    });
+                    const spineTube = new THREE.Mesh(spineTubeGeo, spineTubeMat);
+                    scene.add(spineTube);
+                } catch (e) {
+                    const ridgeGeo = new THREE.BufferGeometry().setFromPoints(spinePoints3D);
+                    const ridgeMat = new THREE.LineBasicMaterial({ color: 0xf59e0b, linewidth: 3.5 });
+                    scene.add(new THREE.Line(ridgeGeo, ridgeMat));
                 }
 
-                const halfW = widthM / 2;
-                const leftVec = new THREE.Vector3(ptX + dirX * halfW, ptEle, ptZ + dirZ * halfW);
-                const rightVec = new THREE.Vector3(ptX - dirX * halfW, ptEle, ptZ - dirZ * halfW);
-                leftHullPoints.push(leftVec);
-                rightHullPoints.push(rightVec);
-
-                const widthBarGeo = new THREE.BufferGeometry().setFromPoints([leftVec, rightVec]);
-                const widthBarMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, linewidth: 3 });
-                const widthBar = new THREE.Line(widthBarGeo, widthBarMat);
-                scene.add(widthBar);
-
-                // End caps on the width line
-                [leftVec, rightVec].forEach(capPos => {
-                    const capGeo = new THREE.CylinderGeometry(0.8, 0.8, 1.8, 8);
-                    const capMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
-                    const cap = new THREE.Mesh(capGeo, capMat);
-                    cap.position.copy(capPos);
-                    scene.add(cap);
-                });
+                // 3D Perimeter Polygon Hull
+                if (leftHullPoints.length > 1 && rightHullPoints.length > 1) {
+                    const hullPoints3D = [...leftHullPoints, ...rightHullPoints.slice().reverse(), leftHullPoints[0]];
+                    const hullGeo = new THREE.BufferGeometry().setFromPoints(hullPoints3D);
+                    const hullMat = new THREE.LineBasicMaterial({ color: 0xd946ef, linewidth: 3.5 });
+                    scene.add(new THREE.Line(hullGeo, hullMat));
+                }
             });
+        }
 
-            // Glowing Ridge Line Tube along points A, B, C, D...
-            try {
-                const spineCurve = new THREE.CatmullRomCurve3(spinePoints3D);
-                const spineTubeGeo = new THREE.TubeGeometry(spineCurve, 32, 1.4, 8, false);
-                const spineTubeMat = new THREE.MeshStandardMaterial({
-                    color: 0xf59e0b,
-                    emissive: 0xb45309,
-                    roughness: 0.3
+        // 6.7 Render Multi-Layer Perimeter-based Uneven Slopes (Multi-Point 3D Triangulated Mesh)
+        if (showSlope1) {
+            effectiveSlopes.forEach((slopeObj) => {
+                if (!slopeObj.enabled || !slopeObj.vertices || slopeObj.vertices.length < 3) return;
+                const polyPoints3D: THREE.Vector3[] = [];
+                let sumX = 0, sumY = 0, sumZ = 0;
+
+                slopeObj.vertices.forEach((v, idx) => {
+                    const vx = toLocalX(v.lng);
+                    const vz = toLocalZ(v.lat);
+                    const baseG = (getElevationAtCoords(v.lat, v.lng, baseLat, baseLng, baseEle) - baseEle) * elevationExaggeration;
+                    const vy = baseG + (v.elevationOffsetM || 0) * elevationExaggeration + 0.5;
+                    const vec = new THREE.Vector3(vx, vy, vz);
+                    polyPoints3D.push(vec);
+                    sumX += vx;
+                    sumY += vy;
+                    sumZ += vz;
+
+                    // 3D Control Vertex Marker (Spherical Handle)
+                    const vGeo = new THREE.SphereGeometry(3.0, 16, 16);
+                    const vMat = new THREE.MeshStandardMaterial({
+                        color: 0xd946ef,
+                        emissive: 0xa21caf,
+                        roughness: 0.2,
+                        metalness: 0.8
+                    });
+                    const vMesh = new THREE.Mesh(vGeo, vMat);
+                    vMesh.position.copy(vec);
+                    vMesh.userData = { type: 'perimeter_vertex', data: v, index: idx, slopeId: slopeObj.id };
+                    scene.add(vMesh);
+                    interactiveObjectsRef.current.push(vMesh);
+
+                    // Vertical stalk to ground
+                    const stalkGeo = new THREE.BufferGeometry().setFromPoints([
+                        new THREE.Vector3(vx, baseG, vz),
+                        vec
+                    ]);
+                    const stalkMat = new THREE.LineBasicMaterial({ color: 0xd946ef, transparent: true, opacity: 0.8 });
+                    scene.add(new THREE.Line(stalkGeo, stalkMat));
+
+                    // 3D Billboard Label for Vertex
+                    const vLabel = createBillboardText(
+                        `${slopeObj.name || 'Slope'} V${idx + 1}: +${v.elevationOffsetM}m`,
+                        '#3b0764',
+                        '#f0abfc',
+                        '#c026d3'
+                    );
+                    vLabel.position.set(vx, vy + 6, vz);
+                    scene.add(vLabel);
                 });
-                const spineTube = new THREE.Mesh(spineTubeGeo, spineTubeMat);
-                scene.add(spineTube);
-            } catch (e) {
-                const ridgeGeo = new THREE.BufferGeometry().setFromPoints(spinePoints3D);
-                const ridgeMat = new THREE.LineBasicMaterial({ color: 0xf59e0b, linewidth: 3.5 });
-                scene.add(new THREE.Line(ridgeGeo, ridgeMat));
-            }
 
-            // 3D Perimeter Polygon Hull (Purple Outline in 3D matching 2D Sketch!)
-            if (leftHullPoints.length > 1 && rightHullPoints.length > 1) {
-                const hullPoints3D = [...leftHullPoints, ...rightHullPoints.slice().reverse(), leftHullPoints[0]];
-                const hullGeo = new THREE.BufferGeometry().setFromPoints(hullPoints3D);
-                const hullMat = new THREE.LineBasicMaterial({ color: 0xd946ef, linewidth: 3.5 });
-                scene.add(new THREE.Line(hullGeo, hullMat));
-            }
+                // Centroid
+                const n = slopeObj.vertices.length;
+                const centroid = new THREE.Vector3(sumX / n, sumY / n + 1.5, sumZ / n);
+
+                // Generate 3D Triangulated Mesh (Triangle Fan from Centroid to Vertices)
+                const triGeo = new THREE.BufferGeometry();
+                const positions: number[] = [];
+                const colorsArr: number[] = [];
+
+                for (let i = 0; i < n; i++) {
+                    const p1 = polyPoints3D[i];
+                    const p2 = polyPoints3D[(i + 1) % n];
+
+                    positions.push(centroid.x, centroid.y, centroid.z);
+                    positions.push(p1.x, p1.y, p1.z);
+                    positions.push(p2.x, p2.y, p2.z);
+
+                    // Gradient vertex colors
+                    colorsArr.push(0.7, 0.2, 0.85);
+                    colorsArr.push(0.3, 0.7, 0.9);
+                    colorsArr.push(0.4, 0.8, 0.5);
+                }
+
+                triGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+                triGeo.setAttribute('color', new THREE.Float32BufferAttribute(colorsArr, 3));
+                triGeo.computeVertexNormals();
+
+                const triMat = new THREE.MeshStandardMaterial({
+                    vertexColors: true,
+                    roughness: 0.5,
+                    metalness: 0.25,
+                    side: THREE.DoubleSide,
+                    transparent: true,
+                    opacity: 0.82
+                });
+                const triMesh = new THREE.Mesh(triGeo, triMat);
+                triMesh.receiveShadow = true;
+                triMesh.castShadow = true;
+                scene.add(triMesh);
+
+                // Glowing Perimeter Outline Wire
+                const closedLoop = [...polyPoints3D, polyPoints3D[0]];
+                const outlineGeo = new THREE.BufferGeometry().setFromPoints(closedLoop);
+                const outlineMat = new THREE.LineBasicMaterial({ color: 0xf0abfc, linewidth: 3.5 });
+                scene.add(new THREE.Line(outlineGeo, outlineMat));
+            });
         }
 
         // 7. Cameras with 3D Frustum Cones & Terrain Slope Shadows
@@ -752,6 +1052,89 @@ export const Sandbox3DTerrainCanvas: React.FC<Sandbox3DTerrainCanvasProps> = ({
             interactiveObjectsRef.current.push(body);
         });
 
+        // 7.4 Photo Pins in 3D Space (Field Inspection Photos with Viewing Angle Cones)
+        if (showPhotoPins && photoPins && photoPins.length > 0) {
+            photoPins.forEach((pin) => {
+                const px = toLocalX(pin.lng);
+                const pz = toLocalZ(pin.lat);
+                const groundY = (getElevationAtCoords(pin.lat, pin.lng, baseLat, baseLng, baseEle) - baseEle) * elevationExaggeration;
+                const pinHeight = 14;
+
+                const pinGroup = new THREE.Group();
+                pinGroup.position.set(px, groundY, pz);
+                pinGroup.userData = { type: 'photo_pin', data: pin };
+
+                // Mast / Pole
+                const poleGeo = new THREE.CylinderGeometry(0.5, 0.7, pinHeight, 8);
+                const poleMat = new THREE.MeshStandardMaterial({
+                    color: 0x06b6d4,
+                    metalness: 0.8,
+                    roughness: 0.2,
+                    emissive: 0x0891b2
+                });
+                const pole = new THREE.Mesh(poleGeo, poleMat);
+                pole.position.y = pinHeight / 2;
+                pole.userData = { type: 'photo_pin', data: pin };
+                pinGroup.add(pole);
+
+                // Camera Orb Beacon
+                const orbGeo = new THREE.SphereGeometry(2.6, 16, 16);
+                const orbMat = new THREE.MeshStandardMaterial({
+                    color: 0x38bdf8,
+                    emissive: 0x0284c7,
+                    roughness: 0.1,
+                    metalness: 0.9
+                });
+                const orb = new THREE.Mesh(orbGeo, orbMat);
+                orb.position.y = pinHeight + 1.8;
+                orb.userData = { type: 'photo_pin', data: pin };
+                pinGroup.add(orb);
+
+                // Directional 3D Viewing Cone (Field of View at compass heading)
+                const azimuthRad = -(pin.azimuthDeg * Math.PI) / 180;
+                const fovRad = ((pin.fovDeg || 60) * Math.PI) / 180;
+                const coneLength = 30;
+
+                const coneGeo = new THREE.ConeGeometry(coneLength * Math.tan(fovRad / 2), coneLength, 16, 1, true);
+                coneGeo.rotateX(Math.PI / 2);
+                const coneMat = new THREE.MeshBasicMaterial({
+                    color: 0x38bdf8,
+                    transparent: true,
+                    opacity: 0.28,
+                    side: THREE.DoubleSide
+                });
+                const coneMesh = new THREE.Mesh(coneGeo, coneMat);
+                coneMesh.position.y = pinHeight + 1.8;
+                coneMesh.rotation.y = azimuthRad;
+                pinGroup.add(coneMesh);
+
+                // Directional Ground Arrow
+                const arrowLen = 24;
+                const targetX = Math.sin((pin.azimuthDeg * Math.PI) / 180) * arrowLen;
+                const targetZ = -Math.cos((pin.azimuthDeg * Math.PI) / 180) * arrowLen;
+                const arrowGeo = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(0, 0.4, 0),
+                    new THREE.Vector3(targetX, 0.4, targetZ)
+                ]);
+                const arrowMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, linewidth: 2.5 });
+                pinGroup.add(new THREE.Line(arrowGeo, arrowMat));
+
+                // Floating 3D Billboard Label for Photo Pin
+                const pLabel = createBillboardText(
+                    `📷 ${pin.name || 'Photo'} (${pin.azimuthDeg}°)`,
+                    '#082f49',
+                    '#7dd3fc',
+                    '#0284c7'
+                );
+                pLabel.position.set(0, pinHeight + 7, 0);
+                pinGroup.add(pLabel);
+
+                scene.add(pinGroup);
+                interactiveObjectsRef.current.push(orb);
+                interactiveObjectsRef.current.push(pole);
+            });
+        }
+
         // 8. 3D Drone Quadcopter Model & 3D Flight Path
         const droneGroup = new THREE.Group();
         droneMeshRef.current = droneGroup;
@@ -893,10 +1276,54 @@ export const Sandbox3DTerrainCanvas: React.FC<Sandbox3DTerrainCanvasProps> = ({
             renderer.setSize(w, h);
         };
 
-        window.addEventListener('resize', handleResize);
+        // Synchronous Live Mesh Vertex Update (Real-time redraw on line/point movements without recreating scene)
+        const syncUpdateTerrainMesh = () => {
+            if (!terrainMeshRef.current) return;
+            const geo = terrainMeshRef.current.geometry as THREE.BufferGeometry;
+            const pos = geo.attributes.position;
+            const col = geo.attributes.color;
+            const colorsArray = col?.array as Float32Array;
+            const bEle = 480;
+
+            for (let i = 0; i < pos.count; i++) {
+                const x = pos.getX(i);
+                const z = pos.getZ(i);
+                const ptLng = baseLng + x / mPerDegLng;
+                const ptLat = baseLat - z / mPerDegLat;
+                const eleM = getElevationAtCoords(ptLat, ptLng, baseLat, baseLng, bEle);
+                const relY = (eleM - bEle) * elevationExaggeration;
+                pos.setY(i, relY);
+
+                if (colorsArray) {
+                    const { slopeDeg } = getSlopeAndAspect(ptLat, ptLng, baseLat, baseLng);
+                    const normElevation = Math.max(0, Math.min(1, (eleM - bEle) / 25));
+                    if (slopeDeg > 22) {
+                        colorsArray[i * 3 + 0] = 0.45;
+                        colorsArray[i * 3 + 1] = 0.38;
+                        colorsArray[i * 3 + 2] = 0.30;
+                    } else if (normElevation > 0.6) {
+                        colorsArray[i * 3 + 0] = 0.22;
+                        colorsArray[i * 3 + 1] = 0.55;
+                        colorsArray[i * 3 + 2] = 0.24;
+                    } else {
+                        colorsArray[i * 3 + 0] = 0.12;
+                        colorsArray[i * 3 + 1] = 0.42;
+                        colorsArray[i * 3 + 2] = 0.20;
+                    }
+                }
+            }
+            pos.needsUpdate = true;
+            if (col) col.needsUpdate = true;
+            geo.computeVertexNormals();
+        };
+
+        window.addEventListener('agrimap:terrain_mesh_sync', syncUpdateTerrainMesh);
+        window.addEventListener('agrimap:terrain_slope_updated', syncUpdateTerrainMesh);
 
         return () => {
             window.removeEventListener('resize', handleResize);
+            window.removeEventListener('agrimap:terrain_mesh_sync', syncUpdateTerrainMesh);
+            window.removeEventListener('agrimap:terrain_slope_updated', syncUpdateTerrainMesh);
             if (reqAnimRef.current) cancelAnimationFrame(reqAnimRef.current);
             renderer.dispose();
             geometry.dispose();
@@ -933,7 +1360,7 @@ export const Sandbox3DTerrainCanvas: React.FC<Sandbox3DTerrainCanvasProps> = ({
     const handleMouseDown = (e: React.MouseEvent) => {
         dragDistanceRef.current = 0;
 
-        // Check if user clicked on a slope point or height handle to drag height vertically
+        // Check if user clicked on interactive 3D slope point, height cone, or resize wing
         if (rendererRef.current && cameraRef.current) {
             const rect = rendererRef.current.domElement.getBoundingClientRect();
             const mouseX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -947,8 +1374,41 @@ export const Sandbox3DTerrainCanvas: React.FC<Sandbox3DTerrainCanvasProps> = ({
                     obj = obj.parent;
                 }
                 if (obj && obj.userData?.type === 'slope_point') {
-                    draggedPointIdRef.current = obj.userData.data.id;
-                    initialDragPosRef.current = { clientY: e.clientY, initialHeight: obj.userData.data.peakHeightM || 25 };
+                    const subType = obj.userData.subType || 'move_center';
+                    const pt = obj.userData.data as SpineControlPoint;
+                    const centerVec = obj.userData.centerVec || obj.userData.pointVec;
+                    const planeY = (centerVec?.y !== undefined) ? centerVec.y : (obj.position.y || 0);
+
+                    dragOperationRef.current = {
+                        type: subType === 'resize_wing' ? 'resize_wing' : subType === 'height_handle' ? 'height_handle' : 'move_point',
+                        pointId: pt.id,
+                        ptData: pt,
+                        planeY,
+                        centerVec,
+                        side: obj.userData.side,
+                        initialWidth: pt.widthM || 45,
+                        initialLeftW: pt.leftWidthM ?? (pt.widthM ? pt.widthM / 2 : 22.5),
+                        initialRightW: pt.rightWidthM ?? (pt.widthM ? pt.widthM / 2 : 22.5),
+                        initialHeight: pt.peakHeightM || 25,
+                        initialLat: pt.lat,
+                        initialLng: pt.lng,
+                        initialClientY: e.clientY
+                    };
+                    isDraggingRef.current = true;
+                    prevMousePosRef.current = { x: e.clientX, y: e.clientY };
+                    return;
+                }
+                if (obj && obj.userData?.type === 'perimeter_vertex') {
+                    const v = obj.userData.data as PerimeterSlopeVertex;
+                    dragOperationRef.current = {
+                        type: 'move_vertex',
+                        pointId: v.id,
+                        vertexId: v.id,
+                        vertexData: v,
+                        planeY: obj.position.y || 0,
+                        initialHeight: v.elevationOffsetM,
+                        initialClientY: e.clientY
+                    };
                     isDraggingRef.current = true;
                     prevMousePosRef.current = { x: e.clientX, y: e.clientY };
                     return;
@@ -968,30 +1428,134 @@ export const Sandbox3DTerrainCanvas: React.FC<Sandbox3DTerrainCanvasProps> = ({
         dragDistanceRef.current += Math.abs(dx) + Math.abs(dy);
         prevMousePosRef.current = { x: e.clientX, y: e.clientY };
 
-        // If dragging slope point height vertically via mouse
-        if (draggedPointIdRef.current && initialDragPosRef.current) {
-            const vertDy = initialDragPosRef.current.clientY - e.clientY;
-            const newHeight = Math.max(2, Math.min(90, Math.round(initialDragPosRef.current.initialHeight + vertDy * 0.4)));
-            if (onUpdateSpinePoint) {
-                onUpdateSpinePoint(draggedPointIdRef.current, { peakHeightM: newHeight });
+        // Handle Active 3D Drag Operation (Move Point on Ground Plane, Resize Wings, Height Cone, Move Vertex)
+        if (dragOperationRef.current && rendererRef.current && cameraRef.current) {
+            const dragOp = dragOperationRef.current;
+            const rect = rendererRef.current.domElement.getBoundingClientRect();
+            const mouseX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            const mouseY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(new THREE.Vector2(mouseX, mouseY), cameraRef.current);
+
+            if (dragOp.type === 'move_point') {
+                if (e.shiftKey) {
+                    // Holding Shift drags elevation vertically
+                    const vertDy = (dragOp.initialClientY ?? e.clientY) - e.clientY;
+                    const newHeight = Math.max(2, Math.min(100, Math.round((dragOp.initialHeight || 25) + vertDy * 0.4)));
+                    if (onUpdateSpinePoint) {
+                        onUpdateSpinePoint(dragOp.pointId, { peakHeightM: newHeight }, false);
+                    }
+                } else {
+                    // Dragging horizontally on ground plane to relocate point
+                    const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -dragOp.planeY);
+                    const planeIntersect = new THREE.Vector3();
+                    if (raycaster.ray.intersectPlane(dragPlane, planeIntersect)) {
+                        const newLng = baseLng + planeIntersect.x / mPerDegLng;
+                        const newLat = baseLat - planeIntersect.z / mPerDegLat;
+                        if (onUpdateSpinePoint) {
+                            onUpdateSpinePoint(dragOp.pointId, { lat: newLat, lng: newLng }, false);
+                        }
+                    }
+                }
+                return;
             }
-            return;
+
+            if (dragOp.type === 'height_handle') {
+                const vertDy = (dragOp.initialClientY ?? e.clientY) - e.clientY;
+                const newHeight = Math.max(2, Math.min(100, Math.round((dragOp.initialHeight || 25) + vertDy * 0.4)));
+                if (onUpdateSpinePoint) {
+                    onUpdateSpinePoint(dragOp.pointId, { peakHeightM: newHeight }, false);
+                }
+                return;
+            }
+
+            if (dragOp.type === 'resize_wing') {
+                if (dragOp.centerVec) {
+                    const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -dragOp.centerVec.y);
+                    const planeIntersect = new THREE.Vector3();
+                    if (raycaster.ray.intersectPlane(dragPlane, planeIntersect)) {
+                        const dist = dragOp.centerVec.distanceTo(planeIntersect);
+                        const sideW = Math.max(5, Math.min(150, Math.round(dist)));
+                        const newTotal = Math.max(10, Math.round(sideW * 2));
+                        if (onUpdateSpinePoint) {
+                            if (dragOp.side === 'left') {
+                                onUpdateSpinePoint(dragOp.pointId, { widthM: newTotal, leftWidthM: sideW }, false);
+                            } else {
+                                onUpdateSpinePoint(dragOp.pointId, { widthM: newTotal, rightWidthM: sideW }, false);
+                            }
+                        }
+                    }
+                }
+                return;
+            }
+
+            if (dragOp.type === 'move_vertex') {
+                if (e.shiftKey) {
+                    const vertDy = (dragOp.initialClientY ?? e.clientY) - e.clientY;
+                    const newEle = Math.max(0, Math.min(80, Math.round((dragOp.initialHeight || 10) + vertDy * 0.4)));
+                    if (onUpdatePerimeterVertex && dragOp.vertexId) {
+                        onUpdatePerimeterVertex(dragOp.vertexId, { elevationOffsetM: newEle });
+                    }
+                } else {
+                    const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -dragOp.planeY);
+                    const planeIntersect = new THREE.Vector3();
+                    if (raycaster.ray.intersectPlane(dragPlane, planeIntersect)) {
+                        const newLng = baseLng + planeIntersect.x / mPerDegLng;
+                        const newLat = baseLat - planeIntersect.z / mPerDegLat;
+                        if (onUpdatePerimeterVertex && dragOp.vertexId) {
+                            onUpdatePerimeterVertex(dragOp.vertexId, { lat: newLat, lng: newLng });
+                        }
+                    }
+                }
+                return;
+            }
         }
 
         if (viewMode === 'orbit') {
             sphericalRef.current.theta -= dx * 0.007;
             sphericalRef.current.phi = Math.max(0.1, Math.min(Math.PI / 2.05, sphericalRef.current.phi - dy * 0.007));
+            const heading = Math.round(((sphericalRef.current.theta * 180 / Math.PI) % 360 + 360) % 360);
+            setCompassHeading(heading);
         }
     };
 
     const handleMouseUp = (e: React.MouseEvent) => {
         isDraggingRef.current = false;
 
-        if (draggedPointIdRef.current) {
-            draggedPointIdRef.current = null;
-            initialDragPosRef.current = null;
-            toast.success(isKa ? 'სიმაღლე განახლდა' : 'Slope height updated');
-            return;
+        // If dragging operation was active
+        if (dragOperationRef.current) {
+            const dragOp = dragOperationRef.current;
+            dragOperationRef.current = null;
+
+            if (dragDistanceRef.current >= 6) {
+                // Real drag: finalize and persist
+                if (dragOp.type === 'move_point') {
+                    if (onUpdateSpinePoint) {
+                        onUpdateSpinePoint(dragOp.pointId, {}, true);
+                    }
+                    toast.success(isKa ? 'წერტილის პოზიცია განახლდა 3D რუკაზე' : 'Slope point relocated in 3D');
+                } else if (dragOp.type === 'resize_wing') {
+                    if (onUpdateSpinePoint) {
+                        onUpdateSpinePoint(dragOp.pointId, {}, true);
+                    }
+                    toast.success(isKa ? 'ფერდობის სიგანე შეიცვალა 3D-ში' : 'Slope width resized in 3D');
+                } else if (dragOp.type === 'height_handle') {
+                    if (onUpdateSpinePoint) {
+                        onUpdateSpinePoint(dragOp.pointId, {}, true);
+                    }
+                    toast.success(isKa ? 'სიმაღლე განახლდა' : 'Slope height updated');
+                } else if (dragOp.type === 'move_vertex') {
+                    toast.success(isKa ? 'ფერდობის წვერო განახლდა' : 'Slope vertex relocated in 3D');
+                }
+                return;
+            } else {
+                // Click without drag: Open 3D Point Editor Modal
+                if (dragOp.ptData && (dragOp.type === 'move_point' || dragOp.type === 'height_handle' || dragOp.type === 'resize_wing')) {
+                    setSelectedEditPoint(dragOp.ptData);
+                    toast.info(isKa ? `რედაქტირება: ${dragOp.ptData.name || 'წერტილი'}` : `Editing: ${dragOp.ptData.name || 'Slope Point'}`);
+                    return;
+                }
+            }
         }
 
         // If in "Add Slope Point in 3D" mode, raycast against the terrain mesh!
@@ -1015,7 +1579,7 @@ export const Sandbox3DTerrainCanvas: React.FC<Sandbox3DTerrainCanvasProps> = ({
             }
         }
 
-        // If it was a clean click without significant dragging, raycast to select 3D device!
+        // Clean click without drag: Raycast to select 3D device or open point editor
         if (dragDistanceRef.current < 6 && rendererRef.current && cameraRef.current) {
             const rect = rendererRef.current.domElement.getBoundingClientRect();
             const mouseX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -1045,6 +1609,9 @@ export const Sandbox3DTerrainCanvas: React.FC<Sandbox3DTerrainCanvasProps> = ({
                         if (onSelectDevice) onSelectDevice('drone', data);
                     } else if (type === 'slope_point') {
                         if (onSelectDevice) onSelectDevice('slope_point', data);
+                        setSelectedEditPoint(data);
+                    } else if (type === 'photo_pin') {
+                        if (onSelectPhotoPin) onSelectPhotoPin(data);
                     }
                 }
             }
@@ -1201,6 +1768,46 @@ export const Sandbox3DTerrainCanvas: React.FC<Sandbox3DTerrainCanvasProps> = ({
                 </div>
             </div>
 
+            {/* 3D INTERACTIVE COMPASS GIZMO (North Indicator) */}
+            <div className="absolute top-14 right-3 z-30 flex flex-col items-center pointer-events-auto select-none">
+                <button
+                    type="button"
+                    onClick={() => {
+                        sphericalRef.current = { radius: sphericalRef.current.radius || 320, theta: 0, phi: Math.PI / 3.2 };
+                        setCompassHeading(0);
+                        setViewMode('orbit');
+                        toast.info(isKa ? '3D ხედი გასწორდა ჩრდილოეთზე (0° N)' : '3D View Aligned to True North (0° N)');
+                    }}
+                    className="w-13 h-13 rounded-full bg-slate-950/90 hover:bg-slate-900 border-2 border-cyan-500/70 shadow-2xl flex items-center justify-center backdrop-blur-md relative group hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                    title={isKa ? 'ჩრდილოეთზე გასწორება (დააწკაპუნეთ 0°-ზე დასაბრუნებლად)' : 'Align to True North (Click to face North 0°)'}
+                >
+                    {/* Rotating Compass Dial */}
+                    <div 
+                        className="w-full h-full rounded-full flex items-center justify-center relative transition-transform duration-100 ease-out"
+                        style={{ transform: `rotate(${-compassHeading}deg)` }}
+                    >
+                        {/* North Indicator Needle */}
+                        <div className="absolute top-1.5 flex flex-col items-center">
+                            <span className="text-[10px] font-black text-rose-500 font-mono leading-none tracking-tighter">N</span>
+                            <div className="w-0 h-0 border-l-[3.5px] border-l-transparent border-r-[3.5px] border-r-transparent border-b-[9px] border-b-rose-500 mt-0.5" />
+                        </div>
+                        {/* South Indicator Needle */}
+                        <div className="absolute bottom-1.5 flex flex-col items-center">
+                            <div className="w-0 h-0 border-l-[3.5px] border-l-transparent border-r-[3.5px] border-r-transparent border-t-[9px] border-t-slate-400 mb-0.5" />
+                            <span className="text-[9px] font-bold text-slate-400 font-mono leading-none">S</span>
+                        </div>
+                        {/* East & West Markers */}
+                        <span className="absolute right-1 text-[8px] font-black text-slate-500 font-mono">E</span>
+                        <span className="absolute left-1 text-[8px] font-black text-slate-500 font-mono">W</span>
+                        {/* Compass Hub Pivot */}
+                        <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 border border-slate-950 shadow-md" />
+                    </div>
+                </button>
+                <div className="mt-1 px-1.5 py-0.5 rounded-md bg-slate-950/85 border border-slate-800 text-[10px] font-mono font-bold text-cyan-300 shadow">
+                    {compassHeading}° N
+                </div>
+            </div>
+
             {/* COLLISION WARNING FLOATING HUD */}
             {collisionCheck.hasCollisionWarning && (
                 <div className="absolute top-16 left-3 z-20 p-2.5 bg-red-950/90 border border-red-500/80 rounded-xl shadow-2xl text-xs text-red-200 flex items-center gap-2 backdrop-blur-md animate-bounce">
@@ -1208,6 +1815,318 @@ export const Sandbox3DTerrainCanvas: React.FC<Sandbox3DTerrainCanvasProps> = ({
                     <span>
                         <b>{isKa ? 'შეჯახების საფრთხე:' : 'Terrain Collision Alert:'}</b> {isKa ? 'დრონის სიმაღლე 6მ-ზე დაბალია რელიეფის ბორცვზე' : 'Flight clearance < 6m above ridge crest'}
                     </span>
+                </div>
+            )}
+
+            {/* FLOATING 3D POINT EDITOR HUD (Movable, Editable, Resizable controls) */}
+            {activeEditPoint && (
+                <div className="absolute top-16 right-16 z-40 w-80 max-w-[calc(100%-2rem)] bg-slate-900/95 border-2 border-amber-500/80 rounded-2xl shadow-2xl backdrop-blur-xl p-4 text-white flex flex-col gap-3 max-h-[82vh] overflow-y-auto pointer-events-auto animate-in slide-in-from-right-3 duration-200">
+                    {/* Header */}
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                        <div className="flex items-center gap-2">
+                            <span className="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center font-black text-sm">
+                                🏔️
+                            </span>
+                            <div>
+                                <h4 className="font-black text-xs text-amber-300 tracking-wide uppercase flex items-center gap-1.5">
+                                    <span>{activeEditPoint.name || 'Slope Point'}</span>
+                                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-600/50">
+                                        +{activeEditPoint.peakHeightM}m
+                                    </span>
+                                </h4>
+                                <p className="text-[10px] text-slate-400 font-mono">
+                                    [{activeEditPoint.lat.toFixed(5)}, {activeEditPoint.lng.toFixed(5)}]
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setSelectedEditPoint(null)}
+                            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                            title="Close"
+                        >
+                            <X size={15} />
+                        </button>
+                    </div>
+
+                    {/* Point Name Input */}
+                    <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-300 flex items-center justify-between">
+                            <span>{isKa ? 'წერტილის სახელი' : 'Point Name'}</span>
+                        </label>
+                        <input
+                            type="text"
+                            value={activeEditPoint.name || ''}
+                            onChange={(e) => {
+                                if (onUpdateSpinePoint) {
+                                    onUpdateSpinePoint(activeEditPoint.id, { name: e.target.value }, true);
+                                }
+                            }}
+                            className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-medium text-white focus:outline-none focus:border-amber-400"
+                        />
+                    </div>
+
+                    {/* Height / Elevation Control */}
+                    <div className="space-y-1.5 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                        <div className="flex items-center justify-between text-xs">
+                            <span className="font-bold text-slate-200 flex items-center gap-1">
+                                <ArrowUpDown size={12} className="text-amber-400" />
+                                <span>{isKa ? 'სიმაღლე (Height):' : 'Peak Elevation:'}</span>
+                            </span>
+                            <span className="font-mono font-black text-amber-400 text-sm">
+                                +{activeEditPoint.peakHeightM} m
+                            </span>
+                        </div>
+                        <input
+                            type="range"
+                            min="2"
+                            max="90"
+                            step="1"
+                            value={activeEditPoint.peakHeightM || 25}
+                            onChange={(e) => {
+                                const h = Number(e.target.value);
+                                if (onUpdateSpinePoint) {
+                                    onUpdateSpinePoint(activeEditPoint.id, { peakHeightM: h }, true);
+                                }
+                            }}
+                            className="w-full h-1.5 bg-slate-800 rounded appearance-none cursor-pointer accent-amber-400"
+                        />
+                        <div className="flex items-center justify-between gap-1 pt-0.5">
+                            {[-5, -1, +1, +5].map((delta) => (
+                                <button
+                                    key={delta}
+                                    type="button"
+                                    onClick={() => {
+                                        const h = Math.max(2, Math.min(90, (activeEditPoint.peakHeightM || 25) + delta));
+                                        if (onUpdateSpinePoint) {
+                                            onUpdateSpinePoint(activeEditPoint.id, { peakHeightM: h }, true);
+                                        }
+                                    }}
+                                    className="flex-1 py-1 bg-slate-800 hover:bg-slate-700 text-[10px] font-mono font-bold rounded-lg text-slate-300 transition-colors cursor-pointer"
+                                >
+                                    {delta > 0 ? `+${delta}m` : `${delta}m`}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Width / Cross-Section Resize Control */}
+                    <div className="space-y-1.5 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                        <div className="flex items-center justify-between text-xs">
+                            <span className="font-bold text-slate-200 flex items-center gap-1">
+                                <SlidersHorizontal size={12} className="text-cyan-400" />
+                                <span>{isKa ? 'განივი სიგანე (Width):' : 'Cross-Section Width:'}</span>
+                            </span>
+                            <span className="font-mono font-black text-cyan-400 text-sm">
+                                {activeEditPoint.widthM || 45} m
+                            </span>
+                        </div>
+                        <input
+                            type="range"
+                            min="10"
+                            max="150"
+                            step="2"
+                            value={activeEditPoint.widthM || 45}
+                            onChange={(e) => {
+                                const w = Number(e.target.value);
+                                const half = Math.round(w / 2);
+                                if (onUpdateSpinePoint) {
+                                    onUpdateSpinePoint(activeEditPoint.id, { widthM: w, leftWidthM: half, rightWidthM: half }, true);
+                                }
+                            }}
+                            className="w-full h-1.5 bg-slate-800 rounded appearance-none cursor-pointer accent-cyan-400"
+                        />
+                        <div className="flex items-center justify-between gap-1 pt-0.5">
+                            {[-10, -5, +5, +10].map((delta) => (
+                                <button
+                                    key={delta}
+                                    type="button"
+                                    onClick={() => {
+                                        const w = Math.max(10, Math.min(150, (activeEditPoint.widthM || 45) + delta));
+                                        const half = Math.round(w / 2);
+                                        if (onUpdateSpinePoint) {
+                                            onUpdateSpinePoint(activeEditPoint.id, { widthM: w, leftWidthM: half, rightWidthM: half }, true);
+                                        }
+                                    }}
+                                    className="flex-1 py-1 bg-slate-800 hover:bg-slate-700 text-[10px] font-mono font-bold rounded-lg text-slate-300 transition-colors cursor-pointer"
+                                >
+                                    {delta > 0 ? `+${delta}m` : `${delta}m`}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Asymmetric Wings (Left & Right) */}
+                        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800/80">
+                            <div>
+                                <div className="flex justify-between text-[10px] text-slate-400 font-mono mb-1">
+                                    <span>Left (L)</span>
+                                    <span className="text-cyan-300 font-bold">{activeEditPoint.leftWidthM ?? Math.round((activeEditPoint.widthM || 45) / 2)}m</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="5"
+                                    max="80"
+                                    value={activeEditPoint.leftWidthM ?? Math.round((activeEditPoint.widthM || 45) / 2)}
+                                    onChange={(e) => {
+                                        const lw = Number(e.target.value);
+                                        const rw = activeEditPoint.rightWidthM ?? Math.round((activeEditPoint.widthM || 45) / 2);
+                                        if (onUpdateSpinePoint) {
+                                            onUpdateSpinePoint(activeEditPoint.id, { leftWidthM: lw, widthM: lw + rw }, true);
+                                        }
+                                    }}
+                                    className="w-full h-1 bg-slate-800 rounded appearance-none cursor-pointer accent-cyan-400"
+                                />
+                            </div>
+                            <div>
+                                <div className="flex justify-between text-[10px] text-slate-400 font-mono mb-1">
+                                    <span>Right (R)</span>
+                                    <span className="text-cyan-300 font-bold">{activeEditPoint.rightWidthM ?? Math.round((activeEditPoint.widthM || 45) / 2)}m</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="5"
+                                    max="80"
+                                    value={activeEditPoint.rightWidthM ?? Math.round((activeEditPoint.widthM || 45) / 2)}
+                                    onChange={(e) => {
+                                        const rw = Number(e.target.value);
+                                        const lw = activeEditPoint.leftWidthM ?? Math.round((activeEditPoint.widthM || 45) / 2);
+                                        if (onUpdateSpinePoint) {
+                                            onUpdateSpinePoint(activeEditPoint.id, { rightWidthM: rw, widthM: lw + rw }, true);
+                                        }
+                                    }}
+                                    className="w-full h-1 bg-slate-800 rounded appearance-none cursor-pointer accent-cyan-400"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Slope Falloff Curve */}
+                    <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-300">
+                            {isKa ? 'ფერდობის პროფილი (Falloff Curve)' : 'Slope Profile (Falloff):'}
+                        </label>
+                        <div className="grid grid-cols-3 gap-1 text-[11px]">
+                            {(['cosine', 'linear', 'plateau'] as const).map((mode) => (
+                                <button
+                                    key={mode}
+                                    type="button"
+                                    onClick={() => {
+                                        if (onUpdateSpinePoint) {
+                                            onUpdateSpinePoint(activeEditPoint.id, { slopeFalloff: mode }, true);
+                                        }
+                                    }}
+                                    className={`py-1 rounded-lg font-bold transition-all capitalize cursor-pointer ${
+                                        activeEditPoint.slopeFalloff === mode
+                                            ? 'bg-amber-500 text-slate-950 shadow'
+                                            : 'bg-slate-950 text-slate-400 hover:text-white'
+                                    }`}
+                                >
+                                    {mode}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* 3D Position Nudge & GPS Controls */}
+                    <div className="space-y-1 bg-slate-950/60 p-2 rounded-xl border border-slate-800">
+                        <div className="flex items-center justify-between text-[11px] font-bold text-slate-300">
+                            <span>{isKa ? 'წერტილის გადაადგილება (Move)' : 'Relocate Point in 3D:'}</span>
+                            <span className="text-[10px] text-amber-400 font-mono">Drag in 3D / Nudge</span>
+                        </div>
+                        <div className="grid grid-cols-4 gap-1 pt-1">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (onUpdateSpinePoint) {
+                                        onUpdateSpinePoint(activeEditPoint.id, { lat: activeEditPoint.lat + 0.0001 }, true);
+                                    }
+                                }}
+                                className="py-1 bg-slate-800 hover:bg-slate-700 rounded-lg text-[10px] font-bold flex items-center justify-center gap-0.5 text-slate-200 cursor-pointer"
+                                title="Move North (+Y)"
+                            >
+                                <ArrowUp size={11} /> N
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (onUpdateSpinePoint) {
+                                        onUpdateSpinePoint(activeEditPoint.id, { lat: activeEditPoint.lat - 0.0001 }, true);
+                                    }
+                                }}
+                                className="py-1 bg-slate-800 hover:bg-slate-700 rounded-lg text-[10px] font-bold flex items-center justify-center gap-0.5 text-slate-200 cursor-pointer"
+                                title="Move South (-Y)"
+                            >
+                                <ArrowDown size={11} /> S
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (onUpdateSpinePoint) {
+                                        onUpdateSpinePoint(activeEditPoint.id, { lng: activeEditPoint.lng - 0.0001 }, true);
+                                    }
+                                }}
+                                className="py-1 bg-slate-800 hover:bg-slate-700 rounded-lg text-[10px] font-bold flex items-center justify-center gap-0.5 text-slate-200 cursor-pointer"
+                                title="Move West (-X)"
+                            >
+                                <ArrowLeft size={11} /> W
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (onUpdateSpinePoint) {
+                                        onUpdateSpinePoint(activeEditPoint.id, { lng: activeEditPoint.lng + 0.0001 }, true);
+                                    }
+                                }}
+                                className="py-1 bg-slate-800 hover:bg-slate-700 rounded-lg text-[10px] font-bold flex items-center justify-center gap-0.5 text-slate-200 cursor-pointer"
+                                title="Move East (+X)"
+                            >
+                                <ArrowRight size={11} /> E
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Action Buttons: Center Camera, Delete Point, Done */}
+                    <div className="flex items-center gap-1.5 pt-1 border-t border-slate-800">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const px = toLocalX(activeEditPoint.lng);
+                                const pz = toLocalZ(activeEditPoint.lat);
+                                targetLookAtRef.current.set(px, 15, pz);
+                                sphericalRef.current = { radius: 110, theta: sphericalRef.current.theta, phi: Math.PI / 3.4 };
+                                setViewMode('orbit');
+                                toast.info(isKa ? 'კამერა ფოკუსირდა წერტილზე' : 'Centered camera on point');
+                            }}
+                            className="flex-1 py-1.5 bg-blue-950/80 hover:bg-blue-900 border border-blue-600/60 text-blue-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                        >
+                            <Crosshair size={12} />
+                            <span>{isKa ? 'ფოკუსი' : 'Focus'}</span>
+                        </button>
+
+                        {onDeleteSpinePoint && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    onDeleteSpinePoint(activeEditPoint.id);
+                                    setSelectedEditPoint(null);
+                                    toast.success(isKa ? 'წერტილი წაშლილია' : 'Slope point deleted');
+                                }}
+                                className="py-1.5 px-2.5 bg-rose-950/80 hover:bg-rose-900 border border-rose-700/60 text-rose-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                                title="Delete this point"
+                            >
+                                <Trash2 size={12} />
+                            </button>
+                        )}
+
+                        <button
+                            type="button"
+                            onClick={() => setSelectedEditPoint(null)}
+                            className="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1 shadow-lg transition-all cursor-pointer"
+                        >
+                            <Check size={12} />
+                            <span>{isKa ? 'მზადაა' : 'Done'}</span>
+                        </button>
+                    </div>
                 </div>
             )}
 

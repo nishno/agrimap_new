@@ -11,6 +11,7 @@ import type { SandboxDroneMission } from './HardwareTestingSandboxMap';
 import type { HillSpineProfile, SpineControlPoint } from '../../../utils/demTerrainViewshed';
 import { getElevationAtCoords, getSlopeAndAspect } from '../../../utils/demTerrainViewshed';
 import { computeBlindZoneDistanceM } from '../../../utils/cameraGeospatial';
+import { DeviceControlPanel } from './DeviceControlPanel';
 
 export interface RegisteredPlantationArea {
     id: string;
@@ -159,6 +160,7 @@ export const HardwareAndDroneControlPopUp: React.FC<HardwareAndDroneControlPopUp
     const currentPlantation = registeredPlantations.find(p => p.id === selectedPlantationId) || registeredPlantations[0];
     const isCurrentCamHidden = hiddenCameraIds.includes(activeCamera?.id || '');
     const allCamsHidden = testCameras.length > 0 && testCameras.every(c => hiddenCameraIds.includes(c.id));
+    const [showDeviceControl, setShowDeviceControl] = useState<boolean>(true);
 
     // Active hill spine point
     const activePoint = hillSpineProfile.points.find(p => p.id === activePointId) || hillSpineProfile.points[0] || {
@@ -276,19 +278,31 @@ export const HardwareAndDroneControlPopUp: React.FC<HardwareAndDroneControlPopUp
                     </span>
                 </div>
 
-                <div className="relative">
-                    <select
-                        value={selectedPlantationId}
-                        onChange={(e) => onSelectPlantation(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-950 border border-emerald-500/40 hover:border-emerald-400 rounded-xl text-emerald-200 text-xs font-bold font-mono cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-400/50 appearance-none transition-all shadow-inner"
+                <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                        <select
+                            value={selectedPlantationId}
+                            onChange={(e) => onSelectPlantation(e.target.value)}
+                            className="w-full px-3 py-2 bg-slate-950 border border-emerald-500/40 hover:border-emerald-400 rounded-xl text-emerald-200 text-xs font-bold font-mono cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-400/50 appearance-none transition-all shadow-inner"
+                        >
+                            {registeredPlantations.map((plant, pIdx) => (
+                                <option key={`plant-${plant.id}-${pIdx}`} value={plant.id} className="bg-slate-950 text-slate-200">
+                                    📍 {isKa ? plant.nameKa : plant.name} • [{plant.center[0].toFixed(4)}, {plant.center[1].toFixed(4)}]
+                                </option>
+                            ))}
+                        </select>
+                        <ChevronDown size={14} className="absolute right-3 top-3 text-emerald-400 pointer-events-none" />
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={() => onSelectPlantation(selectedPlantationId)}
+                        className="px-3 py-2 bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/50 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer shadow-sm shrink-0"
+                        title={isKa ? 'პლანტაციაზე გადაფრენა' : 'Fly map to Plantation'}
                     >
-                        {registeredPlantations.map((plant, pIdx) => (
-                            <option key={`plant-${plant.id}-${pIdx}`} value={plant.id} className="bg-slate-950 text-slate-200">
-                                📍 {isKa ? plant.nameKa : plant.name} • [{plant.center[0].toFixed(4)}, {plant.center[1].toFixed(4)}]
-                            </option>
-                        ))}
-                    </select>
-                    <ChevronDown size={14} className="absolute right-3 top-3 text-emerald-400 pointer-events-none" />
+                        <Navigation size={12} className="text-emerald-400" />
+                        <span>{isKa ? 'გადაფრენა' : 'Fly'}</span>
+                    </button>
                 </div>
             </div>
 
@@ -649,7 +663,48 @@ export const HardwareAndDroneControlPopUp: React.FC<HardwareAndDroneControlPopUp
                                     <Video size={13} />
                                     <span>{isKa ? 'Live ნაკადი' : 'Live Stream'}</span>
                                 </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setShowDeviceControl(!showDeviceControl)}
+                                    className={`col-span-2 py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer border ${
+                                        showDeviceControl 
+                                            ? 'bg-blue-600 text-white border-blue-400 shadow-md ring-2 ring-blue-300/40' 
+                                            : 'bg-blue-950/80 hover:bg-blue-900 text-blue-200 border-blue-500/50'
+                                    }`}
+                                >
+                                    <Move size={13} className="text-cyan-300" />
+                                    <span>{showDeviceControl ? (isKa ? 'მართვის პანელის ჩაკეცვა' : 'Hide Device Control & Moving') : (isKa ? 'მოწყობილობის მართვა & გადაადგილება' : 'Device Control Panel & Move')}</span>
+                                </button>
                             </div>
+
+                            {/* Integrated Device Control Panel with Full Ability of Moving */}
+                            {showDeviceControl && (
+                                <div className="pt-2 border-t border-slate-800">
+                                    <DeviceControlPanel
+                                        camera={{
+                                            id: activeCamera.id,
+                                            name: activeCamera.name,
+                                            channel: activeCamera.channel,
+                                            model: activeCamera.model,
+                                            ipAddress: activeCamera.ipAddress,
+                                            lat: activeCamera.lat,
+                                            lng: activeCamera.lng,
+                                            azimuthDeg: activeCamera.azimuthDeg,
+                                            tiltAngleDeg: activeCamera.tiltAngleDeg,
+                                            opticalZoomX: (activeCamera as any).opticalZoomX || 2,
+                                            digitalZoomX: (activeCamera as any).digitalZoomX || 1,
+                                            rangeM: activeCamera.rangeM,
+                                            mountHeightM: activeCamera.mountHeightM,
+                                            isPtz: activeCamera.isPtz,
+                                            isNightVision: activeCamera.isNightVision
+                                        }}
+                                        onUpdateCamera={(updated) => onUpdateActiveCamera(updated)}
+                                        mapCenterCoords={currentPlantation?.center || [activeCamera.lat, activeCamera.lng]}
+                                        isKa={isKa}
+                                    />
+                                </div>
+                            )}
                         </div>
 
                         {/* LIST OF ALL CAMERAS (WITH INDIVIDUAL HIDE/UNHIDE EYE BUTTONS) */}

@@ -215,7 +215,7 @@ export const SandboxContextMenu: React.FC<SandboxContextMenuProps> = ({
                     className="w-full px-2.5 py-1.5 rounded-xl flex items-center gap-2.5 text-red-400 hover:bg-red-600 hover:text-white transition-all font-bold group cursor-pointer text-left"
                 >
                     <Trash2 size={13} className="text-red-400 group-hover:text-white" />
-                    <span>{isKa ? 'მოწყობილობის წაშლა' : 'Delete Device'}</span>
+                    <span>{isKa ? (menu.type === 'slope_point' ? 'წერტილის წაშლა' : 'მოწყობილობის წაშლა') : (menu.type === 'slope_point' ? 'Delete Slope Point' : 'Delete Device')}</span>
                 </button>
             </div>
         </div>

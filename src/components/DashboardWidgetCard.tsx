@@ -157,15 +157,45 @@ export const DashboardWidgetCard: React.FC<DashboardWidgetCardProps> = ({
                 isDragOver ? 'ring-4 ring-indigo-500 ring-offset-4 rounded-[2.6rem] scale-[1.01]' : ''
             }`}
         >
-            {/* INLINE TOP-RIGHT MICRO-CONTROLS (NO EXTERNAL HEADER BAR) */}
-            <div className="absolute top-4 right-4 z-30 flex items-center gap-1 bg-white/90 hover:bg-white backdrop-blur-md px-1.5 py-1 rounded-xl shadow-xs border border-slate-200/80 transition-opacity opacity-0 group-hover/card:opacity-100">
-                {/* Drag Handle to Move & Reorder */}
+            {/* INLINE TOP-RIGHT MICRO-CONTROLS (ALWAYS VISIBLE & TOUCH FRIENDLY ON TABLETS & PHONES) */}
+            <div className="absolute top-3 sm:top-4 right-3 sm:right-4 z-30 flex items-center gap-1 bg-white/95 hover:bg-white backdrop-blur-md px-1.5 py-1 rounded-2xl shadow-md border border-slate-200/90 transition-opacity opacity-90 lg:opacity-0 lg:group-hover/card:opacity-100 touch-manipulation">
+                {/* One-Tap Move Up for Tablets & Mobile */}
+                {onMoveStep && (
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onMoveStep(widget.id, 'up');
+                        }}
+                        title={t('dash.card.move_up') || 'Move Up'}
+                        className="p-1.5 text-slate-500 hover:text-indigo-600 rounded-lg hover:bg-slate-100 active:bg-indigo-100 transition-colors cursor-pointer min-w-[28px] min-h-[28px] flex items-center justify-center"
+                    >
+                        <ChevronUp size={14} />
+                    </button>
+                )}
+
+                {/* One-Tap Move Down for Tablets & Mobile */}
+                {onMoveStep && (
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onMoveStep(widget.id, 'down');
+                        }}
+                        title={t('dash.card.move_down') || 'Move Down'}
+                        className="p-1.5 text-slate-500 hover:text-indigo-600 rounded-lg hover:bg-slate-100 active:bg-indigo-100 transition-colors cursor-pointer min-w-[28px] min-h-[28px] flex items-center justify-center"
+                    >
+                        <ChevronDown size={14} />
+                    </button>
+                )}
+
+                {/* Drag Handle to Move & Reorder on Desktop */}
                 <button
                     type="button"
                     draggable
                     onDragStart={(e) => onDragStart(e, widget.id)}
                     title={t('dash.card.drag_to_move')}
-                    className="p-1.5 text-slate-500 hover:text-indigo-600 rounded-lg hover:bg-slate-100 cursor-grab active:cursor-grabbing transition-colors"
+                    className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 cursor-grab active:cursor-grabbing transition-colors hidden sm:flex items-center justify-center"
                 >
                     <GripVertical size={13} />
                 </button>
@@ -174,50 +204,61 @@ export const DashboardWidgetCard: React.FC<DashboardWidgetCardProps> = ({
                 <div className="relative">
                     <button
                         type="button"
-                        onClick={() => setIsMenuOpen(prev => !prev)}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setIsMenuOpen(prev => !prev);
+                        }}
                         title={t('dash.card.move_top')}
-                        className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                        className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer min-w-[28px] min-h-[28px] flex items-center justify-center"
                     >
-                        <MoreVertical size={13} />
+                        <MoreVertical size={14} />
                     </button>
                     {isMenuOpen && (
-                        <div 
-                            className="absolute right-0 top-full mt-1.5 w-44 bg-white rounded-2xl shadow-xl border border-slate-200 p-1.5 z-50 text-slate-700 text-xs font-bold animate-in fade-in zoom-in-95 duration-100"
-                            onMouseLeave={() => setIsMenuOpen(false)}
-                        >
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    onMoveToTop?.(widget.id);
+                        <>
+                            {/* Touch backdrop to close menu cleanly */}
+                            <div 
+                                className="fixed inset-0 z-40 bg-transparent" 
+                                onClick={(e) => {
+                                    e.stopPropagation();
                                     setIsMenuOpen(false);
-                                }}
-                                className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-indigo-50 hover:text-indigo-600 rounded-xl transition-colors cursor-pointer"
+                                }} 
+                            />
+                            <div 
+                                className="absolute right-0 top-full mt-1.5 w-48 bg-white rounded-2xl shadow-2xl border border-slate-200 p-1.5 z-50 text-slate-700 text-xs font-bold animate-in fade-in zoom-in-95 duration-100"
                             >
-                                <ArrowUpToLine size={13} className="text-indigo-600" />
-                                <span>{t('dash.card.move_top')}</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    onMoveStep?.(widget.id, 'up');
-                                    setIsMenuOpen(false);
-                                }}
-                                className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-slate-50 rounded-xl transition-colors cursor-pointer"
-                            >
-                                <ChevronUp size={13} className="text-slate-500" />
-                                <span>{t('dash.card.move_up')}</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    onMoveStep?.(widget.id, 'down');
-                                    setIsMenuOpen(false);
-                                }}
-                                className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-slate-50 rounded-xl transition-colors cursor-pointer"
-                            >
-                                <ChevronDown size={13} className="text-slate-500" />
-                                <span>{t('dash.card.move_down')}</span>
-                            </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        onMoveToTop?.(widget.id);
+                                        setIsMenuOpen(false);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-indigo-50 hover:text-indigo-600 rounded-xl transition-colors cursor-pointer"
+                                >
+                                    <ArrowUpToLine size={14} className="text-indigo-600" />
+                                    <span>{t('dash.card.move_top')}</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        onMoveStep?.(widget.id, 'up');
+                                        setIsMenuOpen(false);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-slate-50 rounded-xl transition-colors cursor-pointer"
+                                >
+                                    <ChevronUp size={14} className="text-slate-500" />
+                                    <span>{t('dash.card.move_up')}</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        onMoveStep?.(widget.id, 'down');
+                                        setIsMenuOpen(false);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-slate-50 rounded-xl transition-colors cursor-pointer"
+                                >
+                                    <ChevronDown size={14} className="text-slate-500" />
+                                    <span>{t('dash.card.move_down')}</span>
+                                </button>
                             <div className="my-1 border-t border-slate-100" />
                             <div className="px-2 py-1 text-[9px] font-black uppercase tracking-wider text-slate-400">{t('dash.card.width')}</div>
                             <div className="flex gap-1 px-1">
@@ -238,7 +279,8 @@ export const DashboardWidgetCard: React.FC<DashboardWidgetCardProps> = ({
                                 ))}
                             </div>
                         </div>
-                    )}
+                    </>
+                )}
                 </div>
 
                 {/* Open in Floating Window Button */}

@@ -84,7 +84,10 @@ const isSuppressedStr = (str: string) => {
     lower.includes('resizeobserver') ||
     lower.includes('clearrect') ||
     lower.includes('watchchangeaggregator') ||
-    lower.includes('persistentlistenstream')
+    lower.includes('persistentlistenstream') ||
+    lower.includes('invalid latlng') ||
+    lower.includes('latlng object') ||
+    lower.includes('open-meteo')
   );
 };
 

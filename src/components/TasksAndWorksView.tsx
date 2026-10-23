@@ -24,7 +24,7 @@ import { getSphericalPolygonArea } from '../services/geospatialService';
 import { Popup } from 'react-leaflet';
 import L from 'leaflet';
 import { BriefcaseIcon, XIcon, CalendarDaysIcon, TractorIcon, XCircleIcon, ChevronRightIcon, PlusIcon, RefreshCwIcon, ClipboardDocumentIcon } from './Icons';
-import { SlidersHorizontal, Layers, FileSpreadsheet, MapPin, Tag, Sparkles, Calculator, CheckSquare, Square, DollarSign, Users, Clock, Download, ExternalLink, ScanLine } from 'lucide-react';
+import { SlidersHorizontal, Layers, FileSpreadsheet, MapPin, Tag, Sparkles, Calculator, CheckSquare, Square, DollarSign, Users, Clock, Download, ExternalLink, ScanLine, Map as MapLucide } from 'lucide-react';
 import { exportToExcel, exportToGoogleSheetsClipboard, exportToCsv } from '../utils/excelExporter';
 import { useAiAssistant } from '../hooks/useAiAssistant';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -119,7 +119,7 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
         reader.readAsText(file);
     };
 
-    const { center: mapCenter, zoom, plantationFeatures, layers } = mapProps;
+    const { center: mapCenter, zoom, plantationFeatures = [], layers } = mapProps || {};
     const { language } = useLanguage();
     const isKa = language === 'ka';
     const { handleSendCommand, isAssistantLoading } = useAiAssistant(isKa ? 'ka' : 'en');
@@ -128,7 +128,8 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
     const [activeDrawingTool, setActiveDrawingTool] = useState<ActiveDrawingTool>({ tool: null, color: '#f97316', activeLayerId: 'log-layer' });
     const [loggingForAssignment, setLoggingForAssignment] = useState<WorkAssignment | null>(null);
     const [opLogPopup, setOpLogPopup] = useState<{ log: OperationalLog; latlng: L.LatLng; trenchCount: number; cropCount: number; } | null>(null);
-    const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 768);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+    const [viewMode, setViewMode] = useState<'panel' | 'map'>('panel');
     const [isScannerOpen, setIsScannerOpen] = useState(false);
 
     // Resizable Edge Handle state
@@ -168,13 +169,12 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
             if (seenIds.has(w.id)) return false;
             seenIds.add(w.id);
 
-            const isRelevant = w.source === 'tasks' || w.source === 'planner' || w.source === 'remainder' || !w.source;
-            if (!isRelevant) return false;
+            if (dayFilter === 'all') return true;
 
             const d = new Date(w.date);
             d.setHours(0, 0, 0, 0);
 
-            if (dayFilter === 'all') return true;
+            if (isNaN(d.getTime())) return true;
             if (dayFilter === 'today') return d.getTime() === today.getTime();
             if (dayFilter === 'past') return d.getTime() < today.getTime();
             if (dayFilter === 'future') return d.getTime() > today.getTime();
@@ -196,14 +196,15 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
         return dateFilteredAssignments;
     }, [dateFilteredAssignments, selectedWorkIds]);
 
-    // Currently active / standing registry that user is on
     const standingWork = useMemo(() => {
+        const assignments = systemProps.workAssignments || [];
         if (standingWorkId) {
-            const found = systemProps.workAssignments.find(w => w.id === standingWorkId);
+            const found = assignments.find(w => w && w.id === standingWorkId);
             if (found) return found;
         }
         if (selectedWorkIds.length > 0) {
-            const found = systemProps.workAssignments.find(w => w.id === selectedWorkIds[selectedWorkIds.length - 1]);
+            const lastId = selectedWorkIds[selectedWorkIds.length - 1];
+            const found = assignments.find(w => w && w.id === lastId);
             if (found) return found;
         }
         return dateFilteredAssignments[0] || null;
@@ -217,18 +218,22 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
         let totalVehiclesCost = 0;
         let totalHours = 0;
         const activeWorkerSet = new Set<string>();
+        const employeesList = systemProps.employees || [];
+        const inventoryList = systemProps.inventoryItems || [];
 
-        targetRegistries.forEach(w => {
+        (targetRegistries || []).forEach(w => {
+            if (!w) return;
             // 1. Labor & Hours calculation
             let taskLabor = 0;
             let taskHours = 0;
 
-            if (typeof w.totalLaborCost === 'number') {
+            const laborCostNum = Number(w.totalLaborCost);
+            if (Number.isFinite(laborCostNum) && laborCostNum >= 0 && typeof w.totalLaborCost === 'number') {
                 // Explicit labor cost exists
-                taskLabor = Math.max(0, w.totalLaborCost);
+                taskLabor = Math.max(0, laborCostNum);
                 if (w.employeeHours && w.employeeHours.length > 0) {
                     w.employeeHours.forEach(eh => {
-                        const h = eh.hours || 0;
+                        const h = Number(eh.hours) || 0;
                         taskHours += h;
                         if (h > 0 && eh.employeeId) activeWorkerSet.add(eh.employeeId);
                     });
@@ -238,9 +243,9 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
             } else if (w.employeeHours && w.employeeHours.length > 0) {
                 // Calculate strictly from recorded employee hours
                 w.employeeHours.forEach(eh => {
-                    const emp = systemProps.employees.find(e => e.id === eh.employeeId);
-                    const rate = emp?.paymentRate || 0;
-                    const hours = eh.hours || 0;
+                    const emp = employeesList.find(e => e.id === eh.employeeId);
+                    const rate = Number(emp?.paymentRate) || 0;
+                    const hours = Number(eh.hours) || 0;
                     taskHours += hours;
                     if (hours > 0) {
                         if (emp?.paymentType === 'daily') {
@@ -254,20 +259,20 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
                     }
                 });
             } else {
-                // No recorded labor or hours: strictly zero
                 taskLabor = 0;
                 taskHours = 0;
             }
 
             // 2. Material calculation
             let taskMaterial = 0;
-            if (typeof w.totalMaterialCost === 'number') {
-                taskMaterial = Math.max(0, w.totalMaterialCost);
+            const matCostNum = Number(w.totalMaterialCost);
+            if (Number.isFinite(matCostNum) && matCostNum >= 0 && typeof w.totalMaterialCost === 'number') {
+                taskMaterial = Math.max(0, matCostNum);
             } else if (w.materialsUsed && w.materialsUsed.length > 0) {
                 w.materialsUsed.forEach(m => {
-                    const item = (systemProps.inventoryItems || []).find(i => i.id === m.inventoryItemId);
-                    const unitCost = (m as any).unitCost || (m as any).cost || item?.unitCost || 0;
-                    taskMaterial += (m.quantity || 0) * unitCost;
+                    const item = inventoryList.find(i => i.id === m.inventoryItemId);
+                    const unitCost = Number((m as any).unitCost || (m as any).cost || item?.unitCost) || 0;
+                    taskMaterial += (Number(m.quantity) || 0) * unitCost;
                 });
             } else {
                 taskMaterial = 0;
@@ -278,16 +283,17 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
             if (w.assignedVehicles && w.assignedVehicles.length > 0) {
                 w.assignedVehicles.forEach(v => {
                     if (!v.isOwned) {
-                        taskVehicles += (v.usageHours || 0) * (v.hiredCost || 0);
+                        taskVehicles += (Number(v.usageHours) || 0) * (Number(v.hiredCost) || 0);
                     }
                 });
             }
 
             // 4. Overall OPEX check for consistency:
             let taskOPEX = taskLabor + taskMaterial + taskVehicles;
-            if (taskOPEX === 0 && typeof w.totalCost === 'number' && w.totalCost > 0) {
-                taskOPEX = w.totalCost;
-                taskLabor = w.totalCost;
+            const totalCostNum = Number(w.totalCost);
+            if (taskOPEX === 0 && Number.isFinite(totalCostNum) && totalCostNum > 0) {
+                taskOPEX = totalCostNum;
+                taskLabor = totalCostNum;
             }
 
             totalLabor += taskLabor;
@@ -302,11 +308,11 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
             count: targetRegistries.length,
             totalAvailable: dateFilteredAssignments.length,
             isSelectedOnly: selectedWorkIds.length > 0,
-            totalLabor,
-            totalMaterial,
-            totalVehiclesCost,
-            totalOPEX,
-            totalHours,
+            totalLabor: Number.isFinite(totalLabor) ? totalLabor : 0,
+            totalMaterial: Number.isFinite(totalMaterial) ? totalMaterial : 0,
+            totalVehiclesCost: Number.isFinite(totalVehiclesCost) ? totalVehiclesCost : 0,
+            totalOPEX: Number.isFinite(totalOPEX) ? totalOPEX : 0,
+            totalHours: Number.isFinite(totalHours) ? totalHours : 0,
             activeWorkersCount: activeWorkerSet.size
         };
     }, [targetRegistries, dateFilteredAssignments, systemProps.employees, systemProps.inventoryItems, selectedWorkIds]);
@@ -319,7 +325,7 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
         const rows = targetRegistries.map(w => {
             const taskName = typeof w.workName === 'string' ? w.workName : (w.workName as any)?.title || 'Task';
             const workers = (w.assignedEmployeeIds || []).map(id => {
-                const emp = systemProps.employees.find(e => e.id === id);
+                const emp = (systemProps.employees || []).find(e => e.id === id);
                 return emp ? emp.name : id;
             }).join(', ');
 
@@ -327,14 +333,14 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
             let hours = 0;
             if (!labor && w.employeeHours?.length) {
                 w.employeeHours.forEach(eh => {
-                    const emp = systemProps.employees.find(e => e.id === eh.employeeId);
+                    const emp = (systemProps.employees || []).find(e => e.id === eh.employeeId);
                     const rate = emp?.paymentRate || 10;
                     hours += eh.hours || 0;
                     labor += emp?.paymentType === 'daily' ? ((eh.hours || 0) / 8) * rate : (eh.hours || 0) * rate;
                 });
             } else if (!labor && w.assignedEmployeeIds?.length) {
                 w.assignedEmployeeIds.forEach(empId => {
-                    const emp = systemProps.employees.find(e => e.id === empId);
+                    const emp = (systemProps.employees || []).find(e => e.id === empId);
                     const rate = emp?.paymentRate || 10;
                     const h = w.plannedTime || 8;
                     hours += h;
@@ -376,7 +382,7 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
         const rows = targetRegistries.map(w => {
             const taskName = typeof w.workName === 'string' ? w.workName : (w.workName as any)?.title || 'Task';
             const workers = (w.assignedEmployeeIds || []).map(id => {
-                const emp = systemProps.employees.find(e => e.id === id);
+                const emp = (systemProps.employees || []).find(e => e.id === id);
                 return emp ? emp.name : id;
             }).join(', ');
 
@@ -384,14 +390,14 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
             let hours = 0;
             if (!labor && w.employeeHours?.length) {
                 w.employeeHours.forEach(eh => {
-                    const emp = systemProps.employees.find(e => e.id === eh.employeeId);
+                    const emp = (systemProps.employees || []).find(e => e.id === eh.employeeId);
                     const rate = emp?.paymentRate || 10;
                     hours += eh.hours || 0;
                     labor += emp?.paymentType === 'daily' ? ((eh.hours || 0) / 8) * rate : (eh.hours || 0) * rate;
                 });
             } else if (!labor && w.assignedEmployeeIds?.length) {
                 w.assignedEmployeeIds.forEach(empId => {
-                    const emp = systemProps.employees.find(e => e.id === empId);
+                    const emp = (systemProps.employees || []).find(e => e.id === empId);
                     const rate = emp?.paymentRate || 10;
                     const h = w.plannedTime || 8;
                     hours += h;
@@ -453,15 +459,6 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
         toast.success("CSV file downloaded successfully!");
     };
 
-    useEffect(() => {
-        const handleResize = () => {
-            if (window.innerWidth <= 768) {
-                setIsSidebarOpen(false);
-            }
-        };
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
-    }, []);
 
     const handleFeatureDrawn = (type: any, geometry: any) => {
         const safeGeom = parseSafeGeometry(geometry);
@@ -498,6 +495,7 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
     const handleLogOnMapRequest = (assignment: WorkAssignment) => {
         setLoggingForAssignment(assignment);
         setActiveDrawingTool({ tool: 'area', color: '#3b82f6', activeLayerId: 'operational-logs' });
+        setViewMode('map');
         toast.info(isKa ? `დახაზეთ სამუშაო ზონა რუკაზე (${assignment.workName})` : `Draw work zone on the map for: ${assignment.workName}`);
     };
     
@@ -542,14 +540,15 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
     };
 
 
-    const workAssignmentForLog = opLogPopup ? systemProps.workAssignments.find(w => w.id === opLogPopup.log.workAssignmentId) : null;
+    const workAssignmentForLog = opLogPopup ? (systemProps.workAssignments || []).find(w => w && w.id === opLogPopup.log.workAssignmentId) : null;
 
     const handleVoiceAnalysis = async () => {
-        const prompt = `Analyze the current field command and work assignments. Here are the assignments: ${JSON.stringify(systemProps.workAssignments)}. 
+        const assignments = systemProps.workAssignments || [];
+        const prompt = `Analyze the current field command and work assignments. Here are the assignments: ${JSON.stringify(assignments)}. 
         Provide a status report on fleet orchestration and personnel allocation. Suggest any improvements for efficiency.`;
         
         await handleSendCommand(prompt, {
-            workAssignments: systemProps.workAssignments,
+            workAssignments: assignments,
             onAddTask: (suggestion: string) => {
                 const newTask: WorkAssignment = {
                     id: `work-${Date.now()}`,
@@ -565,34 +564,22 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
                     sectorIds: [],
                     taskType: 'Other'
                 };
-                systemProps.onSetWorkAssignments([...systemProps.workAssignments, systemProps.workAssignments.length > 0 ? newTask : newTask]);
+                systemProps.onSetWorkAssignments([...assignments, newTask]);
                 toast.success("AI added a new command to your field terminal");
             }
         });
     };
 
     return (
-        <main className="flex-1 flex flex-col md:flex-row overflow-hidden h-full bg-[#f8fafc] relative">
-            {/* Sidebar Toggle (Mobile) */}
-            <button 
-                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                className="md:hidden absolute top-4 right-4 z-[1005] p-3 bg-white border border-slate-200 rounded-2xl shadow-xl text-[#3b36db]"
-            >
-                {isSidebarOpen ? <XIcon size={20} /> : <BriefcaseIcon size={20} />}
-            </button>
-
-            {/* Sidebar */}
-            {isSidebarOpen && (
+        <main className="flex-1 flex flex-col overflow-hidden h-full w-full bg-[#f8fafc] relative">
+            {/* Panel View - 100% width and height when in panel mode */}
+            {viewMode === 'panel' && (
                 <div 
-                    className="fixed inset-0 md:relative md:inset-auto z-[1004] md:z-[1001] w-full flex-shrink-0 border-r border-slate-200 overflow-hidden flex flex-col bg-white transition-[width] duration-75"
-                    style={{
-                        width: typeof window !== 'undefined' && window.innerWidth > 768 ? `${terminalWidth}px` : undefined,
-                        maxWidth: '85vw'
-                    }}
+                    className="w-full h-full flex-1 flex flex-col bg-white overflow-hidden"
                 >
-                    {/* Fixed Sticky Header & Universal Economic & OPEX Summary */}
+                    {/* Fixed Header & Universal Economic & OPEX Summary */}
                     <div className="p-4 sm:p-5 border-b border-slate-200 bg-white flex-shrink-0 z-20 space-y-3.5 shadow-sm">
-                        <div className="flex justify-between items-center">
+                        <div className="flex justify-between items-center gap-3">
                             <div className="flex flex-col">
                                 <h1 className="text-xl sm:text-2xl font-black italic text-[#3b36db] tracking-tighter flex items-center gap-2">
                                     FIELD <span className="text-[#3b36db]">COMMAND</span>
@@ -602,6 +589,17 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
                                 </p>
                             </div>
                             <div className="flex items-center gap-2">
+                                {/* Map vs Panel switcher toggle button */}
+                                <button 
+                                    type="button"
+                                    onClick={() => setViewMode('map')}
+                                    className="px-3.5 py-2.5 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md flex items-center gap-2 transition-all active:scale-95 cursor-pointer border border-slate-700"
+                                    title={isKa ? "მხოლოდ რუკის ჩვენება" : "Switch to Full Map View"}
+                                >
+                                    <MapLucide className="w-4 h-4 text-emerald-400 shrink-0" />
+                                    <span>{isKa ? "მხოლოდ რუკა" : "Only Map"}</span>
+                                </button>
+
                                 <button 
                                     type="button"
                                     onClick={() => {
@@ -611,7 +609,7 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
                                             toast.info(isKa ? "რეესტრი არ არის არჩეული" : "No registry selected");
                                         }
                                     }}
-                                    className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-[9.5px] font-black uppercase tracking-wider shadow-sm flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                                    className="px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-sm flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
                                     title={isKa ? "არჩეული რეესტრის გახსნა" : "Open Selected Registry Details"}
                                 >
                                     <ClipboardDocumentIcon className="w-4 h-4" />
@@ -813,7 +811,7 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
                                                     {standingWork.status}
                                                 </span>
                                             )}
-                                            {standingWork && (
+                                            {standingWork?.date && (
                                                 <span className="text-[8px] font-mono font-bold text-slate-500">
                                                     {new Date(standingWork.date).toLocaleDateString()}
                                                 </span>
@@ -883,7 +881,7 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
                                                 assignedVehicles: [],
                                                 materialsUsed: []
                                             };
-                                            systemProps.onSetWorkAssignments([newWork]);
+                                            systemProps.onSetWorkAssignments([newWork, ...(systemProps.workAssignments || [])]);
                                             setStandingWorkId(newWork.id);
                                             setIsVehiclesModalOpen(true);
                                             toast.success(isKa ? "ახალი რეესტრი შეიქმნა ავტომობილებისთვის" : "Active registry initialized for vehicles");
@@ -923,7 +921,7 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
                                                 assignedVehicles: [],
                                                 materialsUsed: []
                                             };
-                                            systemProps.onSetWorkAssignments([newWork]);
+                                            systemProps.onSetWorkAssignments([newWork, ...(systemProps.workAssignments || [])]);
                                             setStandingWorkId(newWork.id);
                                             setIsMaterialsModalOpen(true);
                                             toast.success(isKa ? "ახალი რეესტრი შეიქმნა მასალებისთვის" : "Active registry initialized for materials");
@@ -1065,22 +1063,21 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
                 }}
             />
 
-            {/* Responsive Edge Resizer between Sidebar & Map */}
-            {isSidebarOpen && (
-                <ResizableDivider 
-                    direction="horizontal"
-                    currentSize={terminalWidth}
-                    onResize={(newWidth) => setTerminalWidth(newWidth)}
-                    minSize={280}
-                    maxSize={typeof window !== 'undefined' ? Math.max(window.innerWidth - 300, 600) : 850}
-                    storageKey="tasks_terminal_width"
-                    isKa={isKa}
-                    className="hidden md:flex"
-                />
-            )}
-
-            {/* Map Area */}
-            <div className="flex-1 flex flex-col relative w-full overflow-hidden">
+            {/* Map Area - 100% width and height when in map mode */}
+            {viewMode === 'map' && (
+                <div className="w-full h-full flex-1 flex flex-col relative overflow-hidden bg-slate-200">
+                    {/* Floating Return to Panel Button when in Map View */}
+                    <div className="absolute top-4 left-4 z-[1005]">
+                        <button
+                            type="button"
+                            onClick={() => setViewMode('panel')}
+                            className="px-4 py-2.5 bg-slate-900/95 hover:bg-black text-white rounded-2xl shadow-2xl flex items-center gap-2 border border-slate-700/80 backdrop-blur-md active:scale-95 transition-all text-xs font-black uppercase tracking-wider cursor-pointer"
+                            title={isKa ? "პანელზე დაბრუნება" : "Back to Panel"}
+                        >
+                            <BriefcaseIcon size={16} className="text-emerald-400 shrink-0" />
+                            <span>{isKa ? 'პანელზე დაბრუნება' : 'Back to Panel'}</span>
+                        </button>
+                    </div>
                 <input 
                     type="file" 
                     ref={fileInputRef} 
@@ -1216,6 +1213,7 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
                     </MapComponent>
                 </div>
             </div>
+            )}
 
             {/* Operational Area Log Modal (triggered when user draws boundary on map) */}
             {pendingDrawnGeometry && (

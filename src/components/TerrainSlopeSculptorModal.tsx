@@ -145,13 +145,12 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
         });
     };
 
-    // Synchronize global cache on mount and update with ref to avoid parent re-render loops
+    // Synchronize global cache on mount without triggering parent re-render during render phase
     const onSlopeUpdatedRef = useRef(onSlopeUpdated);
     onSlopeUpdatedRef.current = onSlopeUpdated;
 
     useEffect(() => {
         setActiveSlopesCache(slopes);
-        onSlopeUpdatedRef.current?.(slopes);
     }, [slopes]);
 
     // Available polygon features from plantation
@@ -331,6 +330,34 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
     const isExcavation = activeSlope.peakHeightM < 0;
     const absHeight = Math.abs(activeSlope.peakHeightM);
 
+    const [draggingModalHandle, setDraggingModalHandle] = useState<'apex' | 'radius' | null>(null);
+    const modalSvgRef = useRef<SVGSVGElement | null>(null);
+
+    const handleModalPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+        if (!draggingModalHandle || !modalSvgRef.current) return;
+        const rect = modalSvgRef.current.getBoundingClientRect();
+        const clientX = e.clientX - rect.left;
+        const clientY = e.clientY - rect.top;
+        const svgX = (clientX / rect.width) * 240;
+        const svgY = (clientY / rect.height) * 70;
+
+        if (draggingModalHandle === 'apex') {
+            const newH = Math.round((48 - svgY) / 1.3);
+            const clampedH = Math.max(-40, Math.min(60, newH));
+            updateActiveSlope({ peakHeightM: clampedH });
+        } else if (draggingModalHandle === 'radius') {
+            const distFromCenter = Math.abs(svgX - 120);
+            const newR = Math.max(15, Math.min(250, Math.round(distFromCenter * 0.95)));
+            updateActiveSlope({ radiusM: newR });
+        }
+        window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
+    };
+
+    const handleModalPointerUp = () => {
+        setDraggingModalHandle(null);
+        window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
+    };
+
     return (
         <div className="fixed inset-0 z-[2600] flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
             <div className="relative w-full max-w-5xl bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh]">
@@ -479,9 +506,16 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                                 </span>
                             </div>
 
-                            {/* SVG Curve */}
-                            <div className="relative w-full h-[76px] bg-slate-900/70 rounded-xl overflow-hidden border border-slate-800/80 flex items-center justify-center">
-                                <svg viewBox="0 0 240 70" className="w-full h-full px-2" preserveAspectRatio="none">
+                            {/* Interactive SVG Curve with Direct Dragging */}
+                            <div className="relative w-full h-[84px] bg-slate-900/70 rounded-xl overflow-hidden border border-slate-800/80 flex items-center justify-center select-none">
+                                <svg
+                                    ref={modalSvgRef}
+                                    viewBox="0 0 240 70"
+                                    className="w-full h-full px-2 cursor-crosshair"
+                                    preserveAspectRatio="none"
+                                    onPointerMove={handleModalPointerMove}
+                                    onPointerUp={handleModalPointerUp}
+                                >
                                     {/* Base plane Z=0 line */}
                                     <line x1="0" y1="48" x2="240" y2="48" stroke="#334155" strokeWidth="1" strokeDasharray="3,3" />
                                     {/* Central peak vertical axis */}
@@ -490,7 +524,7 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                                     {/* Gradient fill beneath curve */}
                                     <polygon
                                         points={`0,48 ${profileSvgPoints} 240,48`}
-                                        fill={isExcavation ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.2)'}
+                                        fill={isExcavation ? 'rgba(239, 68, 68, 0.18)' : 'rgba(16, 185, 129, 0.22)'}
                                     />
                                     {/* Curve line */}
                                     <polyline
@@ -501,20 +535,60 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                                         strokeLinecap="round"
                                         strokeLinejoin="round"
                                     />
-                                    {/* Center peak dot */}
+                                    {/* Draggable Center Peak Marker */}
+                                    <g
+                                        transform={`translate(120, ${48 - activeSlope.peakHeightM * 1.3})`}
+                                        onPointerDown={(e) => {
+                                            e.stopPropagation();
+                                            setDraggingModalHandle('apex');
+                                        }}
+                                        className="cursor-ns-resize"
+                                    >
+                                        <circle
+                                            r="4.5"
+                                            fill="#ffffff"
+                                            stroke={isExcavation ? '#ef4444' : '#10b981'}
+                                            strokeWidth="2"
+                                        />
+                                        <rect x="-14" y="-14" width="28" height="10" rx="3" fill="#0f172a" stroke="#38bdf8" strokeWidth="0.8" />
+                                        <text x="0" y="-7" fill="#ffffff" fontSize="7" fontWeight="bold" textAnchor="middle">
+                                            {activeSlope.peakHeightM > 0 ? `+${activeSlope.peakHeightM}m` : `${activeSlope.peakHeightM}m`}
+                                        </text>
+                                    </g>
+
+                                    {/* Draggable Radius Handle Left (-R) */}
                                     <circle
-                                        cx="120"
-                                        cy={48 - activeSlope.peakHeightM * 1.3}
-                                        r="3.5"
-                                        fill="#ffffff"
-                                        stroke={isExcavation ? '#ef4444' : '#10b981'}
-                                        strokeWidth="2"
+                                        cx="2"
+                                        cy="48"
+                                        r="4"
+                                        fill="#f59e0b"
+                                        stroke="#ffffff"
+                                        strokeWidth="1.2"
+                                        onPointerDown={(e) => {
+                                            e.stopPropagation();
+                                            setDraggingModalHandle('radius');
+                                        }}
+                                        className="cursor-ew-resize"
+                                    />
+                                    {/* Draggable Radius Handle Right (+R) */}
+                                    <circle
+                                        cx="238"
+                                        cy="48"
+                                        r="4"
+                                        fill="#f59e0b"
+                                        stroke="#ffffff"
+                                        strokeWidth="1.2"
+                                        onPointerDown={(e) => {
+                                            e.stopPropagation();
+                                            setDraggingModalHandle('radius');
+                                        }}
+                                        className="cursor-ew-resize"
                                     />
                                 </svg>
 
-                                <div className="absolute top-1 left-3 text-[9px] font-mono text-slate-500">r = -R</div>
-                                <div className="absolute top-1 right-3 text-[9px] font-mono text-slate-500">r = +R</div>
-                                <div className="absolute bottom-1 self-center text-[9px] font-mono text-emerald-400 font-bold">r = 0 (Apex)</div>
+                                <div className="absolute top-1 left-3 text-[9px] font-mono text-slate-400">r = -{activeSlope.radiusM}m</div>
+                                <div className="absolute top-1 right-3 text-[9px] font-mono text-slate-400">r = +{activeSlope.radiusM}m</div>
+                                <div className="absolute bottom-1 self-center text-[9px] font-mono text-emerald-400 font-bold">r = 0 (Apex H: {activeSlope.peakHeightM}m)</div>
                             </div>
                         </div>
 

@@ -55,6 +55,12 @@ export interface CustomTerrainSlope {
     enabled: boolean;
 }
 
+export interface ProfileBreakPoint {
+    id: string;
+    distanceM: number; // Signed distance in meters from center (negative = left, positive = right)
+    heightM: number;   // Height in meters at this point
+}
+
 export interface SpineControlPoint {
     id: string;
     name: string; // e.g. "Connection point A", "Connection point B"
@@ -65,6 +71,27 @@ export interface SpineControlPoint {
     endDistanceM: number; // Distance in meters where slope meets base zero level
     peakHeightM: number;  // Peak height (+37m) or depth (-H)
     slopeFalloff: 'linear' | 'cosine' | 'plateau';
+    leftLat?: number;     // Custom left endpoint latitude (asymmetric width handle)
+    leftLng?: number;     // Custom left endpoint longitude (asymmetric width handle)
+    rightLat?: number;    // Custom right endpoint latitude (asymmetric width handle)
+    rightLng?: number;    // Custom right endpoint longitude (asymmetric width handle)
+    leftWidthM?: number;  // Independent left width in meters
+    rightWidthM?: number; // Independent right width in meters
+
+    // 2D Profile Control Elements (Cross-section Drafting)
+    plateauStartM?: number; // Left vertical guide line (meters from center, e.g. -6m)
+    plateauEndM?: number;   // Right vertical guide line (meters from center, e.g. +6m)
+    apexOffsetM?: number;   // Asymmetric apex crest horizontal position
+    breakPoints?: ProfileBreakPoint[]; // User-defined vertices / break points along slope
+    generationMode?: 'circular' | 'elongated_ridge'; // Revolve (Lathe 360) vs Extrude along path (Ridge)
+}
+
+export interface LongitudinalControlPoint {
+    id: string;
+    distM: number;       // Distance in meters from start along spine length (e.g. 0m, 20m, 120m, 240m)
+    heightM: number;     // Elevation in meters at this longitudinal position
+    breakPoint?: boolean;// Whether this point represents a slope break point
+    tangent?: number;    // Tangent angle in degrees
 }
 
 export interface HillSpineProfile {
@@ -72,10 +99,47 @@ export interface HillSpineProfile {
     name: string;
     points: SpineControlPoint[];
     enabled: boolean;
+    locked?: boolean;
+    generationMode?: 'circular' | 'elongated_ridge';
+    longitudinalPoints?: LongitudinalControlPoint[];
+}
+
+export interface PerimeterSlopeVertex {
+    id: string;
+    lat: number;
+    lng: number;
+    elevationOffsetM: number; // Z-axis elevation in meters (custom height at this vertex)
+}
+
+export interface PerimeterSlopeObject {
+    id: string;
+    name: string;
+    enabled: boolean;
+    locked?: boolean;
+    vertices: PerimeterSlopeVertex[];
+    interiorPoints?: PerimeterSlopeVertex[]; // Moving points inside polygon (user sketch circle-triangles)
+    crownHeightM?: number;
+    falloffM?: number;
+    hasRoadZeroLevel?: boolean; // Road 0 Level along the base edge
+}
+
+export interface PhotoGpsPin {
+    id: string;
+    name: string;
+    dataUrl: string;
+    lat: number;
+    lng: number;
+    altitudeM: number;
+    azimuthDeg: number; // Compass heading / viewing direction (0-360)
+    fovDeg?: number;    // Field of view cone angle (default 60 deg)
+    timestamp?: string;
+    hasExifGps: boolean;
+    notes?: string;
 }
 
 let _activeSlopesCache: CustomTerrainSlope[] = [];
 let _activeSpineProfilesCache: HillSpineProfile[] = [];
+let _activePerimeterSlopesCache: PerimeterSlopeObject[] = [];
 
 /**
  * Updates the in-memory cache of active slopes for instant elevation calculations.
@@ -99,10 +163,24 @@ export function setActiveSpineProfilesCache(profiles: HillSpineProfile[]): void 
 }
 
 /**
- * Retrieves the currently active spine hill profiles cache.
+ * Retrieves the currently active spine profiles cache.
  */
 export function getActiveSpineProfilesCache(): HillSpineProfile[] {
     return _activeSpineProfilesCache;
+}
+
+/**
+ * Updates the in-memory cache of active perimeter triangulated slopes.
+ */
+export function setActivePerimeterSlopesCache(slopes: PerimeterSlopeObject[]): void {
+    _activePerimeterSlopesCache = slopes.filter(s => s.enabled);
+}
+
+/**
+ * Retrieves the currently active perimeter slopes cache.
+ */
+export function getActivePerimeterSlopesCache(): PerimeterSlopeObject[] {
+    return _activePerimeterSlopesCache;
 }
 
 /**
@@ -129,6 +207,84 @@ export function calculateNormalizedFalloff(
 }
 
 /**
+ * Evaluates the cross-section profile elevation Z at signed distance (signedDistM) from apex/spine.
+ * signedDistM < 0: Left side of slope (Ascent)
+ * signedDistM > 0: Right side of slope (Descent)
+ * Uses break points (vertices), vertical guide lines (plateauStartM/plateauEndM), and Bézier/cosine smoothing.
+ */
+export function evaluateProfileCrossSection(
+    signedDistM: number,
+    pt: SpineControlPoint
+): number {
+    const H = pt.peakHeightM;
+    const leftW = Math.max(1, pt.leftWidthM ?? (pt.widthM !== undefined ? pt.widthM / 2 : 30));
+    const rightW = Math.max(1, pt.rightWidthM ?? (pt.widthM !== undefined ? pt.widthM / 2 : 30));
+    
+    // Vertical guides defining the plateau crown
+    const platStart = pt.plateauStartM !== undefined ? pt.plateauStartM : -(pt.startOffsetM || 0);
+    const platEnd = pt.plateauEndM !== undefined ? pt.plateauEndM : (pt.startOffsetM || 0);
+
+    // Outside bounds
+    if (signedDistM <= -leftW || signedDistM >= rightW) {
+        return 0;
+    }
+
+    // Inside plateau flat crown
+    if (signedDistM >= platStart && signedDistM <= platEnd) {
+        return H;
+    }
+
+    // Break points
+    const bps = pt.breakPoints ? [...pt.breakPoints].sort((a, b) => a.distanceM - b.distanceM) : [];
+
+    if (signedDistM < platStart) {
+        // LEFT SIDE (Ascent from -leftW to platStart)
+        const leftNodes: { d: number; h: number }[] = [
+            { d: -leftW, h: 0 },
+            ...bps.filter(b => b.distanceM > -leftW && b.distanceM < platStart).map(b => ({ d: b.distanceM, h: b.heightM })),
+            { d: platStart, h: H }
+        ];
+
+        // Find the segment containing signedDistM
+        for (let i = 0; i < leftNodes.length - 1; i++) {
+            const n1 = leftNodes[i];
+            const n2 = leftNodes[i + 1];
+            if (signedDistM >= n1.d && signedDistM <= n2.d) {
+                const span = n2.d - n1.d;
+                if (span <= 0.001) return n2.h;
+                const t = (signedDistM - n1.d) / span;
+                // Natural Bézier / smooth cosine curve
+                const smoothT = (1 - Math.cos(t * Math.PI)) / 2;
+                return n1.h + (n2.h - n1.h) * smoothT;
+            }
+        }
+        return 0;
+    } else {
+        // RIGHT SIDE (Descent from platEnd to +rightW)
+        const rightNodes: { d: number; h: number }[] = [
+            { d: platEnd, h: H },
+            ...bps.filter(b => b.distanceM > platEnd && b.distanceM < rightW).map(b => ({ d: b.distanceM, h: b.heightM })),
+            { d: rightW, h: 0 }
+        ];
+
+        // Find the segment containing signedDistM
+        for (let i = 0; i < rightNodes.length - 1; i++) {
+            const n1 = rightNodes[i];
+            const n2 = rightNodes[i + 1];
+            if (signedDistM >= n1.d && signedDistM <= n2.d) {
+                const span = n2.d - n1.d;
+                if (span <= 0.001) return n2.h;
+                const t = (signedDistM - n1.d) / span;
+                // Natural Bézier / smooth cosine curve
+                const smoothT = (1 - Math.cos(t * Math.PI)) / 2;
+                return n1.h + (n2.h - n1.h) * smoothT;
+            }
+        }
+        return 0;
+    }
+}
+
+/**
  * Calculates elevation delta Z(r) for non-linear hills using the Spine & Cross-Section Profile method.
  * Interpolates peak height, width, start of climb, and end of climb between axial connection points (A -> B...).
  */
@@ -139,23 +295,26 @@ export function calculateSpineElevationOffset(
 ): number {
     if (!spine.enabled || !spine.points || spine.points.length === 0) return 0;
     
-    // Single point fallback (radial)
-    if (spine.points.length === 1) {
-        const pt = spine.points[0];
-        const dLatM = (lat - pt.lat) * 111111;
-        const dLngM = (lng - pt.lng) * (111111 * Math.cos((pt.lat * Math.PI) / 180));
-        const r = Math.hypot(dLatM, dLngM);
-        const R = Math.max(1, pt.endDistanceM || pt.widthM || 20);
-        const start = pt.startOffsetM || 0;
-        if (r <= start) return pt.peakHeightM;
-        if (r >= R) return 0;
-        const u = (r - start) / (R - start);
-        return calculateNormalizedFalloff(u, pt.peakHeightM, pt.slopeFalloff);
+    const mLat = 111111;
+    const mLng = 111111 * Math.cos((lat * Math.PI) / 180);
+
+    // Single point fallback or Circular Revolve / Lathe Mode
+    const isCircular = spine.generationMode === 'circular' || (spine.points.length === 1);
+    if (isCircular) {
+        let maxCirc = 0;
+        for (const pt of spine.points) {
+            const dLatM = (lat - pt.lat) * mLat;
+            const dLngM = (lng - pt.lng) * mLng;
+            const r = Math.hypot(dLatM, dLngM);
+            const delta = evaluateProfileCrossSection(r, pt);
+            if (Math.abs(delta) > Math.abs(maxCirc)) {
+                maxCirc = delta;
+            }
+        }
+        return maxCirc;
     }
 
     let maxOffset = 0;
-    const mLat = 111111;
-    const mLng = 111111 * Math.cos((lat * Math.PI) / 180);
 
     for (let i = 0; i < spine.points.length - 1; i++) {
         const p1 = spine.points[i];
@@ -170,27 +329,54 @@ export function calculateSpineElevationOffset(
         const dx = x2 - x1;
         const dy = y2 - y1;
         const segLenSq = dx * dx + dy * dy;
+        const segLen = Math.sqrt(segLenSq) || 1;
         const t = segLenSq === 0 ? 0 : Math.max(0, Math.min(1, (px * dx + py * dy) / segLenSq));
 
         const projX = x1 + t * dx;
         const projY = y1 + t * dy;
-        const r = Math.hypot(px - projX, py - projY);
 
-        // Interpolate profile parameters along spine from p1 to p2
-        const H = (1 - t) * p1.peakHeightM + t * p2.peakHeightM;
-        const width = (1 - t) * (p1.widthM || 45) + t * (p2.widthM || 45);
-        const startOffset = (1 - t) * (p1.startOffsetM || 0) + t * (p2.startOffsetM || 0);
-        const endDistance = (1 - t) * (p1.endDistanceM || width) + t * (p2.endDistanceM || width);
-        const slopeType = t < 0.5 ? p1.slopeFalloff : p2.slopeFalloff;
+        // Signed perpendicular distance: positive is right of spine vector, negative is left
+        const cross = dx * (py - projY) - dy * (px - projX);
+        const signedDist = cross / segLen;
 
-        let delta = 0;
-        if (r <= startOffset) {
-            delta = H;
-        } else if (r >= endDistance) {
-            delta = 0;
-        } else {
-            const u = (r - startOffset) / Math.max(1, (endDistance - startOffset));
-            delta = calculateNormalizedFalloff(u, H, slopeType);
+        // Interpolated control point along spine at parameter t
+        const interpPt: SpineControlPoint = {
+            id: 'interp',
+            name: 'interp',
+            lat: (1 - t) * p1.lat + t * p2.lat,
+            lng: (1 - t) * p1.lng + t * p2.lng,
+            peakHeightM: (1 - t) * p1.peakHeightM + t * p2.peakHeightM,
+            widthM: (1 - t) * (p1.widthM || 45) + t * (p2.widthM || 45),
+            leftWidthM: (1 - t) * (p1.leftWidthM ?? (p1.widthM !== undefined ? p1.widthM / 2 : 25)) + t * (p2.leftWidthM ?? (p2.widthM !== undefined ? p2.widthM / 2 : 25)),
+            rightWidthM: (1 - t) * (p1.rightWidthM ?? (p1.widthM !== undefined ? p1.widthM / 2 : 25)) + t * (p2.rightWidthM ?? (p2.widthM !== undefined ? p2.widthM / 2 : 25)),
+            startOffsetM: (1 - t) * (p1.startOffsetM || 0) + t * (p2.startOffsetM || 0),
+            endDistanceM: (1 - t) * (p1.endDistanceM || 50) + t * (p2.endDistanceM || 50),
+            plateauStartM: (1 - t) * (p1.plateauStartM ?? 0) + t * (p2.plateauStartM ?? 0),
+            plateauEndM: (1 - t) * (p1.plateauEndM ?? 0) + t * (p2.plateauEndM ?? 0),
+            slopeFalloff: t < 0.5 ? p1.slopeFalloff : p2.slopeFalloff,
+            breakPoints: t < 0.5 ? p1.breakPoints : p2.breakPoints
+        };
+
+        let delta = evaluateProfileCrossSection(signedDist, interpPt);
+
+        // If longitudinal points exist (Length control), apply longitudinal height factor
+        if (spine.longitudinalPoints && spine.longitudinalPoints.length > 0) {
+            // Compute total spine length and current distance along spine
+            let totalLen = 0;
+            let currentDist = 0;
+            for (let j = 0; j < spine.points.length - 1; j++) {
+                const s1 = spine.points[j];
+                const s2 = spine.points[j + 1];
+                const sLen = Math.hypot((s2.lng - s1.lng) * mLng, (s2.lat - s1.lat) * mLat);
+                if (j < i) {
+                    currentDist += sLen;
+                } else if (j === i) {
+                    currentDist += t * sLen;
+                }
+                totalLen += sLen;
+            }
+            const longFactor = evaluateLongitudinalProfile(currentDist, totalLen, spine.longitudinalPoints, interpPt.peakHeightM);
+            delta = delta * longFactor;
         }
 
         if (Math.abs(delta) > Math.abs(maxOffset)) {
@@ -199,6 +385,225 @@ export function calculateSpineElevationOffset(
     }
 
     return maxOffset;
+}
+
+/**
+ * Evaluates the longitudinal profile along the ridge spine at distance distM (from start to end).
+ * Returns a height multiplier based on the longitudinal curve and break points.
+ */
+export function evaluateLongitudinalProfile(
+    distM: number,
+    totalSpineLenM: number,
+    longPoints?: LongitudinalControlPoint[],
+    maxPeakH: number = 25
+): number {
+    if (!longPoints || longPoints.length === 0) {
+        if (totalSpineLenM <= 0) return 1;
+        const norm = Math.max(0, Math.min(1, distM / totalSpineLenM));
+        return Math.sin(norm * Math.PI);
+    }
+
+    const sorted = [...longPoints].sort((a, b) => a.distM - b.distM);
+    if (distM <= sorted[0].distM) return Math.max(0, sorted[0].heightM / (maxPeakH || 1));
+    if (distM >= sorted[sorted.length - 1].distM) return Math.max(0, sorted[sorted.length - 1].heightM / (maxPeakH || 1));
+
+    for (let i = 0; i < sorted.length - 1; i++) {
+        const p1 = sorted[i];
+        const p2 = sorted[i + 1];
+        if (distM >= p1.distM && distM <= p2.distM) {
+            const span = p2.distM - p1.distM;
+            if (span <= 0.001) return Math.max(0, p2.heightM / (maxPeakH || 1));
+            const t = (distM - p1.distM) / span;
+            const smoothT = (1 - Math.cos(t * Math.PI)) / 2;
+            const h = p1.heightM + (p2.heightM - p1.heightM) * smoothT;
+            return Math.max(0, h / (maxPeakH || 1));
+        }
+    }
+    return 1;
+}
+
+/**
+ * Calculates elevation delta Z in meters for uneven terrain outlined by multi-point perimeter vertices.
+ * Uses 2D barycentric / inverse distance interpolation from vertices with custom Z-axis elevations.
+ */
+export function calculatePerimeterSlopeElevation(
+    lat: number,
+    lng: number,
+    slope: PerimeterSlopeObject
+): number {
+    if (!slope.enabled || !slope.vertices || slope.vertices.length < 3) return 0;
+
+    const coords: [number, number][] = slope.vertices.map(v => [v.lat, v.lng]);
+    const inside = isPointInPolygon(lat, lng, coords);
+    const falloff = slope.falloffM || 18;
+
+    let weightSum = 0;
+    let weightedElev = 0;
+    const mLat = 111111;
+    const mLng = 111111 * Math.cos((lat * Math.PI) / 180);
+
+    const allControlPoints = [...slope.vertices, ...(slope.interiorPoints || [])];
+    for (const v of allControlPoints) {
+        const dLatM = (lat - v.lat) * mLat;
+        const dLngM = (lng - v.lng) * mLng;
+        const dist = Math.hypot(dLatM, dLngM);
+        if (dist < 0.2) {
+            return Math.max(0, v.elevationOffsetM);
+        }
+        const w = 1 / (dist * dist);
+        weightSum += w;
+        weightedElev += v.elevationOffsetM * w;
+    }
+
+    const baseInterpolatedElev = weightSum > 0 ? weightedElev / weightSum : 0;
+    const crown = slope.crownHeightM || 0;
+
+    if (inside) {
+        const distToEdge = minDistanceToPolygonM(lat, lng, coords);
+        const centerFactor = Math.min(1, distToEdge / 20);
+        return Math.max(0, baseInterpolatedElev + crown * centerFactor);
+    }
+
+    const distToEdge = minDistanceToPolygonM(lat, lng, coords);
+    if (distToEdge >= falloff) return 0;
+    const taper = (1 + Math.cos((Math.PI * distToEdge) / falloff)) / 2;
+    return Math.max(0, baseInterpolatedElev * taper);
+}
+
+/**
+ * Creates a bounded 3D HillSpineProfile inside a drawn perimeter polygon.
+ * (Matching user sketch: Hill crest curve with plateau and falloff bounded by perimeter).
+ */
+export function createHillFromPerimeter(
+    perimeter: [number, number][],
+    name: string = 'Hill in Perimeter',
+    peakHeightM: number = 28
+): HillSpineProfile {
+    let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
+    let sumLat = 0, sumLng = 0;
+    perimeter.forEach(([lat, lng]) => {
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+        if (lng < minLng) minLng = lng;
+        if (lng > maxLng) maxLng = lng;
+        sumLat += lat;
+        sumLng += lng;
+    });
+    const n = Math.max(1, perimeter.length);
+    const centerLat = sumLat / n;
+    const centerLng = sumLng / n;
+
+    const spanLatM = (maxLat - minLat) * 111111;
+    const spanLngM = (maxLng - minLng) * (111111 * Math.cos((centerLat * Math.PI) / 180));
+    const isHorizontal = spanLngM >= spanLatM;
+
+    const spinePoints: SpineControlPoint[] = [];
+    const ptsCount = 3;
+    const letters = ['A', 'B', 'C'];
+    const heightWeights = [0.45, 1.0, 0.4];
+
+    for (let i = 0; i < ptsCount; i++) {
+        const t = (i + 0.5) / ptsCount;
+        const ptLat = isHorizontal
+            ? centerLat + (t - 0.5) * (maxLat - minLat) * 0.25
+            : minLat + t * (maxLat - minLat);
+        const ptLng = isHorizontal
+            ? minLng + t * (maxLng - minLng)
+            : centerLng + (t - 0.5) * (maxLng - minLng) * 0.25;
+
+        const widthM = Math.max(15, Math.round((isHorizontal ? spanLatM : spanLngM) * 0.45));
+        const pH = Math.round(peakHeightM * heightWeights[i]);
+
+        spinePoints.push({
+            id: `pt-${letters[i]}-${Date.now().toString().slice(-4)}`,
+            name: `Crest Point ${letters[i]}`,
+            lat: ptLat,
+            lng: ptLng,
+            widthM,
+            startOffsetM: Math.round(widthM * 0.1),
+            endDistanceM: Math.round(widthM * 0.65),
+            peakHeightM: pH,
+            plateauStartM: -Math.round(widthM * 0.15),
+            plateauEndM: Math.round(widthM * 0.15),
+            slopeFalloff: 'cosine'
+        });
+    }
+
+    return {
+        id: `hill-${Date.now()}`,
+        name,
+        enabled: true,
+        points: spinePoints,
+        generationMode: 'elongated_ridge',
+        longitudinalPoints: [
+            { id: 'lp-1', distM: 0, heightM: Math.round(peakHeightM * 0.35) },
+            { id: 'lp-2', distM: Math.round(Math.max(spanLatM, spanLngM) * 0.45), heightM: peakHeightM, breakPoint: true },
+            { id: 'lp-3', distM: Math.round(Math.max(spanLatM, spanLngM)), heightM: Math.round(peakHeightM * 0.25) }
+        ]
+    };
+}
+
+/**
+ * Creates an uneven terrain 3D slope object with Road 0 Level along the bottom edge.
+ * (Matching user sketch: Road 0 zero level at bottom with rising transects).
+ */
+export function createSlopeFromPerimeter(
+    perimeter: [number, number][],
+    name: string = 'Slope (Road 0 Level)',
+    maxElevationM: number = 22
+): PerimeterSlopeObject {
+    let minLat = Infinity;
+    let maxLat = -Infinity;
+    perimeter.forEach(([lat]) => {
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+    });
+    const latSpan = Math.max(0.00001, maxLat - minLat);
+
+    const vertices: PerimeterSlopeVertex[] = perimeter.map((pt, idx) => {
+        const normY = (pt[0] - minLat) / latSpan; // 0 at road level, 1 at top crest
+        const elev = normY < 0.25 ? 0 : Math.round(normY * maxElevationM);
+        return {
+            id: `pv-${Date.now()}-${idx + 1}`,
+            lat: pt[0],
+            lng: pt[1],
+            elevationOffsetM: elev
+        };
+    });
+
+    let sumLat = 0, sumLng = 0;
+    perimeter.forEach(([lat, lng]) => {
+        sumLat += lat;
+        sumLng += lng;
+    });
+    const cLat = sumLat / perimeter.length;
+    const cLng = sumLng / perimeter.length;
+
+    const interiorPoints: PerimeterSlopeVertex[] = [
+        {
+            id: `ip-${Date.now()}-1`,
+            lat: cLat - latSpan * 0.1,
+            lng: cLng - 0.0001,
+            elevationOffsetM: Math.round(maxElevationM * 0.45)
+        },
+        {
+            id: `ip-${Date.now()}-2`,
+            lat: cLat + latSpan * 0.15,
+            lng: cLng + 0.0001,
+            elevationOffsetM: Math.round(maxElevationM * 0.75)
+        }
+    ];
+
+    return {
+        id: `slope-${Date.now()}`,
+        name,
+        enabled: true,
+        vertices,
+        interiorPoints,
+        crownHeightM: 0,
+        falloffM: 15,
+        hasRoadZeroLevel: true
+    };
 }
 
 /**
@@ -374,7 +779,15 @@ export function getElevationAtCoords(
         }
     }
 
-    const totalZ = baseElevation + regionalSlope + ridgeHeight + knollHeight + ditchDepth + customSlopeDelta + spineDelta;
+    // Terrain feature 7: Multi-point Perimeter Triangulated Slopes
+    let perimeterDelta = 0;
+    if (_activePerimeterSlopesCache && _activePerimeterSlopesCache.length > 0) {
+        for (const pSlope of _activePerimeterSlopesCache) {
+            perimeterDelta += calculatePerimeterSlopeElevation(lat, lng, pSlope);
+        }
+    }
+
+    const totalZ = baseElevation + regionalSlope + ridgeHeight + knollHeight + ditchDepth + customSlopeDelta + spineDelta + perimeterDelta;
     return Number(totalZ.toFixed(2));
 }
 

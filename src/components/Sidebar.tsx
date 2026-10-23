@@ -140,7 +140,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside 
-      className={`hidden lg:flex w-64 flex-shrink-0 flex-col z-[2000] transition-colors border-r ${
+      className={`module-sidebar hidden lg:flex w-64 flex-shrink-0 flex-col z-[2000] transition-colors border-r ${
         isDark 
           ? 'bg-[#0b1120] text-slate-100 border-slate-800/80 shadow-xl' 
           : 'bg-white text-slate-800 border-gray-150'

@@ -1,15 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
     X, Camera, Plane, Sliders, Settings, Edit3, Trash2, Copy, 
     Play, Eye, Radio, Shield, Wifi, Video, RefreshCw, 
     Maximize2, ChevronDown, ChevronUp, Download, Check, AlertCircle,
     Compass, MapPin, ZoomIn, ZoomOut, Volume2, ShieldCheck, Sparkles,
-    Move
+    Move, GripVertical, ArrowUp, ArrowDown, ArrowLeft, ArrowRight
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { PlantationCamera } from './SystemManagement/HardwareLabs/CameraNvrLab';
 import type { DroneFlightMission, DroneFlightWaypoint } from './DroneFlightPathPlanner';
 import { computeBlindZoneDistanceM } from '../utils/cameraGeospatial';
+import { nudgeCoordinates } from '../utils/plantationHelper';
 
 interface MapElementPropertiesPanelProps {
     selectedCamera: PlantationCamera | null;
@@ -50,14 +51,59 @@ export const MapElementPropertiesPanel: React.FC<MapElementPropertiesPanelProps>
     const [activeTab, setActiveTab] = useState<'manage' | 'config' | 'edit'>('manage');
     const [isMinimized, setIsMinimized] = useState<boolean>(false);
     const [confirmDelete, setConfirmDelete] = useState<boolean>(false);
+    const [panelPos, setPanelPos] = useState<{ x: number; y: number } | null>(null);
+    const [nudgeStepM, setNudgeStepM] = useState<number>(5);
+    const panelRef = useRef<HTMLDivElement | null>(null);
 
     if (!isCamera && !isDrone) return null;
+
+    // Draggable Panel handler with window listeners for tablets/mobile
+    const handlePanelPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+        if ((e.target as HTMLElement).closest('button, input, select, a, textarea')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const targetEl = e.currentTarget;
+        try { targetEl.setPointerCapture(e.pointerId); } catch {}
+        const rect = panelRef.current?.getBoundingClientRect();
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startLeft = rect ? rect.left : 24;
+        const startTop = rect ? rect.top : 80;
+        const panelWidth = rect?.width || 380;
+
+        const onPointerMove = (moveEvt: PointerEvent) => {
+            moveEvt.preventDefault();
+            const deltaX = moveEvt.clientX - startX;
+            const deltaY = moveEvt.clientY - startY;
+            const newLeft = Math.max(8, Math.min(window.innerWidth - panelWidth - 8, startLeft + deltaX));
+            const newTop = Math.max(8, Math.min(window.innerHeight - 80, startTop + deltaY));
+            setPanelPos({ x: Math.round(newLeft), y: Math.round(newTop) });
+        };
+
+        const onPointerUp = (upEvt: PointerEvent) => {
+            try { targetEl.releasePointerCapture(upEvt.pointerId); } catch {}
+            window.removeEventListener('pointermove', onPointerMove);
+            window.removeEventListener('pointerup', onPointerUp);
+        };
+
+        window.addEventListener('pointermove', onPointerMove, { passive: false });
+        window.addEventListener('pointerup', onPointerUp, { passive: false });
+    };
 
     // Camera Handlers
     const handleCameraFieldChange = (fields: Partial<PlantationCamera>) => {
         if (!selectedCamera || !onUpdateCamera) return;
         const updated = { ...selectedCamera, ...fields };
         onUpdateCamera(updated);
+    };
+
+    // Camera Nudge Handler (Directional move on map)
+    const handleNudgeCamera = (dir: 'N' | 'S' | 'E' | 'W' | 'NE' | 'NW' | 'SE' | 'SW') => {
+        if (!selectedCamera || !onUpdateCamera) return;
+        const [nextLat, nextLng] = nudgeCoordinates(selectedCamera.lat, selectedCamera.lng, dir, nudgeStepM);
+        const updated = { ...selectedCamera, lat: nextLat, lng: nextLng };
+        onUpdateCamera(updated);
+        toast.info(isKa ? `კამერა გადაადგილდა ${dir} (${nudgeStepM}მ)` : `Camera nudged ${dir} by ${nudgeStepM}m`);
     };
 
     const handleCameraCopy = () => {
@@ -128,32 +174,48 @@ export const MapElementPropertiesPanel: React.FC<MapElementPropertiesPanelProps>
         : 0;
 
     return (
-        <div className="fixed top-20 left-4 sm:left-6 z-[2400] w-[340px] sm:w-[410px] bg-slate-950/95 backdrop-blur-2xl border border-slate-700/80 rounded-3xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-200 text-white select-none">
+        <div 
+            ref={panelRef}
+            style={panelPos ? {
+                position: 'fixed',
+                left: `${panelPos.x}px`,
+                top: `${panelPos.y}px`,
+                zIndex: 2500
+            } : undefined}
+            className="fixed top-16 sm:top-20 left-2 sm:left-6 z-[2400] w-[calc(100vw-16px)] sm:w-[410px] max-w-[420px] bg-slate-950/95 backdrop-blur-2xl border border-slate-700/80 rounded-3xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-left-4 duration-200 text-white select-none max-h-[85vh] flex flex-col max-sm:bottom-2 max-sm:top-auto"
+        >
             
-            {/* Header */}
-            <div className="flex items-center justify-between p-3.5 sm:p-4 bg-slate-900/90 border-b border-slate-800">
-                <div className="flex items-center gap-2.5 min-w-0">
-                    <div className={`p-2 rounded-xl border flex items-center justify-center ${
+            {/* Header with Drag Handle */}
+            <div 
+                onPointerDown={handlePanelPointerDown}
+                className="flex items-center justify-between p-3 sm:p-3.5 bg-slate-900/95 border-b border-slate-800 cursor-grab active:cursor-grabbing touch-none select-none"
+                title={isKa ? 'გადაათრიეთ პანელი ეკრანზე' : 'Drag panel to move anywhere'}
+            >
+                <div className="flex items-center gap-2 min-w-0">
+                    <div className="text-slate-400 p-1 hover:text-white shrink-0">
+                        <GripVertical size={16} />
+                    </div>
+                    <div className={`p-1.5 rounded-xl border flex items-center justify-center shrink-0 ${
                         isCamera 
                             ? 'bg-blue-600/20 border-blue-500/40 text-blue-400' 
                             : 'bg-cyan-600/20 border-cyan-500/40 text-cyan-400'
                     }`}>
-                        {isCamera ? <Camera size={18} /> : <Plane size={18} />}
+                        {isCamera ? <Camera size={16} /> : <Plane size={16} />}
                     </div>
                     <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
-                            <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">
+                            <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 truncate">
                                 {isCamera 
                                     ? (isKa ? 'სათვალთვალო კამერა' : 'Surveillance Camera') 
                                     : (isKa ? 'დრონის მარშრუტი' : 'Drone Flight Path')}
                             </span>
                             {isCamera && (
-                                <span className="px-1.5 py-0.2 rounded-md font-mono text-[9px] bg-blue-950 text-blue-300 border border-blue-800/60 font-bold">
+                                <span className="px-1.5 py-0.2 rounded-md font-mono text-[9px] bg-blue-950 text-blue-300 border border-blue-800/60 font-bold shrink-0">
                                     CH0{selectedCamera.channel}
                                 </span>
                             )}
                         </div>
-                        <h4 className="text-xs sm:text-sm font-black text-white truncate max-w-[190px] sm:max-w-[240px]">
+                        <h4 className="text-xs sm:text-sm font-black text-white truncate max-w-[170px] sm:max-w-[210px]">
                             {isCamera ? selectedCamera.name : selectedDroneMission?.name}
                         </h4>
                     </div>
@@ -352,6 +414,102 @@ export const MapElementPropertiesPanel: React.FC<MapElementPropertiesPanelProps>
                                                 </div>
                                             </div>
                                         </div>
+
+                                        {/* DIRECTIONAL NUDGE PAD FOR FAST REPOSITIONING ON TABLET / MOBILE */}
+                                        <div className="p-3 bg-slate-900/90 rounded-2xl border border-blue-500/30 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[10px] font-black uppercase tracking-wider text-blue-400 flex items-center gap-1">
+                                                    <Compass size={12} /> {isKa ? 'რუკაზე გადაადგილება (Nudge)' : 'Move on Map (Nudge)'}
+                                                </span>
+                                                <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-800">
+                                                    {[1, 5, 20].map(step => (
+                                                        <button
+                                                            key={step}
+                                                            type="button"
+                                                            onClick={() => setNudgeStepM(step)}
+                                                            className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold transition-all cursor-pointer ${
+                                                                nudgeStepM === step ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                                                            }`}
+                                                        >
+                                                            {step}m
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* 3x3 Direction Pad */}
+                                            <div className="grid grid-cols-3 gap-1.5 max-w-[210px] mx-auto py-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleNudgeCamera('NW')}
+                                                    className="p-2 bg-slate-950 hover:bg-slate-800 active:bg-blue-600 text-slate-300 rounded-xl font-bold text-xs flex items-center justify-center transition-all border border-slate-800 active:scale-95 cursor-pointer"
+                                                    title="North-West"
+                                                >
+                                                    ↖
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleNudgeCamera('N')}
+                                                    className="p-2 bg-slate-950 hover:bg-slate-800 active:bg-blue-600 text-blue-300 rounded-xl font-bold text-xs flex items-center justify-center transition-all border border-blue-800/60 active:scale-95 cursor-pointer"
+                                                    title="North (Up)"
+                                                >
+                                                    <ArrowUp size={14} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleNudgeCamera('NE')}
+                                                    className="p-2 bg-slate-950 hover:bg-slate-800 active:bg-blue-600 text-slate-300 rounded-xl font-bold text-xs flex items-center justify-center transition-all border border-slate-800 active:scale-95 cursor-pointer"
+                                                    title="North-East"
+                                                >
+                                                    ↗
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleNudgeCamera('W')}
+                                                    className="p-2 bg-slate-950 hover:bg-slate-800 active:bg-blue-600 text-blue-300 rounded-xl font-bold text-xs flex items-center justify-center transition-all border border-blue-800/60 active:scale-95 cursor-pointer"
+                                                    title="West (Left)"
+                                                >
+                                                    <ArrowLeft size={14} />
+                                                </button>
+                                                <div className="p-2 bg-blue-950/60 text-blue-400 rounded-xl font-mono font-black text-[10px] flex items-center justify-center border border-blue-700/50">
+                                                    {nudgeStepM}m
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleNudgeCamera('E')}
+                                                    className="p-2 bg-slate-950 hover:bg-slate-800 active:bg-blue-600 text-blue-300 rounded-xl font-bold text-xs flex items-center justify-center transition-all border border-blue-800/60 active:scale-95 cursor-pointer"
+                                                    title="East (Right)"
+                                                >
+                                                    <ArrowRight size={14} />
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleNudgeCamera('SW')}
+                                                    className="p-2 bg-slate-950 hover:bg-slate-800 active:bg-blue-600 text-slate-300 rounded-xl font-bold text-xs flex items-center justify-center transition-all border border-slate-800 active:scale-95 cursor-pointer"
+                                                    title="South-West"
+                                                >
+                                                    ↙
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleNudgeCamera('S')}
+                                                    className="p-2 bg-slate-950 hover:bg-slate-800 active:bg-blue-600 text-blue-300 rounded-xl font-bold text-xs flex items-center justify-center transition-all border border-blue-800/60 active:scale-95 cursor-pointer"
+                                                    title="South (Down)"
+                                                >
+                                                    <ArrowDown size={14} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleNudgeCamera('SE')}
+                                                    className="p-2 bg-slate-950 hover:bg-slate-800 active:bg-blue-600 text-slate-300 rounded-xl font-bold text-xs flex items-center justify-center transition-all border border-slate-800 active:scale-95 cursor-pointer"
+                                                    title="South-East"
+                                                >
+                                                    ↘
+                                                </button>
+                                            </div>
+                                        </div>
                                     </>
                                 )}
 
@@ -547,56 +705,236 @@ export const MapElementPropertiesPanel: React.FC<MapElementPropertiesPanelProps>
                                             />
                                         </div>
 
-                                        {/* Sliders with direct inputs for Tilt, Range, Azimuth */}
-                                        <div>
-                                            <div className="flex items-center justify-between mb-1">
-                                                <span className="text-[10px] font-bold text-slate-400">
-                                                    {isKa ? 'დახრის კუთხე (Tilt - ნაგულისხმევი 4°)' : 'Downward Tilt Angle (Default 4°)'}
+                                        {/* DIRECTIONAL NUDGE PAD FOR MOVING CAMERA ON TABLET / MOBILE */}
+                                        <div className="p-3 bg-slate-900/90 rounded-2xl border border-blue-500/30 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[10px] font-black uppercase tracking-wider text-blue-400 flex items-center gap-1">
+                                                    <Compass size={12} /> {isKa ? 'რუკაზე გადაადგილება (Nudge)' : 'Move on Map (Nudge)'}
                                                 </span>
-                                                <span className="text-amber-400 font-mono font-bold">{selectedCamera.tiltAngleDeg || 4}°</span>
+                                                <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-800">
+                                                    {[1, 5, 20].map(step => (
+                                                        <button
+                                                            key={step}
+                                                            type="button"
+                                                            onClick={() => setNudgeStepM(step)}
+                                                            className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold transition-all ${
+                                                                nudgeStepM === step ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                                                            }`}
+                                                        >
+                                                            {step}m
+                                                        </button>
+                                                    ))}
+                                                </div>
                                             </div>
-                                            <input
-                                                type="range"
-                                                min="1"
-                                                max="35"
-                                                value={selectedCamera.tiltAngleDeg || 4}
-                                                onChange={(e) => handleCameraFieldChange({ tiltAngleDeg: Number(e.target.value) })}
-                                                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
-                                            />
+
+                                            {/* 3x3 Direction Pad */}
+                                            <div className="grid grid-cols-3 gap-1.5 max-w-[210px] mx-auto py-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleNudgeCamera('NW')}
+                                                    className="p-2 bg-slate-950 hover:bg-slate-800 active:bg-blue-600 text-slate-300 rounded-xl font-bold text-xs flex items-center justify-center transition-all border border-slate-800 active:scale-95"
+                                                    title="North-West"
+                                                >
+                                                    ↖
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleNudgeCamera('N')}
+                                                    className="p-2 bg-slate-950 hover:bg-slate-800 active:bg-blue-600 text-blue-300 rounded-xl font-bold text-xs flex items-center justify-center transition-all border border-blue-800/60 active:scale-95"
+                                                    title="North (Up)"
+                                                >
+                                                    <ArrowUp size={14} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleNudgeCamera('NE')}
+                                                    className="p-2 bg-slate-950 hover:bg-slate-800 active:bg-blue-600 text-slate-300 rounded-xl font-bold text-xs flex items-center justify-center transition-all border border-slate-800 active:scale-95"
+                                                    title="North-East"
+                                                >
+                                                    ↗
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleNudgeCamera('W')}
+                                                    className="p-2 bg-slate-950 hover:bg-slate-800 active:bg-blue-600 text-blue-300 rounded-xl font-bold text-xs flex items-center justify-center transition-all border border-blue-800/60 active:scale-95"
+                                                    title="West (Left)"
+                                                >
+                                                    <ArrowLeft size={14} />
+                                                </button>
+                                                <div className="p-2 bg-blue-950/60 text-blue-400 rounded-xl font-mono font-black text-[10px] flex items-center justify-center border border-blue-700/50">
+                                                    {nudgeStepM}m
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleNudgeCamera('E')}
+                                                    className="p-2 bg-slate-950 hover:bg-slate-800 active:bg-blue-600 text-blue-300 rounded-xl font-bold text-xs flex items-center justify-center transition-all border border-blue-800/60 active:scale-95"
+                                                    title="East (Right)"
+                                                >
+                                                    <ArrowRight size={14} />
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleNudgeCamera('SW')}
+                                                    className="p-2 bg-slate-950 hover:bg-slate-800 active:bg-blue-600 text-slate-300 rounded-xl font-bold text-xs flex items-center justify-center transition-all border border-slate-800 active:scale-95"
+                                                    title="South-West"
+                                                >
+                                                    ↙
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleNudgeCamera('S')}
+                                                    className="p-2 bg-slate-950 hover:bg-slate-800 active:bg-blue-600 text-blue-300 rounded-xl font-bold text-xs flex items-center justify-center transition-all border border-blue-800/60 active:scale-95"
+                                                    title="South (Down)"
+                                                >
+                                                    <ArrowDown size={14} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleNudgeCamera('SE')}
+                                                    className="p-2 bg-slate-950 hover:bg-slate-800 active:bg-blue-600 text-slate-300 rounded-xl font-bold text-xs flex items-center justify-center transition-all border border-slate-800 active:scale-95"
+                                                    title="South-East"
+                                                >
+                                                    ↘
+                                                </button>
+                                            </div>
                                         </div>
 
-                                        <div>
-                                            <div className="flex items-center justify-between mb-1">
-                                                <span className="text-[10px] font-bold text-slate-400">
-                                                    {isKa ? 'აზიმუტი (მიმართულება 0°–360°)' : 'Azimuth Direction (0°–360°)'}
-                                                </span>
-                                                <span className="text-blue-400 font-mono font-bold">{selectedCamera.azimuthDeg || 0}°</span>
+                                        {/* Sliders with Steppers for Tilt, Azimuth, Range */}
+                                        <div className="p-2.5 bg-slate-900 rounded-2xl border border-slate-800 space-y-3">
+                                            {/* TILT ANGLE */}
+                                            <div>
+                                                <div className="flex items-center justify-between mb-1.5">
+                                                    <span className="text-[10px] font-bold text-slate-400">
+                                                        {isKa ? 'დახრის კუთხე (Tilt)' : 'Tilt Angle'}
+                                                    </span>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleCameraFieldChange({ tiltAngleDeg: 4 })}
+                                                            className="text-[9px] px-1.5 py-0.5 rounded bg-slate-950 text-slate-400 hover:text-white border border-slate-800"
+                                                        >
+                                                            4° Def
+                                                        </button>
+                                                        <span className="text-amber-400 font-mono font-bold text-xs">{selectedCamera.tiltAngleDeg || 4}°</span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleCameraFieldChange({ tiltAngleDeg: Math.max(1, (selectedCamera.tiltAngleDeg || 4) - 1) })}
+                                                        className="w-8 h-8 rounded-xl bg-slate-950 hover:bg-slate-800 active:bg-amber-600 text-white font-bold flex items-center justify-center border border-slate-700 shrink-0 touch-manipulation"
+                                                    >
+                                                        -
+                                                    </button>
+                                                    <input
+                                                        type="range"
+                                                        min="1"
+                                                        max="35"
+                                                        value={selectedCamera.tiltAngleDeg || 4}
+                                                        onChange={(e) => handleCameraFieldChange({ tiltAngleDeg: Number(e.target.value) })}
+                                                        className="flex-1 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500 touch-none"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleCameraFieldChange({ tiltAngleDeg: Math.min(35, (selectedCamera.tiltAngleDeg || 4) + 1) })}
+                                                        className="w-8 h-8 rounded-xl bg-slate-950 hover:bg-slate-800 active:bg-amber-600 text-white font-bold flex items-center justify-center border border-slate-700 shrink-0 touch-manipulation"
+                                                    >
+                                                        +
+                                                    </button>
+                                                </div>
                                             </div>
-                                            <input
-                                                type="range"
-                                                min="0"
-                                                max="359"
-                                                value={selectedCamera.azimuthDeg || 0}
-                                                onChange={(e) => handleCameraFieldChange({ azimuthDeg: Number(e.target.value) })}
-                                                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                                            />
-                                        </div>
 
-                                        <div>
-                                            <div className="flex items-center justify-between mb-1">
-                                                <span className="text-[10px] font-bold text-slate-400">
-                                                    {isKa ? 'სათვალთვალო დისტანცია (მ)' : 'Optical Range (m)'}
-                                                </span>
-                                                <span className="text-emerald-400 font-mono font-bold">{selectedCamera.rangeM}m</span>
+                                            {/* AZIMUTH */}
+                                            <div>
+                                                <div className="flex items-center justify-between mb-1.5">
+                                                    <span className="text-[10px] font-bold text-slate-400">
+                                                        {isKa ? 'აზიმუტი (მიმართულება 0°–360°)' : 'Azimuth Heading'}
+                                                    </span>
+                                                    <span className="text-blue-400 font-mono font-bold text-xs">{selectedCamera.azimuthDeg || 0}°</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleCameraFieldChange({ azimuthDeg: ((selectedCamera.azimuthDeg || 0) - 5 + 360) % 360 })}
+                                                        className="w-8 h-8 rounded-xl bg-slate-950 hover:bg-slate-800 active:bg-blue-600 text-white font-bold flex items-center justify-center border border-slate-700 shrink-0 touch-manipulation"
+                                                    >
+                                                        -
+                                                    </button>
+                                                    <input
+                                                        type="range"
+                                                        min="0"
+                                                        max="359"
+                                                        value={selectedCamera.azimuthDeg || 0}
+                                                        onChange={(e) => handleCameraFieldChange({ azimuthDeg: Number(e.target.value) })}
+                                                        className="flex-1 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500 touch-none"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleCameraFieldChange({ azimuthDeg: ((selectedCamera.azimuthDeg || 0) + 5) % 360 })}
+                                                        className="w-8 h-8 rounded-xl bg-slate-950 hover:bg-slate-800 active:bg-blue-600 text-white font-bold flex items-center justify-center border border-slate-700 shrink-0 touch-manipulation"
+                                                    >
+                                                        +
+                                                    </button>
+                                                </div>
+                                                {/* Heading Presets */}
+                                                <div className="grid grid-cols-4 gap-1 mt-1.5">
+                                                    {[
+                                                        { label: 'N 0°', val: 0 },
+                                                        { label: 'E 90°', val: 90 },
+                                                        { label: 'S 180°', val: 180 },
+                                                        { label: 'W 270°', val: 270 }
+                                                    ].map(p => (
+                                                        <button
+                                                            key={p.val}
+                                                            type="button"
+                                                            onClick={() => handleCameraFieldChange({ azimuthDeg: p.val })}
+                                                            className={`py-1 rounded-lg text-[9px] font-mono font-bold border transition-all ${
+                                                                selectedCamera.azimuthDeg === p.val
+                                                                    ? 'bg-blue-600 text-white border-blue-400'
+                                                                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
+                                                            }`}
+                                                        >
+                                                            {p.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
                                             </div>
-                                            <input
-                                                type="range"
-                                                min="15"
-                                                max="250"
-                                                value={selectedCamera.rangeM}
-                                                onChange={(e) => handleCameraFieldChange({ rangeM: Number(e.target.value) })}
-                                                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-                                            />
+
+                                            {/* OPTICAL RANGE */}
+                                            <div>
+                                                <div className="flex items-center justify-between mb-1.5">
+                                                    <span className="text-[10px] font-bold text-slate-400">
+                                                        {isKa ? 'ოპტიკური დისტანცია' : 'Optical Range'}
+                                                    </span>
+                                                    <span className="text-emerald-400 font-mono font-bold text-xs">{selectedCamera.rangeM}m</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleCameraFieldChange({ rangeM: Math.max(15, (selectedCamera.rangeM || 75) - 5) })}
+                                                        className="w-8 h-8 rounded-xl bg-slate-950 hover:bg-slate-800 active:bg-emerald-600 text-white font-bold flex items-center justify-center border border-slate-700 shrink-0 touch-manipulation"
+                                                    >
+                                                        -
+                                                    </button>
+                                                    <input
+                                                        type="range"
+                                                        min="15"
+                                                        max="250"
+                                                        value={selectedCamera.rangeM}
+                                                        onChange={(e) => handleCameraFieldChange({ rangeM: Number(e.target.value) })}
+                                                        className="flex-1 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500 touch-none"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleCameraFieldChange({ rangeM: Math.min(250, (selectedCamera.rangeM || 75) + 5) })}
+                                                        className="w-8 h-8 rounded-xl bg-slate-950 hover:bg-slate-800 active:bg-emerald-600 text-white font-bold flex items-center justify-center border border-slate-700 shrink-0 touch-manipulation"
+                                                    >
+                                                        +
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
                                     </>
                                 )}

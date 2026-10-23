@@ -38,6 +38,7 @@ import type { PlantationCamera } from './SystemManagement/HardwareLabs/CameraNvr
 import { MapElementPropertiesPanel } from './MapElementPropertiesPanel';
 import { NetworkCameraNvrManagerModal } from './NetworkCameraNvrManagerModal';
 import { TerrainSlopeSculptorModal } from './TerrainSlopeSculptorModal';
+import { FloatingOnlineWeatherBadge } from './SystemManagement/HardwareLabs/FloatingOnlineWeatherBadge';
 import { type CustomTerrainSlope, setActiveSlopesCache } from '../utils/demTerrainViewshed';
 
 interface DesignViewProps {
@@ -1073,55 +1074,46 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
         if ((e.target as HTMLElement).closest('button, input, select, a, textarea')) return;
         
         e.preventDefault();
-        const target = e.currentTarget;
-        try {
-            target.setPointerCapture(e.pointerId);
-        } catch (err) {}
-
+        e.stopPropagation();
         const rect = toolbarRef.current?.getBoundingClientRect();
-        const currentLeft = rect ? rect.left : (window.innerWidth / 2 - 200);
-        const currentTop = rect ? rect.top : 32;
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startLeft = rect ? rect.left : (window.innerWidth / 2 - 200);
+        const startTop = rect ? rect.top : 32;
 
-        isDraggingToolbarRef.current = true;
-        toolbarDragStartRef.current = {
-            pointerX: e.clientX,
-            pointerY: e.clientY,
-            startLeft: currentLeft,
-            startTop: currentTop
+        const onPointerMove = (moveEvt: PointerEvent) => {
+            moveEvt.preventDefault();
+            const dx = moveEvt.clientX - startX;
+            const dy = moveEvt.clientY - startY;
+
+            const width = toolbarRef.current?.offsetWidth || 320;
+            const height = toolbarRef.current?.offsetHeight || 50;
+            const maxX = Math.max(10, window.innerWidth - width - 10);
+            const maxY = Math.max(10, window.innerHeight - height - 60);
+
+            const newX = Math.max(10, Math.min(maxX, startLeft + dx));
+            const newY = Math.max(10, Math.min(maxY, startTop + dy));
+
+            setToolbarPos({ x: Math.round(newX), y: Math.round(newY) });
         };
-    };
 
-    const handleToolbarPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-        if (!isDraggingToolbarRef.current) return;
-        e.preventDefault();
-        const dx = e.clientX - toolbarDragStartRef.current.pointerX;
-        const dy = e.clientY - toolbarDragStartRef.current.pointerY;
-
-        const width = toolbarRef.current?.offsetWidth || 320;
-        const height = toolbarRef.current?.offsetHeight || 50;
-        const maxX = Math.max(10, window.innerWidth - width - 10);
-        const maxY = Math.max(10, window.innerHeight - height - 60);
-
-        const newX = Math.max(10, Math.min(maxX, toolbarDragStartRef.current.startLeft + dx));
-        const newY = Math.max(10, Math.min(maxY, toolbarDragStartRef.current.startTop + dy));
-
-        setToolbarPos({ x: Math.round(newX), y: Math.round(newY) });
-    };
-
-    const handleToolbarPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-        if (isDraggingToolbarRef.current) {
-            isDraggingToolbarRef.current = false;
-            try {
-                e.currentTarget.releasePointerCapture(e.pointerId);
-            } catch (err) {}
+        const onPointerUp = () => {
+            window.removeEventListener('pointermove', onPointerMove);
+            window.removeEventListener('pointerup', onPointerUp);
             setToolbarPos(prev => {
                 if (prev) {
                     safeStorage.setItem('agrimap_design_toolbar_pos', JSON.stringify(prev));
                 }
                 return prev;
             });
-        }
+        };
+
+        window.addEventListener('pointermove', onPointerMove, { passive: false });
+        window.addEventListener('pointerup', onPointerUp, { passive: false });
     };
+
+    const handleToolbarPointerMove = (_e: React.PointerEvent<HTMLDivElement>) => {};
+    const handleToolbarPointerUp = (_e: React.PointerEvent<HTMLDivElement>) => {};
 
     const handleResetToolbarPosition = () => {
         setToolbarPos(null);
@@ -1458,28 +1450,27 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
     const [droneMission, setDroneMission] = useState<DroneFlightMission | null>(() => {
         const saved = safeStorage.getItem('agrimap_drone_realtime_mission');
         if (saved) {
-            try { return JSON.parse(saved); } catch (e) {}
+            try {
+                const parsed = JSON.parse(saved);
+                if (parsed && parsed.id !== 'mission-01') {
+                    return parsed;
+                }
+            } catch (e) {}
         }
-        const baseLat = mapProps.center?.[0] || 41.9023;
-        const baseLng = mapProps.center?.[1] || 44.5;
-        return {
-            id: 'mission-01',
-            name: 'Orchard Perimeter & Tree Row Inspection',
-            mode: 'waypoints',
-            altitudeM: 50,
-            speedMs: 12,
-            timeIntervalSec: 5,
-            headingDeg: 45,
-            isHidden: false,
-            waypoints: [
-                { id: 'wp-0', lat: baseLat - 0.002, lng: baseLng - 0.002, altitudeM: 0, speedMs: 0, leg: 'takeoff', name: 'Home Base' },
-                { id: 'wp-1', lat: baseLat - 0.001, lng: baseLng - 0.001, altitudeM: 50, speedMs: 12, leg: 'outbound', name: 'WP 1' },
-                { id: 'wp-2', lat: baseLat + 0.001, lng: baseLng - 0.0005, altitudeM: 50, speedMs: 12, leg: 'outbound', name: 'WP 2' },
-                { id: 'wp-3', lat: baseLat + 0.002, lng: baseLng + 0.001, altitudeM: 50, speedMs: 12, leg: 'outbound', name: 'WP 3' },
-                { id: 'wp-4', lat: baseLat - 0.002, lng: baseLng - 0.002, altitudeM: 50, speedMs: 12, leg: 'return', name: 'RTH Home' }
-            ]
-        };
+        return null;
     });
+
+    useEffect(() => {
+        try {
+            const saved = safeStorage.getItem('agrimap_drone_realtime_mission');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed?.id === 'mission-01') {
+                    safeStorage.removeItem('agrimap_drone_realtime_mission');
+                }
+            }
+        } catch (e) {}
+    }, []);
 
     const [isDroneMissionPlannerOpen, setIsDroneMissionPlannerOpen] = useState<boolean>(false);
     const [simulatedDronePos, setSimulatedDronePos] = useState<{ lat: number; lng: number; heading: number } | null>(null);
@@ -1713,53 +1704,6 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
         });
     };
 
-    // Movable Communication & AI Dock (Meet, Chat, Notes, AI)
-    const [commsToolsPos, setCommsToolsPos] = useState<{ x: number; y: number } | null>(() => {
-        const saved = safeStorage.getItem('agrimap_comms_tools_pos');
-        if (saved) {
-            try {
-                const parsed = JSON.parse(saved);
-                if (Number.isFinite(parsed?.x) && Number.isFinite(parsed?.y)) return parsed;
-            } catch (e) {}
-        }
-        return null;
-    });
-    const commsToolsPanelRef = useRef<HTMLDivElement | null>(null);
-    const commsToolsDragRef = useRef<{ startX: number; startY: number; startLeft: number; startTop: number } | null>(null);
-
-    const handleCommsToolsPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-        if ((e.target as HTMLElement).closest('button')) return;
-        e.preventDefault();
-        try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) {}
-        const rect = commsToolsPanelRef.current?.getBoundingClientRect();
-        commsToolsDragRef.current = {
-            startX: e.clientX,
-            startY: e.clientY,
-            startLeft: rect ? rect.left : (window.innerWidth - 80),
-            startTop: rect ? rect.top : (window.innerHeight - 240)
-        };
-    };
-
-    const handleCommsToolsPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-        if (!commsToolsDragRef.current) return;
-        e.preventDefault();
-        const deltaX = e.clientX - commsToolsDragRef.current.startX;
-        const deltaY = e.clientY - commsToolsDragRef.current.startY;
-        const newLeft = Math.max(10, Math.min(window.innerWidth - 70, commsToolsDragRef.current.startLeft + deltaX));
-        const newTop = Math.max(10, Math.min(window.innerHeight - 80, commsToolsDragRef.current.startTop + deltaY));
-        setCommsToolsPos({ x: Math.round(newLeft), y: Math.round(newTop) });
-    };
-
-    const handleCommsToolsPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-        if (!commsToolsDragRef.current) return;
-        try { e.currentTarget.releasePointerCapture(e.pointerId); } catch (err) {}
-        commsToolsDragRef.current = null;
-        setCommsToolsPos(curr => {
-            if (curr) safeStorage.setItem('agrimap_comms_tools_pos', JSON.stringify(curr));
-            return curr;
-        });
-    };
-
     const handleResetAllPositions = () => {
         setToolbarPos(null);
         safeStorage.removeItem('agrimap_design_toolbar_pos');
@@ -1769,7 +1713,6 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
         safeStorage.removeItem('agrimap_map_tools_pos');
         setSandboxPos(null);
         safeStorage.removeItem('agrimap_sandbox_pos');
-        setCommsToolsPos(null);
         safeStorage.removeItem('agrimap_comms_tools_pos');
         safeStorage.removeItem('agrimap_comms_hub_pos');
         safeStorage.removeItem('agrimap_drawing_info_pos');
@@ -2900,10 +2843,10 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                                                 }
                                             }}
                                             icon={L.divIcon({
-                                                className: 'custom-leaflet-vertex-handle bg-amber-500 border border-slate-950 rounded-full shadow-lg flex items-center justify-center cursor-pointer hover:scale-125 transition-all text-[8px] font-black text-slate-950',
-                                                html: `<div class="w-5 h-5 flex items-center justify-center font-bold text-slate-950">${idx + 1}</div>`,
-                                                iconSize: [20, 20],
-                                                iconAnchor: [10, 10]
+                                                className: 'custom-leaflet-vertex-handle touch-none cursor-grab active:cursor-grabbing',
+                                                html: `<div class="w-9 h-9 flex items-center justify-center select-none touch-none"><div class="w-6 h-6 bg-amber-500 border-2 border-slate-950 rounded-full shadow-lg flex items-center justify-center text-[9px] font-black text-slate-950 hover:scale-110 active:scale-95 transition-transform">${idx + 1}</div></div>`,
+                                                iconSize: [36, 36],
+                                                iconAnchor: [18, 18]
                                             })}
                                         />
                                     );
@@ -2911,6 +2854,21 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                             </React.Fragment>
                         ))}
                     </MapComponent>
+                </div>
+
+                {/* Floating Online Weather & Microclimate Badge on Map Planner (Movable) */}
+                <div className="absolute top-4 left-14 sm:left-16 z-[2500]">
+                    <FloatingOnlineWeatherBadge
+                        plantationFeatures={plantationFeatures}
+                        activeOrgId={null}
+                        isKa={isKa}
+                        storageKey="agrimap_planner_weather_pos"
+                        onFlyToCoords={(coords, name) => {
+                            if (mapProps?.center) {
+                                window.dispatchEvent(new CustomEvent('agrimap:fly-to-location', { detail: { center: coords, name } }));
+                            }
+                        }}
+                    />
                 </div>
                 
                 {/* Always-Visible Slide-Out Toggles (Tablet/Desktop) */}
@@ -3507,93 +3465,7 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                 </div>
                 )}
 
-                {/* Floating Movable Comms & Assistant Dock (Google Meet, Chat, Notes, AI) */}
-                {(displayPrefs.showGoogleMeet || displayPrefs.showGoogleChat || displayPrefs.showVoiceNotes || displayPrefs.showAiAssistant) && (
-                <div 
-                    ref={commsToolsPanelRef}
-                    style={{
-                        position: 'absolute',
-                        zIndex: 2200,
-                        ...(commsToolsPos 
-                            ? { left: `${commsToolsPos.x}px`, top: `${commsToolsPos.y}px`, bottom: 'auto', right: 'auto' } 
-                            : { bottom: '11.5rem', right: '1.25rem' }
-                        )
-                    }}
-                    className="flex flex-col items-center gap-1.5 pointer-events-auto select-none"
-                >
-                    <div 
-                        onPointerDown={handleCommsToolsPointerDown}
-                        onPointerMove={handleCommsToolsPointerMove}
-                        onPointerUp={handleCommsToolsPointerUp}
-                        className="bg-white/95 backdrop-blur-xl border border-slate-200 shadow-2xl rounded-xl md:rounded-[1.2rem] p-1 md:p-1.5 flex flex-col items-center gap-1 cursor-grab active:cursor-grabbing"
-                        title={isKa ? "გადაათრიეთ კომუნიკაციების პანელი" : "Hold and drag to move Meet, Chat & AI anywhere"}
-                    >
-                        <div className="w-5 h-1.5 bg-slate-300 rounded-full my-0.5 cursor-grab active:cursor-grabbing hover:bg-slate-400 transition-colors" />
-                        
-                        {/* Google Meet Button */}
-                        {displayPrefs.showGoogleMeet && (
-                            <button
-                                onClick={() => props.onOpenMeet?.()}
-                                className="p-2 md:p-2.5 rounded-lg md:rounded-xl text-blue-600 hover:bg-blue-50 bg-blue-50/50 hover:scale-105 active:scale-95 transition-all shadow-sm flex items-center justify-center cursor-pointer"
-                                title={isKa ? "Google Meet ვიდეო ზარი" : "Google Meet Video Call"}
-                            >
-                                <Video size={18} />
-                            </button>
-                        )}
 
-                        {/* Google Chat Button */}
-                        {displayPrefs.showGoogleChat && (
-                            <button
-                                onClick={() => props.onOpenChat?.()}
-                                className="p-2 md:p-2.5 rounded-lg md:rounded-xl text-emerald-600 hover:bg-emerald-50 bg-emerald-50/50 hover:scale-105 active:scale-95 transition-all shadow-sm flex items-center justify-center cursor-pointer"
-                                title={isKa ? "Google Chat ჰაბი" : "Google Chat Hub"}
-                            >
-                                <MessageSquare size={18} />
-                            </button>
-                        )}
-
-                        {/* Voice & Field Notes Button */}
-                        {displayPrefs.showVoiceNotes && (
-                            <button
-                                onClick={() => props.onOpenNotes?.()}
-                                className="p-2 md:p-2.5 rounded-lg md:rounded-xl text-amber-600 hover:bg-amber-50 bg-amber-50/50 hover:scale-105 active:scale-95 transition-all shadow-sm flex items-center justify-center cursor-pointer"
-                                title={isKa ? "საველე და ხმოვანი ჩანაწერები" : "Field & Voice Notes"}
-                            >
-                                <MicrophoneIcon size={18} />
-                            </button>
-                        )}
-
-                        {/* Agri-Assistant AI Button */}
-                        {displayPrefs.showAiAssistant && (
-                            <button
-                                onClick={() => props.onOpenAssistant?.()}
-                                className="p-2 md:p-2.5 rounded-lg md:rounded-xl text-purple-600 hover:bg-purple-50 bg-purple-50/50 hover:scale-105 active:scale-95 transition-all shadow-sm flex items-center justify-center cursor-pointer"
-                                title={isKa ? "Agri-Assistant AI ასისტენტი" : "Agri-Assistant AI"}
-                            >
-                                <SparklesIcon size={18} />
-                            </button>
-                        )}
-                    </div>
-                    <div 
-                        onPointerDown={handleCommsToolsPointerDown}
-                        onPointerMove={handleCommsToolsPointerMove}
-                        onPointerUp={handleCommsToolsPointerUp}
-                        className="bg-slate-900/90 backdrop-blur-md text-[7px] md:text-[8px] font-black text-white uppercase tracking-[0.2em] px-2 py-1 md:px-3 md:py-1 rounded-full text-center shadow-xl cursor-grab active:cursor-grabbing flex items-center gap-1.5"
-                        title={isKa ? "გადაათრიეთ გადასაადგილებლად" : "Hold and drag to move"}
-                    >
-                        <span>{isKa ? 'კომუნიკაცია' : 'Comms'}</span>
-                        {commsToolsPos && (
-                            <button 
-                                onClick={(e) => { e.stopPropagation(); setCommsToolsPos(null); safeStorage.removeItem('agrimap_comms_tools_pos'); }}
-                                className="text-slate-400 hover:text-white transition-colors cursor-pointer"
-                                title={isKa ? "ნაგულისხმევ პოზიციაზე დაბრუნება" : "Reset position to default"}
-                            >
-                                <RotateCwIcon size={9} />
-                            </button>
-                        )}
-                    </div>
-                </div>
-                )}
 
                 {isHubOpen && (
                     <div className="fixed sm:absolute top-16 sm:top-20 left-2 sm:left-6 bottom-16 sm:bottom-20 w-[calc(100vw-16px)] sm:w-[360px] max-w-[calc(100vw-16px)] z-[2150] animate-slide-right flex flex-col">
@@ -3815,6 +3687,29 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                                     </div>
                                     <span className="text-[8px] font-mono px-1.5 py-0.5 bg-emerald-950/80 text-emerald-300 border border-emerald-700/50 rounded-md">NVR</span>
                                 </button>
+
+                                {/* Clear All Cameras from Map Button */}
+                                {cameras.length > 0 && (
+                                    <button
+                                        onClick={() => {
+                                            if (window.confirm(isKa ? `დარწმუნებული ხართ, რომ გსურთ რუკიდან ყველა კამერის წაშლა (${cameras.length} კამერა)?` : `Are you sure you want to remove all ${cameras.length} cameras from the map?`)) {
+                                                setCameras([]);
+                                                safeStorage.removeItem('agrimap_plantation_cameras');
+                                                setSelectedCameraForProperties(null);
+                                                setActiveCameraForLiveView(null);
+                                                toast.success(isKa ? "ყველა კამერა წაიშალა რუკიდან" : "All cameras cleared from map");
+                                                setIsMapToolsMenuOpen(false);
+                                            }
+                                        }}
+                                        className="flex items-center justify-between w-full px-3 py-2 rounded-xl text-xs font-bold hover:bg-red-950/50 text-red-300 transition-all text-left group cursor-pointer border border-red-500/20 bg-red-950/10"
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <TrashIcon size={15} className="text-red-400 group-hover:scale-110 transition-transform shrink-0" />
+                                            <span className="leading-tight text-[11px] font-bold text-red-200">{isKa ? 'ყველა კამერის გასუფთავება' : 'Clear All Cameras from Map'}</span>
+                                        </div>
+                                        <span className="text-[9px] font-mono px-1.5 py-0.5 bg-red-950 text-red-400 border border-red-800/60 rounded-md">{cameras.length}</span>
+                                    </button>
+                                )}
 
                                 {/* Local Network Scanner & Online NVR / DVR Hub */}
                                 <button
@@ -4414,6 +4309,16 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                 onSaveCamera={handleSavePlannedCamera}
                 onSaveBatchCameras={handleSaveBatchCameras}
                 plantationFeatures={allFeatures}
+                currentMapCameras={cameras}
+                onDeleteCameraFromMap={handleDeleteCamera}
+                onClearAllCameras={() => {
+                    setCameras([]);
+                    safeStorage.removeItem('agrimap_plantation_cameras');
+                    setSelectedCameraForProperties(null);
+                    setActiveCameraForLiveView(null);
+                    toast.success(isKa ? "ყველა კამერა წაიშალა რუკიდან" : "All cameras cleared from map");
+                }}
+                onOpenAllCamerasWide={() => setIsAllCamerasWideOpen(true)}
             />
 
             {/* 3D Terrain & Slope Sculptor Modal (Falloff Engine) */}
@@ -4493,6 +4398,7 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                     isOpen={isNetworkNvrManagerOpen}
                     onClose={() => setIsNetworkNvrManagerOpen(false)}
                     plantationCoords={mapProps.center || [41.9023, 44.5]}
+                    plantationFeatures={allFeatures}
                     onImportAllCameras={handleImportAllCamerasFromNvr}
                     onSelectCameraForDetail={(cam) => {
                         setActiveCameraForLiveView(cam);

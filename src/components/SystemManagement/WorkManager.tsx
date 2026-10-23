@@ -144,7 +144,7 @@ const WorkManager: React.FC<WorkManagerProps> = ({
         else setInternalDayFilter(f);
     };
 
-    const canEdit = currentUserPermissions.has('edit_work');
+    const canEdit = currentUserPermissions?.has ? currentUserPermissions.has('edit_work') : true;
 
     const handleSave = (work: WorkAssignment) => {
         let newInventory = [...(inventoryItems || [])];
@@ -236,16 +236,12 @@ const WorkManager: React.FC<WorkManagerProps> = ({
             if (seenIds.has(w.id)) return false;
             seenIds.add(w.id);
 
-            // Include everything that comes from tasks, planner or remainder
-            // The user wants all registry items to be visible.
-            const isRelevant = w.source === 'tasks' || w.source === 'planner' || w.source === 'remainder' || !w.source;
-            
-            if (!isRelevant) return false;
+            if (activeDayFilter === 'all') return true;
 
             const d = new Date(w.date);
             d.setHours(0, 0, 0, 0);
 
-            if (activeDayFilter === 'all') return true;
+            if (isNaN(d.getTime())) return true;
             if (activeDayFilter === 'today') {
                 return d.getTime() === today.getTime();
             } else if (activeDayFilter === 'past') {
@@ -327,9 +323,9 @@ const WorkManager: React.FC<WorkManagerProps> = ({
                                         <h5 className="text-base font-black italic text-slate-800 tracking-tight group-hover:text-[#3b36db] transition-colors uppercase truncate">
                                             {typeof work.workName === 'string' ? work.workName : (work.workName as any)?.title || 'Untitled Mission'}
                                         </h5>
-                                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                         <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                                {new Date(work.date).toLocaleDateString()}
+                                                {work.date && !isNaN(new Date(work.date).getTime()) ? new Date(work.date).toLocaleDateString() : (work.date || 'N/A')}
                                             </p>
                                             <div className="h-1 w-1 bg-slate-200 rounded-full"></div>
                                             <p className={`text-[10px] font-black uppercase tracking-widest ${
@@ -338,14 +334,20 @@ const WorkManager: React.FC<WorkManagerProps> = ({
                                             }`}>
                                                 {work.status}
                                             </p>
-                                            {(work.totalCost || work.totalLaborCost) ? (
-                                                <>
-                                                    <div className="h-1 w-1 bg-slate-200 rounded-full"></div>
-                                                    <span className="text-[9px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md">
-                                                        OPEX: £{(work.totalCost || (work.totalLaborCost || 0) + (work.totalMaterialCost || 0)).toFixed(0)}
-                                                    </span>
-                                                </>
-                                            ) : null}
+                                            {(() => {
+                                                const costNum = Number(work.totalCost || (Number(work.totalLaborCost) || 0) + (Number(work.totalMaterialCost) || 0));
+                                                if (Number.isFinite(costNum) && costNum > 0) {
+                                                    return (
+                                                        <>
+                                                            <div className="h-1 w-1 bg-slate-200 rounded-full"></div>
+                                                            <span className="text-[9px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md">
+                                                                OPEX: £{costNum.toFixed(0)}
+                                                            </span>
+                                                        </>
+                                                    );
+                                                }
+                                                return null;
+                                            })()}
                                         </div>
                                     </div>
                                 </div>
@@ -363,7 +365,7 @@ const WorkManager: React.FC<WorkManagerProps> = ({
                                         onEdit={canEdit ? (e: any) => { e.stopPropagation(); setEditingWork(work); setIsModalOpen(true); } : undefined} 
                                         onDelete={canEdit ? (e: any) => { e.stopPropagation(); handleDelete(work.id); } : undefined} 
                                         onCopy={canEdit ? (e: any) => { e.stopPropagation(); handleCopy(work); } : undefined}
-                                        onLogMap={canEdit ? (e: any) => { e.stopPropagation(); onLogOnMapRequest(work); } : undefined}
+                                        onLogMap={canEdit && onLogOnMapRequest ? (e: any) => { e.stopPropagation(); onLogOnMapRequest(work); } : undefined}
                                         hasMapMarker={!!(work.linkedFeatureId || (work.sectorIds && work.sectorIds.length > 0))}
                                         onRemoveFromMap={canEdit ? (e: any) => { e.stopPropagation(); handleRemoveFromMap(work); } : undefined}
                                         isKa={isKa}

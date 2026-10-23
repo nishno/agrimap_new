@@ -7,6 +7,7 @@ import {
 import { toast } from 'sonner';
 import { safeStorage } from '../../../services/storageService';
 import { Employee } from '../../../types';
+import { getMainPlantation, getPlantationsList } from '../../../utils/plantationHelper';
 
 export interface GpsDevice {
     id: string;
@@ -38,12 +39,16 @@ interface GpsTrackerLabProps {
 export const GpsTrackerLab: React.FC<GpsTrackerLabProps> = ({
     employees = [],
     activeOrgId,
-    mapCenter = [41.9023, -72.3774],
+    mapCenter = [41.9023, 44.5],
     onSyncWithMapFeatures
 }) => {
     // Center baseline coordinates
     const baseLat = mapCenter[0] || 41.9023;
-    const baseLng = mapCenter[1] || -72.3774;
+    const baseLng = mapCenter[1] || 44.5;
+
+    const mainPlantation = getMainPlantation([], [baseLat, baseLng], activeOrgId);
+    const plantationList = getPlantationsList([], [baseLat, baseLng], false, activeOrgId);
+    const [selectedPlantationName, setSelectedPlantationName] = useState(mainPlantation.name);
 
     // GPS Device Fleet
     const [devices, setDevices] = useState<GpsDevice[]>(() => {
@@ -302,6 +307,42 @@ export const GpsTrackerLab: React.FC<GpsTrackerLabProps> = ({
                         {isSimulating ? <Pause size={16} /> : <Play size={16} />}
                         {isSimulating ? 'Pause GPS Stream' : 'Start Live GPS Stream'}
                     </button>
+
+                    {/* Active Profile Plantation Selector */}
+                    <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-900 px-3 py-2 rounded-xl border border-emerald-500/50 shadow-sm text-xs">
+                        <span className="text-emerald-500 font-bold">🌿</span>
+                        <select
+                            value={selectedPlantationName}
+                            onChange={(e) => {
+                                const targetName = e.target.value;
+                                const item = plantationList.find(p => p.name === targetName) || mainPlantation;
+                                setSelectedPlantationName(targetName);
+                                window.dispatchEvent(new CustomEvent('agrimap:fly-to-location', { detail: { center: item.center, name: item.name } }));
+                                toast.success(`რუკა გადაფრინდა: ${item.name}`);
+                            }}
+                            className="bg-transparent text-emerald-600 dark:text-emerald-300 font-bold font-mono outline-none cursor-pointer max-w-[170px] truncate"
+                            title="Bound Plantation Area for GPS Telemetry"
+                        >
+                            {plantationList.map((p, idx) => (
+                                <option key={`gps-p-${p.id}-${idx}`} value={p.name} className="bg-slate-950 text-slate-200">
+                                    {p.name}
+                                </option>
+                            ))}
+                        </select>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const item = plantationList.find(p => p.name === selectedPlantationName) || mainPlantation;
+                                window.dispatchEvent(new CustomEvent('agrimap:fly-to-location', { detail: { center: item.center, name: item.name } }));
+                                toast.success(`რუკა გადაფრინდა: ${item.name}`);
+                            }}
+                            className="p-1 hover:bg-emerald-500/20 rounded text-emerald-500 cursor-pointer transition-colors"
+                            title="Fly to Plantation"
+                        >
+                            <Navigation size={12} />
+                        </button>
+                    </div>
+
                     <button
                         onClick={handleAddGpsDevice}
                         className="px-3.5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer"

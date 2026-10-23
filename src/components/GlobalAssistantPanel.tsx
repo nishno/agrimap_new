@@ -5,7 +5,8 @@ import {
   MessageSquare, Video, GripHorizontal, ChevronDown, Sparkles, Mic, 
   Settings, CheckCircle2, AlertTriangle, RefreshCw, Key, Trash2, ExternalLink, ShieldCheck,
   Crown, Leaf, Briefcase, TrendingUp, Layers, Eye, History, FileText, Stethoscope,
-  Maximize2, Minimize2, Minus, X, ArrowLeftRight, ArrowUpDown
+  Maximize2, Minimize2, Minus, X, ArrowLeftRight, ArrowUpDown,
+  Calendar, FileSpreadsheet, FolderOpen, Search
 } from 'lucide-react';
 import AiAnalysisSuite from './AiAnalysisSuite';
 import AiAnalysisModal from './AiAnalysisModal';
@@ -14,6 +15,7 @@ import { GodAIIntelligenceHubModal } from '../new_engine/ui/GodAIIntelligenceHub
 import { AIAssistantMode } from '../new_engine/types';
 import { safeStorage } from '../services/storageService';
 import { useLanguage } from '../contexts/LanguageContext';
+import { toast } from 'sonner';
 import { 
   getActiveGeminiApiKey, 
   setCustomGeminiApiKey, 
@@ -198,6 +200,7 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isVoiceNotesOpen, setIsVoiceNotesOpen] = useState(false);
   const [isGodAIHubOpen, setIsGodAIHubOpen] = useState(false);
+  const [isGoogleHubOpen, setIsGoogleHubOpen] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [isTestingKey, setIsTestingKey] = useState(false);
   const [testStatus, setTestStatus] = useState<{ ok: boolean; message: string; latencyMs?: number; model?: string } | null>(null);
@@ -561,107 +564,156 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
           }}
           className="select-none pointer-events-auto"
         >
-            {/* Direct Floating Circular Action Buttons Stack (Matches Screenshot: Meet -> Chat -> AI Note -> AI Assistant) */}
-            <div className="flex flex-col items-center gap-2.5 sm:gap-3 group">
-                {/* Drag Handle & Reset Button */}
-                <div className="flex items-center gap-1 opacity-70 hover:opacity-100 transition-opacity">
+            {/* Floating Action Buttons: Two-Piece Segmented Dock with Correction Tool */}
+            <div className="flex flex-col items-center gap-2 group">
+                {/* Piece 0: Drag Handle & Alignment / Position Correction Tool */}
+                <div className="flex items-center gap-1.5 p-1 bg-slate-950/90 rounded-full border border-slate-700/80 shadow-lg backdrop-blur-md transition-opacity">
                     <div 
                         onPointerDown={handleCommsPointerDown}
                         onPointerMove={handleCommsPointerMove}
                         onPointerUp={handleCommsPointerUp}
-                        className="p-1 text-slate-400 hover:text-white bg-slate-950/80 hover:bg-slate-900 rounded-full shadow-md backdrop-blur-sm transition-all cursor-move flex items-center justify-center border border-slate-700/60"
-                        title="Drag to reposition floating buttons anywhere on screen"
+                        className="p-1 text-slate-400 hover:text-white rounded-full transition-all cursor-move flex items-center justify-center"
+                        title={isKa ? "გადაადგილება ეკრანზე" : "Drag to reposition floating tools"}
                     >
                         <GripHorizontal size={13} />
                     </div>
-                    {commsPos && (
-                        <button
-                            onClick={() => {
-                                setCommsPos(null);
-                                safeStorage.removeItem('agrimap_floating_fabs_pos');
-                            }}
-                            className="w-5 h-5 rounded-full bg-slate-950/80 hover:bg-rose-950 text-slate-400 hover:text-rose-300 text-[10px] font-bold flex items-center justify-center border border-slate-700/60 transition-colors cursor-pointer"
-                            title="Reset position to default"
-                        >
-                            ✕
-                        </button>
-                    )}
+
+                    {/* Dedicated Correction / Position Reset Tool */}
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setCommsPos(null);
+                            safeStorage.removeItem('agrimap_floating_fabs_pos');
+                            safeStorage.removeItem('agrimap_comms_tools_pos');
+                            safeStorage.removeItem('agrimap_comms_hub_pos');
+                            toast.success(isKa ? "ღილაკების პოზიცია და გასწორება აღდგენილია!" : "Floating tools position and alignment corrected!");
+                        }}
+                        className="p-1 text-cyan-400 hover:text-cyan-200 hover:bg-slate-800 rounded-full transition-all cursor-pointer flex items-center justify-center"
+                        title={isKa ? "კორექციის ხელსაწყო: პოზიციის და გასწორების აღდგენა" : "Correction Tool: Reset & Align Floating Tools Position"}
+                    >
+                        <RefreshCw size={11} className="hover:rotate-180 transition-transform duration-300" />
+                    </button>
                 </div>
 
-                {/* 1. Google Meet Button (Top Blue Circle) */}
-                <button
-                    onClick={() => {
-                        if (onOpenMeet) onOpenMeet();
-                        window.dispatchEvent(new CustomEvent('agrimap_open_meet'));
-                    }}
-                    className="w-12 h-12 rounded-full bg-blue-600 hover:bg-blue-500 text-white shadow-xl shadow-blue-950/50 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border border-blue-400/30"
-                    title="Google Meet Video Call"
-                >
-                    <Video className="w-6 h-6 text-white" />
-                </button>
+                {/* PIECE 1: Google & Team Communication Hub (Google Suite, Meet, Chat) */}
+                <div className="p-1.5 bg-slate-950/80 backdrop-blur-md rounded-full border border-slate-700/60 shadow-xl flex flex-col items-center gap-2">
+                    {/* 1. Google Workspace & Farm Suite Button */}
+                    <div className="relative group/btn">
+                        <button
+                            type="button"
+                            onClick={() => setIsGoogleHubOpen(true)}
+                            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-white hover:bg-slate-50 text-slate-800 shadow-xl shadow-slate-900/40 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border-2 border-slate-200/90 relative"
+                            title={isKa ? "Google Workspace & საველე სერვისები" : "Google Workspace Suite & Farm Tools"}
+                        >
+                            <svg className="w-5 h-5 sm:w-6 sm:h-6" viewBox="0 0 24 24">
+                                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.34 24 12 24z"/>
+                                <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                            </svg>
+                        </button>
+                        <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-slate-900/95 text-white text-[11px] font-bold rounded-xl whitespace-nowrap shadow-xl border border-slate-700/80 opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-all duration-150 transform translate-x-2 group-hover/btn:translate-x-0 z-50">
+                            {isKa ? 'Google ხელსაწყოები' : 'Google Workspace'}
+                        </div>
+                    </div>
 
-                {/* 2. Google Chat Button (Second Emerald Circle) */}
-                <button
-                    onClick={() => {
-                        if (onOpenChat) onOpenChat();
-                        window.dispatchEvent(new CustomEvent('agrimap_open_chat'));
-                    }}
-                    className="w-12 h-12 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white shadow-xl shadow-emerald-950/50 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border border-emerald-400/30"
-                    title="Google Chat Workspace Hub"
-                >
-                    <MessageSquare className="w-6 h-6 text-white" />
-                </button>
+                    {/* 2. Google Meet Video Button */}
+                    <div className="relative group/btn">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (onOpenMeet) onOpenMeet();
+                                else window.dispatchEvent(new CustomEvent('agrimap_open_meet'));
+                            }}
+                            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-xl shadow-emerald-950/40 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border border-emerald-300/40 relative"
+                            title={isKa ? "Google Meet - ვიდეო ოთახი & ეკრანის გაზიარება" : "Google Meet - Live Field Video Room & Screen Share"}
+                        >
+                            <Video className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                        </button>
+                        <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-slate-900/95 text-white text-[11px] font-bold rounded-xl whitespace-nowrap shadow-xl border border-slate-700/80 opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-all duration-150 transform translate-x-2 group-hover/btn:translate-x-0 z-50">
+                            Google Meet
+                        </div>
+                    </div>
 
-                {/* 3. AI Voice Notes Button (Third Darker Green / Teal Circle with subtle ring) */}
-                <button
-                    onClick={() => setIsVoiceNotesOpen(true)}
-                    className="w-12 h-12 rounded-full bg-emerald-800 hover:bg-emerald-700 text-white shadow-xl shadow-emerald-950/60 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 border-2 border-emerald-400/50 relative cursor-pointer"
-                    title="AI Voice Notes & Field Memos"
-                >
-                    <Mic className="w-6 h-6 text-white" />
-                    {notes.length > 0 && (
-                        <span className="absolute -top-1 -right-1 bg-amber-500 text-slate-950 text-[10px] font-mono font-black rounded-full px-1.5 py-0.2 border border-white shadow-sm">
-                            {notes.length}
-                        </span>
-                    )}
-                </button>
+                    {/* 3. Google Chat Button */}
+                    <div className="relative group/btn">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (onOpenChat) onOpenChat();
+                                else window.dispatchEvent(new CustomEvent('agrimap_open_chat'));
+                            }}
+                            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 hover:from-blue-500 hover:to-indigo-400 text-white shadow-xl shadow-blue-950/40 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border border-blue-300/40 relative"
+                            title={isKa ? "Google Chat & საველე ინტერკომი" : "Google Chat - Field Spaces & Team Intercom"}
+                        >
+                            <MessageSquare className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                        </button>
+                        <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-slate-900/95 text-white text-[11px] font-bold rounded-xl whitespace-nowrap shadow-xl border border-slate-700/80 opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-all duration-150 transform translate-x-2 group-hover/btn:translate-x-0 z-50">
+                            Google Chat
+                        </div>
+                    </div>
+                </div>
 
-                {/* 4. AI Agro Diagnostics Pop-up Modal Button (Pop-up window directly) */}
-                <button
-                    onClick={() => {
-                        setAnalysisInitialTool('disease');
-                        setIsAnalysisModalOpen(true);
-                    }}
-                    className="w-12 h-12 rounded-full bg-gradient-to-tr from-teal-700 to-emerald-600 hover:from-teal-600 hover:to-emerald-500 text-white shadow-xl shadow-teal-950/60 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border-2 border-teal-300/50 relative"
-                    title={isKa ? "AI აგრო დიაგნოსტიკა & კლინიკური Pop-up ფანჯარა" : "AI Agro Diagnostics & Clinical Pop-up Window"}
-                >
-                    <Stethoscope className="w-6 h-6 text-white" />
-                </button>
+                {/* PIECE 2: AI Intelligence & Field Operations (Notes, AI Copilot, God AI) */}
+                <div className="p-1.5 bg-slate-950/80 backdrop-blur-md rounded-full border border-slate-700/60 shadow-xl flex flex-col items-center gap-2">
+                    {/* 4. AI Voice Notes Button */}
+                    <div className="relative group/btn">
+                        <button
+                            type="button"
+                            onClick={() => setIsVoiceNotesOpen(true)}
+                            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-tr from-purple-600 to-pink-500 hover:from-purple-500 hover:to-pink-400 text-white shadow-xl shadow-purple-950/40 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border border-purple-300/40 relative"
+                            title={isKa ? "AI ხმოვანი & საველე ჩანაწერები" : "AI Voice & Audio Field Notes"}
+                        >
+                            <Mic className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                            {notes && notes.length > 0 && (
+                                <span className="absolute -top-1 -right-1 px-1.5 py-0.2 min-w-4 h-4 rounded-full bg-rose-500 text-white font-mono text-[9px] font-black flex items-center justify-center border border-white shadow-sm">
+                                    {notes.length}
+                                </span>
+                            )}
+                        </button>
+                        <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-slate-900/95 text-white text-[11px] font-bold rounded-xl whitespace-nowrap shadow-xl border border-slate-700/80 opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-all duration-150 transform translate-x-2 group-hover/btn:translate-x-0 z-50">
+                            {isKa ? `ხმოვანი ჩანაწერები (${notes?.length || 0})` : `Voice Notes (${notes?.length || 0})`}
+                        </div>
+                    </div>
 
-                {/* 5. AI Assistant Button (Bottom Vibrant Green Circle with Sparkles) */}
-                <button
-                    onClick={() => setIsCollapsed(false)}
-                    className="w-12 h-12 rounded-full bg-emerald-500 hover:bg-emerald-400 text-white shadow-xl shadow-emerald-950/50 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border border-emerald-300/40"
-                    title={isKa ? "Gemini 2.5 Knowledge Engine - AI სისტემის ნავიგატორი & Copilot" : "Gemini 2.5 Knowledge Engine - AI System Navigator & Copilot"}
-                >
-                    <Sparkles className="w-6 h-6 text-white" />
-                </button>
+                    {/* 5. AI Assistant & Crop Diagnostics Button */}
+                    <div className="relative group/btn">
+                        <button
+                            type="button"
+                            onClick={() => setIsCollapsed(false)}
+                            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-tr from-cyan-600 via-teal-500 to-emerald-500 hover:from-cyan-500 hover:to-emerald-400 text-white shadow-xl shadow-cyan-950/40 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border border-cyan-300/40 relative"
+                            title={isKa ? "AI აგრონომიული ასისტენტი & დიაგნოსტიკა" : "AI Agronomist Assistant & Diagnostic Copilot"}
+                        >
+                            <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                        </button>
+                        <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-slate-900/95 text-white text-[11px] font-bold rounded-xl whitespace-nowrap shadow-xl border border-slate-700/80 opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-all duration-150 transform translate-x-2 group-hover/btn:translate-x-0 z-50">
+                            AI Assistant
+                        </div>
+                    </div>
 
-                {/* 6. Root AI & God AI Intelligence Console Button */}
-                <button
-                    onClick={() => setIsGodAIHubOpen(true)}
-                    className="w-12 h-12 rounded-full bg-gradient-to-tr from-amber-600 via-amber-500 to-yellow-500 hover:from-amber-500 hover:to-yellow-400 text-white shadow-xl shadow-amber-950/60 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border-2 border-amber-300/50 relative"
-                    title={isSystemAdmin ? (isKa ? "Root AI ასისტენტი & God AI კონსოლი (სუპერ ადმინი - ყველა კომპანია)" : "Root AI Assistant & God AI Console (Super Admin - All Companies)") : (isKa ? "აგრონომიული PM კონსოლი" : "Agronomy PM Intelligence Console")}
-                >
-                    <Crown className="w-6 h-6 text-white" />
-                    <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500 border border-white"></span>
-                    </span>
-                </button>
+                    {/* 6. God AI Hub / Root Console Button */}
+                    <div className="relative group/btn">
+                        <button
+                            type="button"
+                            onClick={() => setIsGodAIHubOpen(true)}
+                            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-tr from-amber-600 via-amber-500 to-yellow-500 hover:from-amber-500 hover:to-yellow-400 text-white shadow-xl shadow-amber-950/60 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border-2 border-amber-300/50 relative"
+                            title={isSystemAdmin ? (isKa ? "Root AI ასისტენტი & God AI კონსოლი (სუპერ ადმინი - ყველა კომპანია)" : "Root AI Assistant & God AI Console (Super Admin - All Companies)") : (isKa ? "აგრონომიული PM კონსოლი" : "Agronomy PM Intelligence Console")}
+                        >
+                            <Crown className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                            <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500 border border-white"></span>
+                            </span>
+                        </button>
+                        <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-slate-900/95 text-white text-[11px] font-bold rounded-xl whitespace-nowrap shadow-xl border border-slate-700/80 opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-all duration-150 transform translate-x-2 group-hover/btn:translate-x-0 z-50">
+                            {isKa ? 'God AI კონსოლი' : 'God AI Console'}
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
+        {/* Global Voice Notes Modal */}
         {onAddNote && (
             <GlobalVoiceNotesModal
                 isOpen={isVoiceNotesOpen}
@@ -674,6 +726,189 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
                 onDeleteNote={onDeleteNote}
                 onDeleteMultipleNotes={onDeleteMultipleNotes}
             />
+        )}
+
+        {/* God AI & Agronomy PM Intelligence Hub Modal */}
+        <GodAIIntelligenceHubModal
+            isOpen={isGodAIHubOpen}
+            onClose={() => setIsGodAIHubOpen(false)}
+            activeOrgId={activeOrgId}
+            activeOrgName={activeOrgName}
+            currentUser={currentUser}
+            isSystemAdmin={isSystemAdmin}
+            currentAiMode={currentAiMode}
+            onSetAiMode={(mode) => {
+                if (onSetAiMode) onSetAiMode(mode);
+            }}
+            organizations={organizations}
+            workAssignments={workAssignments}
+            harvestEntries={harvestEntries}
+            plantationFeatures={plantationFeatures}
+            employees={employees}
+            machinery={machinery}
+            nutritionPlans={nutritionPlans}
+            notes={notes}
+            onNavigateToTasks={onNavigateToTasks}
+        />
+
+        {/* Dedicated Google Workspace & Farm Services Modal */}
+        {isGoogleHubOpen && (
+            <div className="fixed inset-0 z-[9900] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150 select-none">
+                <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-lg w-full p-6 shadow-2xl text-white space-y-5 animate-in zoom-in-95 duration-150">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2.5 bg-white rounded-2xl shadow-md flex items-center justify-center">
+                                <svg className="w-6 h-6" viewBox="0 0 24 24">
+                                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.34 24 12 24z"/>
+                                    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 className="text-base font-black uppercase tracking-wider text-white">
+                                    {isKa ? 'Google Workspace & საველე სერვისები' : 'Google Workspace & Farm Suite'}
+                                </h3>
+                                <p className="text-xs text-slate-400">
+                                    {isKa ? 'ინტეგრირებული Google Meet, Chat, Sheets & Drive' : 'Integrated Google Meet, Chat, Sheets, Drive & Research'}
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setIsGoogleHubOpen(false)}
+                            className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        {/* Google Meet */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setIsGoogleHubOpen(false);
+                                if (onOpenMeet) onOpenMeet();
+                                else window.dispatchEvent(new CustomEvent('agrimap_open_meet'));
+                            }}
+                            className="p-3.5 bg-slate-950 hover:bg-emerald-950/40 border border-slate-800 hover:border-emerald-500/50 rounded-2xl flex flex-col gap-2 transition-all text-left cursor-pointer group"
+                        >
+                            <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 w-fit group-hover:scale-110 transition-transform">
+                                <Video size={18} />
+                            </div>
+                            <div>
+                                <span className="font-bold text-white block">Google Meet</span>
+                                <span className="text-[10px] text-slate-400">Live video conference & map screen share</span>
+                            </div>
+                        </button>
+
+                        {/* Google Chat */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setIsGoogleHubOpen(false);
+                                if (onOpenChat) onOpenChat();
+                                else window.dispatchEvent(new CustomEvent('agrimap_open_chat'));
+                            }}
+                            className="p-3.5 bg-slate-950 hover:bg-blue-950/40 border border-slate-800 hover:border-blue-500/50 rounded-2xl flex flex-col gap-2 transition-all text-left cursor-pointer group"
+                        >
+                            <div className="p-2 rounded-xl bg-blue-500/20 text-blue-400 w-fit group-hover:scale-110 transition-transform">
+                                <MessageSquare size={18} />
+                            </div>
+                            <div>
+                                <span className="font-bold text-white block">Google Chat</span>
+                                <span className="text-[10px] text-slate-400">Team spaces & field intercom dispatch</span>
+                            </div>
+                        </button>
+
+                        {/* Google Sheets */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setIsGoogleHubOpen(false);
+                                window.open('https://docs.google.com/spreadsheets/', '_blank');
+                            }}
+                            className="p-3.5 bg-slate-950 hover:bg-green-950/40 border border-slate-800 hover:border-green-500/50 rounded-2xl flex flex-col gap-2 transition-all text-left cursor-pointer group"
+                        >
+                            <div className="p-2 rounded-xl bg-green-500/20 text-green-400 w-fit group-hover:scale-110 transition-transform">
+                                <FileSpreadsheet size={18} />
+                            </div>
+                            <div>
+                                <span className="font-bold text-white block">Google Sheets</span>
+                                <span className="text-[10px] text-slate-400">Harvest, yield & finance export</span>
+                            </div>
+                        </button>
+
+                        {/* Google Drive & Docs */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setIsGoogleHubOpen(false);
+                                window.open('https://drive.google.com/', '_blank');
+                            }}
+                            className="p-3.5 bg-slate-950 hover:bg-amber-950/40 border border-slate-800 hover:border-amber-500/50 rounded-2xl flex flex-col gap-2 transition-all text-left cursor-pointer group"
+                        >
+                            <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 w-fit group-hover:scale-110 transition-transform">
+                                <FolderOpen size={18} />
+                            </div>
+                            <div>
+                                <span className="font-bold text-white block">Google Drive & Docs</span>
+                                <span className="text-[10px] text-slate-400">Agronomy SOPs & field logs</span>
+                            </div>
+                        </button>
+
+                        {/* Google Calendar */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setIsGoogleHubOpen(false);
+                                window.open('https://calendar.google.com/', '_blank');
+                            }}
+                            className="p-3.5 bg-slate-950 hover:bg-indigo-950/40 border border-slate-800 hover:border-indigo-500/50 rounded-2xl flex flex-col gap-2 transition-all text-left cursor-pointer group"
+                        >
+                            <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400 w-fit group-hover:scale-110 transition-transform">
+                                <Calendar size={18} />
+                            </div>
+                            <div>
+                                <span className="font-bold text-white block">Google Calendar</span>
+                                <span className="text-[10px] text-slate-400">Spraying & harvest schedule</span>
+                            </div>
+                        </button>
+
+                        {/* Google Search Grounding */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setIsGoogleHubOpen(false);
+                                setIsCollapsed(false);
+                            }}
+                            className="p-3.5 bg-slate-950 hover:bg-cyan-950/40 border border-slate-800 hover:border-cyan-500/50 rounded-2xl flex flex-col gap-2 transition-all text-left cursor-pointer group"
+                        >
+                            <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400 w-fit group-hover:scale-110 transition-transform">
+                                <Search size={18} />
+                            </div>
+                            <div>
+                                <span className="font-bold text-white block">Google Grounding</span>
+                                <span className="text-[10px] text-slate-400">Live agronomic market & web research</span>
+                            </div>
+                        </button>
+                    </div>
+
+                    <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
+                        <span className="text-slate-400 font-mono text-[10px]">
+                            {currentUser?.email ? `User: ${currentUser.email}` : 'Google Services Active'}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setIsGoogleHubOpen(false)}
+                            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold cursor-pointer transition-colors"
+                        >
+                            Close
+                        </button>
+                    </div>
+                </div>
+            </div>
         )}
       </>
     );
@@ -773,6 +1008,78 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
                       <span>{isKa ? 'ჩატი' : 'Chat'}</span>
                   </button>
               )}
+
+              {/* Google Workspace Suite Quick Button */}
+              <button
+                  type="button"
+                  onClick={() => setIsGoogleHubOpen(true)}
+                  className="p-1.5 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer text-slate-600 hover:text-slate-900"
+                  title={isKa ? "Google Workspace & საველე სერვისები" : "Google Workspace Suite & Farm Tools"}
+              >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                      <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.34 24 12 24z"/>
+                      <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                  </svg>
+              </button>
+
+              {/* Google Meet Video Button */}
+              <button
+                  type="button"
+                  onClick={() => {
+                      if (onOpenMeet) onOpenMeet();
+                      else window.dispatchEvent(new CustomEvent('agrimap_open_meet'));
+                  }}
+                  className="p-1.5 hover:bg-emerald-50 rounded-lg transition-colors text-emerald-600 hover:text-emerald-700 cursor-pointer"
+                  title={isKa ? "Google Meet - ვიდეო ოთახი" : "Google Meet - Video Room"}
+              >
+                  <Video className="w-4 h-4" />
+              </button>
+
+              {/* Google Chat Button */}
+              <button
+                  type="button"
+                  onClick={() => {
+                      if (onOpenChat) onOpenChat();
+                      else window.dispatchEvent(new CustomEvent('agrimap_open_chat'));
+                  }}
+                  className="p-1.5 hover:bg-blue-50 rounded-lg transition-colors text-blue-600 hover:text-blue-700 cursor-pointer"
+                  title={isKa ? "Google Chat & საველე ინტერკომი" : "Google Chat & Field Spaces"}
+              >
+                  <MessageSquare className="w-4 h-4" />
+              </button>
+
+              {/* Voice Notes Button */}
+              <button
+                  type="button"
+                  onClick={() => setIsVoiceNotesOpen(true)}
+                  className="p-1.5 hover:bg-purple-50 rounded-lg transition-colors text-purple-600 hover:text-purple-700 cursor-pointer relative"
+                  title={isKa ? `ხმოვანი ჩანაწერები (${notes?.length || 0})` : `Voice Notes (${notes?.length || 0})`}
+              >
+                  <Mic className="w-4 h-4" />
+                  {notes && notes.length > 0 && (
+                      <span className="absolute -top-1 -right-1 px-1 py-0.2 min-w-3.5 h-3.5 rounded-full bg-rose-500 text-white font-mono text-[8px] font-black flex items-center justify-center">
+                          {notes.length}
+                      </span>
+                  )}
+              </button>
+
+              {/* Position & Alignment Correction Tool Button */}
+              <button
+                  type="button"
+                  onClick={() => {
+                      setCommsPos(null);
+                      safeStorage.removeItem('agrimap_floating_fabs_pos');
+                      safeStorage.removeItem('agrimap_comms_tools_pos');
+                      safeStorage.removeItem('agrimap_comms_hub_pos');
+                      toast.success(isKa ? "პოზიცია გასწორდა!" : "Floating position & alignment corrected!");
+                  }}
+                  className="p-1.5 hover:bg-slate-200 rounded-lg transition-colors text-cyan-600 hover:text-cyan-800 cursor-pointer"
+                  title={isKa ? "კორექციის ხელსაწყო: პოზიციის და გასწორების აღდგენა" : "Correction Tool: Reset & Align Position"}
+              >
+                  <RefreshCw className="w-3.5 h-3.5" />
+              </button>
 
               {/* Settings */}
               <button 

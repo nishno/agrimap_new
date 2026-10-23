@@ -16,7 +16,8 @@ import {
     ArrowsPointingInIcon, ArrowsPointingOutIcon, ClipboardDocumentIcon, 
     XCircleIcon, SparklesIcon, PlantIcon, ArrowUpTrayIcon, 
     MapPinIcon, PlusCircleIcon, CalendarDaysIcon, ClockIcon, 
-    CheckIcon, ArrowPathIcon, BriefcaseIcon, BanknotesIcon, TractorIcon
+    CheckIcon, ArrowPathIcon, BriefcaseIcon, BanknotesIcon, TractorIcon,
+    MapIcon
 } from './Icons';
 import { Stethoscope } from 'lucide-react';
 import AiAnalysisSuite from './AiAnalysisSuite';
@@ -104,6 +105,16 @@ const AiAnalystView: React.FC<AiAnalystViewProps> = (props) => {
     const [isCrossAnalyzing, setIsCrossAnalyzing] = useState(false);
 
     const isKa = language === 'ka';
+
+    // Map vs Panel View State for Tablet & Mobile (and desktop)
+    const [viewMode, setViewMode] = useState<'panel' | 'map'>('panel');
+    const handleToggleViewMode = () => {
+        const next = viewMode === 'map' ? 'panel' : 'map';
+        setViewMode(next);
+        if (onSetIsMapFullScreen) {
+            onSetIsMapFullScreen(next === 'map');
+        }
+    };
 
     const handleExecuteCrossAnalysis = async (mode: AnalysisTriggerMode) => {
         setIsCrossAnalyzing(true);
@@ -352,14 +363,56 @@ const AiAnalystView: React.FC<AiAnalystViewProps> = (props) => {
     );
 
     return (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full relative">
+            {/* Switcher Button: 100% Map vs 100% Panel */}
+            <div className="absolute top-2.5 right-2.5 z-[1005] flex items-center gap-1.5">
+                <button 
+                    type="button"
+                    onClick={handleToggleViewMode}
+                    className="px-3.5 py-2 bg-slate-900/95 hover:bg-black text-white rounded-2xl shadow-xl flex items-center gap-2 border border-slate-700/80 backdrop-blur-md active:scale-95 transition-all text-xs font-black uppercase tracking-wider cursor-pointer"
+                    title={viewMode === 'map' ? (isKa ? "პანელზე დაბრუნება" : "Back to Panel") : (isKa ? "მხოლოდ რუკის ჩვენება" : "Switch to Map View")}
+                >
+                    {viewMode === 'map' ? (
+                        <>
+                            <SparklesIcon className="w-4 h-4 text-emerald-400 shrink-0" />
+                            <span>{isKa ? 'პანელი' : 'Only Panel'}</span>
+                        </>
+                    ) : (
+                        <>
+                            <MapIcon className="w-4 h-4 text-emerald-400 shrink-0" />
+                            <span>{isKa ? 'მხოლოდ რუკა' : 'Only Map'}</span>
+                        </>
+                    )}
+                </button>
+            </div>
+
             <div className="bg-white border-b flex-shrink-0">
-                <div className="flex">
+                <div className="flex items-center">
                     <TabButton id="agro" label={t('ai.agro_intel')} icon={<BeakerIcon className="h-5 w-5" />} />
                     <TabButton id="diagnostics" label={isKa ? 'დიაგნოსტიკა & კლინიკა' : 'Diagnostics & Clinical Tools'} icon={<Stethoscope className="h-5 w-5 text-emerald-600" />} />
                     <TabButton id="cross_module" label={isKa ? 'ოპერაციული ანალიზი & განრიგი' : 'Operational Anomaly & Schedule'} icon={<ClockIcon className="h-5 w-5 text-emerald-600" />} />
                     <TabButton id="global" label={t('ai.global_intel')} icon={<SparklesIcon className="h-5 w-5" />} />
                     <TabButton id="market" label={t('ai.market_analysis')} icon={<ChartBarIcon className="h-5 w-5" />} />
+
+                    {/* Desktop Map / Panel Switcher Button */}
+                    <button 
+                        type="button"
+                        onClick={handleToggleViewMode}
+                        className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 my-1.5 mr-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-slate-900 hover:bg-black text-white border border-slate-700 active:scale-95 transition-all shrink-0 cursor-pointer self-center"
+                        title={viewMode === 'map' ? (isKa ? "პანელზე დაბრუნება" : "Back to Panel") : (isKa ? "მხოლოდ რუკის ჩვენება" : "Switch to Full Map View")}
+                    >
+                        {viewMode === 'map' ? (
+                            <>
+                                <SparklesIcon className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                <span>{isKa ? 'პანელი' : 'Only Panel'}</span>
+                            </>
+                        ) : (
+                            <>
+                                <MapIcon className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                <span>{isKa ? 'მხოლოდ რუკა' : 'Only Map'}</span>
+                            </>
+                        )}
+                    </button>
                 </div>
             </div>
 
@@ -374,15 +427,12 @@ const AiAnalystView: React.FC<AiAnalystViewProps> = (props) => {
                     />
                 </div>
             ) : (
-            <div className="flex-1 overflow-hidden flex flex-col md:flex-row bg-gray-100">
-                {/* Control Panel */}
-                <div 
-                    className={`w-full bg-white border-r flex-shrink-0 flex flex-col h-[50vh] md:h-full overflow-y-auto ${isMapFullScreen ? 'hidden' : ''}`}
-                    style={{
-                        width: typeof window !== 'undefined' && window.innerWidth > 768 ? `${analystPanelWidth}px` : undefined,
-                        maxWidth: '85vw'
-                    }}
-                >
+            <div className="flex-1 overflow-hidden flex flex-col h-full w-full bg-gray-100">
+                {/* Control Panel - 100% width and height when on panel */}
+                {!(viewMode === 'map' || isMapFullScreen) && (
+                    <div 
+                        className="w-full h-full overflow-y-auto bg-white flex flex-col flex-1"
+                    >
                     
                     {activeTab === 'cross_module' && (
                         <div className="p-6 space-y-6 animate-fade-in">
@@ -825,41 +875,42 @@ const AiAnalystView: React.FC<AiAnalystViewProps> = (props) => {
                         </div>
                     )}
                 </div>
-
-                {/* Resizable Divider between AI Analyst Panel and Map */}
-                {!isMapFullScreen && (
-                    <ResizableDivider 
-                        direction="horizontal"
-                        currentSize={analystPanelWidth}
-                        onResize={(newWidth) => setAnalystPanelWidth(newWidth)}
-                        minSize={280}
-                        maxSize={typeof window !== 'undefined' ? Math.max(window.innerWidth - 300, 600) : 850}
-                        storageKey="ai_analyst_panel_width"
-                        isKa={isKa}
-                        className="hidden md:flex"
-                    />
                 )}
 
-                {/* Map View */}
-                <div className={`flex-1 relative ${isMapFullScreen ? 'h-full' : 'h-[50vh] md:h-auto'}`}>
-                    <MapComponent 
-                        {...mapProps} 
-                        showSearch={true}
-                        onMapClick={handleMapClick}
-                    >
-                    </MapComponent>
-                    <button 
-                       onClick={() => onSetIsMapFullScreen(!isMapFullScreen)} 
-                       className="absolute top-4 right-4 z-[1000] bg-white p-2 rounded-full shadow-md hover:bg-gray-100 transition"
-                    >
-                        {isMapFullScreen ? <ArrowsPointingInIcon className="h-5 w-5 text-gray-700" /> : <ArrowsPointingOutIcon className="h-5 w-5 text-gray-700" />}
-                    </button>
-                    {isPickingLocation && (
-                        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg text-sm font-bold animate-bounce">
-                            Click map to select location
+                {/* Map View - 100% width and height when in map mode */}
+                {(viewMode === 'map' || isMapFullScreen) && (
+                    <div className="w-full h-full flex-1 relative">
+                        {/* Floating Return to Panel Button when in Map View */}
+                        <div className="absolute top-4 left-4 z-[1005]">
+                            <button
+                                type="button"
+                                onClick={handleToggleViewMode}
+                                className="px-4 py-2.5 bg-slate-900/95 hover:bg-black text-white rounded-2xl shadow-2xl flex items-center gap-2 border border-slate-700/80 backdrop-blur-md active:scale-95 transition-all text-xs font-black uppercase tracking-wider cursor-pointer"
+                                title={isKa ? "პანელზე დაბრუნება" : "Back to Panel"}
+                            >
+                                <SparklesIcon className="w-4 h-4 text-emerald-400 shrink-0" />
+                                <span>{isKa ? 'პანელზე დაბრუნება' : 'Back to Panel'}</span>
+                            </button>
                         </div>
-                    )}
-                </div>
+                        <MapComponent 
+                            {...mapProps} 
+                            showSearch={true} 
+                            onMapClick={handleMapClick}
+                        />
+                        <button 
+                           onClick={handleToggleViewMode} 
+                           className="absolute top-4 right-4 z-[1000] bg-white p-2 rounded-full shadow-md hover:bg-gray-100 transition cursor-pointer"
+                           title={isKa ? "პანელზე დაბრუნება" : "Back to Panel"}
+                        >
+                            <ArrowsPointingInIcon className="h-5 w-5 text-gray-700" />
+                        </button>
+                        {isPickingLocation && (
+                            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg text-sm font-bold animate-bounce">
+                                Click map to select location
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
             )}
         </div>

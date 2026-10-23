@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { GripHorizontal, ChevronDown, ChevronUp } from 'lucide-react';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 interface FloatingLabsSwitcherProps {
     labTab: string;
@@ -10,6 +11,8 @@ export const FloatingLabsSwitcher: React.FC<FloatingLabsSwitcherProps> = ({
     labTab,
     onSelectLabTab
 }) => {
+    const { language } = useLanguage();
+    const isKa = language === 'ka';
     const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
     const [isMinimized, setIsMinimized] = useState<boolean>(false);
     const containerRef = useRef<HTMLDivElement | null>(null);
@@ -119,7 +122,7 @@ export const FloatingLabsSwitcher: React.FC<FloatingLabsSwitcherProps> = ({
                         : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
                 }`}
             >
-                🗺️ Devices Map
+                🗺️ {isKa ? 'მოწყობილობების რუკა' : 'Devices Map'}
             </button>
             <button
                 onClick={() => onSelectLabTab('hardware')}
@@ -130,28 +133,28 @@ export const FloatingLabsSwitcher: React.FC<FloatingLabsSwitcherProps> = ({
                         : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
                 }`}
             >
-                🔌 Hardware & Devices
+                🔌 {isKa ? 'აპარატურა & მოწყობილობები' : 'Hardware & Devices'}
             </button>
             <button
                 onClick={() => onSelectLabTab('theme')}
                 data-active="false"
                 className="px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider text-slate-400 hover:text-white hover:bg-slate-800/80 flex items-center gap-1.5 transition-all cursor-pointer"
             >
-                🎨 Theme Studio
+                🎨 {isKa ? 'თემების სტუდია' : 'Theme Studio'}
             </button>
             <button
                 onClick={() => onSelectLabTab('letters')}
                 data-active="false"
                 className="px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider text-amber-400 hover:text-amber-300 hover:bg-slate-800/80 flex items-center gap-1.5 transition-all cursor-pointer"
             >
-                🔤 Letters & Menu Colors
+                🔤 {isKa ? 'შრიფტი & მენიუს ფერები' : 'Letters & Menu Colors'}
             </button>
             <button
                 onClick={() => onSelectLabTab('analytics')}
                 data-active="false"
                 className="px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider text-slate-400 hover:text-white hover:bg-slate-800/80 flex items-center gap-1.5 transition-all cursor-pointer"
             >
-                🧠 Intelligence
+                🧠 {isKa ? 'ინტელექტი' : 'Intelligence'}
             </button>
 
             <button

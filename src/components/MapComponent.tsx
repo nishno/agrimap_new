@@ -338,26 +338,26 @@ const createGpsDeviceIcon = (dev: any) => {
 const createCameraMarkerIcon = (cam: PlantationCamera, isSelected: boolean = false) => {
     const azimuth = cam.azimuthDeg || 0;
     const html = `
-        <div class="relative flex items-center justify-center select-none" style="width: 38px; height: 38px; transform: translate(-50%, -50%);">
-            <div class="absolute inset-0 rounded-full bg-blue-500/25 animate-ping pointer-events-none"></div>
-            <div class="relative w-9 h-9 rounded-2xl bg-slate-950 border-2 ${isSelected ? 'border-emerald-400 shadow-emerald-500/50 scale-110' : 'border-blue-500 shadow-blue-500/40'} shadow-xl flex items-center justify-center transition-all hover:scale-110 cursor-pointer">
+        <div class="relative w-12 h-12 flex items-center justify-center select-none touch-none">
+            <div class="absolute inset-0 rounded-full bg-blue-500/20 animate-ping pointer-events-none"></div>
+            <div class="relative w-9 h-9 rounded-2xl bg-slate-950 border-2 ${isSelected ? 'border-emerald-400 shadow-emerald-500/50 scale-110' : 'border-blue-500 shadow-blue-500/40'} shadow-xl flex items-center justify-center transition-all hover:scale-110 cursor-grab active:cursor-grabbing">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${isSelected ? '#34d399' : '#60a5fa'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
                     <circle cx="12" cy="13" r="4"></circle>
                 </svg>
                 <div class="absolute -top-1 w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-b-[6px] border-b-cyan-400" style="transform: rotate(${azimuth}deg) translateY(-8px);"></div>
             </div>
-            <div class="absolute -bottom-2 px-1.5 py-0.2 bg-slate-950 text-white border border-slate-700 rounded font-mono text-[8px] font-black shadow pointer-events-none">
+            <div class="absolute -bottom-1 px-1.5 py-0.2 bg-slate-950 text-white border border-slate-700 rounded font-mono text-[8px] font-black shadow pointer-events-none whitespace-nowrap">
                 CH0${cam.channel}
             </div>
         </div>
     `;
     return L.divIcon({
-        className: 'agrimap-camera-marker',
+        className: 'agrimap-camera-marker touch-none',
         html,
-        iconSize: [38, 38],
-        iconAnchor: [19, 19],
-        popupAnchor: [0, -22]
+        iconSize: [48, 48],
+        iconAnchor: [24, 24],
+        popupAnchor: [0, -26]
     });
 };
 
@@ -553,7 +553,22 @@ const FlyToBoundsUpdater: React.FC<{ bounds: L.LatLngBoundsExpression | null, on
         let valid = false;
         if (validated && validated.isValid()) {
             valid = true;
-            map.flyToBounds(validated, { padding: [50, 50], duration: 1.5 });
+            try {
+                const center = validated.getCenter();
+                const currentCenter = map.getCenter();
+                const dist = (currentCenter && center) ? currentCenter.distanceTo(center) : 999;
+                if (dist < 1) {
+                    // Already at bounds center, skip heavy fly animation to prevent 0/0 NaN
+                    onComplete?.();
+                    return;
+                }
+                map.flyToBounds(validated, { padding: [50, 50], duration: 1.5 });
+            } catch (err) {
+                console.warn("[MapComponent] Handled flyToBounds safely:", err);
+                try {
+                    map.fitBounds(validated, { padding: [50, 50] });
+                } catch (_) {}
+            }
             const timer = setTimeout(() => {
                 onComplete?.();
             }, 1600);
@@ -1595,6 +1610,29 @@ export const MapComponent: React.FC<MapComponentProps> = (props) => {
         });
     }, [allFeatures, props.layers]);
 
+    // Optimized bucketed features for ultra-fast rendering on tablets & mobile
+    const { areaFeatures, lineFeatures, seedlingFeatures, monitoringFeatures } = useMemo(() => {
+        const area: PlantationFeature[] = [];
+        const line: PlantationFeature[] = [];
+        const seedling: PlantationFeature[] = [];
+        const monitoring: PlantationFeature[] = [];
+
+        for (let i = 0; i < filteredFeatures.length; i++) {
+            const f = filteredFeatures[i];
+            const t = f.type;
+            if (t === 'area' || t === 'sector' || t === 'boundary') {
+                area.push(f);
+            } else if (t === 'line' || t === 'trench' || t === 'irrigation_line') {
+                line.push(f);
+            } else if (t === 'seedling') {
+                seedling.push(f);
+            } else if (t === 'note' || t === 'checkpoint') {
+                monitoring.push(f);
+            }
+        }
+        return { areaFeatures: area, lineFeatures: line, seedlingFeatures: seedling, monitoringFeatures: monitoring };
+    }, [filteredFeatures]);
+
     const renderFeature = (feature: PlantationFeature): React.ReactNode => {
         const isSelected = selectedFeatureIds.includes(feature.id);
         const isHighlighted = highlightedFeatureIds.includes(feature.id);
@@ -1790,10 +1828,12 @@ export const MapComponent: React.FC<MapComponentProps> = (props) => {
                     }}
                     {...({ id: feature.id } as any)}
                 >
-                    <Tooltip direction="top" offset={[0, -10]} className="bg-slate-900/95 backdrop-blur-md text-white border border-slate-700 shadow-xl rounded-lg px-2.5 py-1.5 font-black text-[10px] uppercase tracking-wider pointer-events-none">
-                        <div className="text-white font-bold">{feature.name}</div>
-                        {variety && <div className="text-emerald-400 text-[9px] mt-0.5">{variety}</div>}
-                    </Tooltip>
+                    {(isSelected || seedlingFeatures.length <= 100) && (
+                        <Tooltip direction="top" offset={[0, -10]} className="bg-slate-900/95 backdrop-blur-md text-white border border-slate-700 shadow-xl rounded-lg px-2.5 py-1.5 font-black text-[10px] uppercase tracking-wider pointer-events-none">
+                            <div className="text-white font-bold">{feature.name}</div>
+                            {variety && <div className="text-emerald-400 text-[9px] mt-0.5">{variety}</div>}
+                        </Tooltip>
+                    )}
                 </Marker>
             );
         }
@@ -2087,7 +2127,7 @@ export const MapComponent: React.FC<MapComponentProps> = (props) => {
     };
 
     return (
-        <div className="h-full w-full relative min-h-[400px]">
+        <div className="module-map_planner h-full w-full relative min-h-[400px]">
             {activeDrawingTool?.tool && ['checkpoint', 'note', 'seedling'].includes(activeDrawingTool.tool) && (
                 <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[2030] bg-slate-900/95 backdrop-blur-xl border border-slate-700 shadow-2xl rounded-2xl p-2.5 px-4 flex flex-wrap items-center justify-center gap-3 text-white pointer-events-auto leading-none animate-in fade-in slide-in-from-top-3 max-w-[95%] md:max-w-auto">
                     <div className="flex items-center gap-2 shrink-0">
@@ -2343,7 +2383,10 @@ export const MapComponent: React.FC<MapComponentProps> = (props) => {
                         subdomains={['mt0', 'mt1', 'mt2', 'mt3']} 
                         attribution={isKa ? 'Leaflet | &copy; Google (გუგლი)' : 'Leaflet | &copy; Google'} 
                         maxZoom={28} 
-                        maxNativeZoom={21} 
+                        maxNativeZoom={21}
+                        updateWhenZooming={false}
+                        updateWhenIdle={true}
+                        keepBuffer={2}
                     />
                 ) : (
                     <TileLayer 
@@ -2351,18 +2394,21 @@ export const MapComponent: React.FC<MapComponentProps> = (props) => {
                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" 
                         attribution={isKa ? 'Leaflet | &copy; OpenStreetMap-ის ავტორები' : 'Leaflet | &copy; OpenStreetMap contributors'} 
                         maxZoom={28} 
-                        maxNativeZoom={21} 
+                        maxNativeZoom={21}
+                        updateWhenZooming={false}
+                        updateWhenIdle={true}
+                        keepBuffer={2}
                     />
                 )}
                 <LayersControl position="topright">
                     <LayersControl.Overlay checked name={isKa ? "სექტორები" : "Sectors"}>
                         <LayerGroup>
-                            {filteredFeatures.filter(f => f.type === 'area' || f.type === 'sector' || f.type === 'boundary').map(feature => renderFeature(feature))}
+                            {areaFeatures.map(feature => renderFeature(feature))}
                         </LayerGroup>
                     </LayersControl.Overlay>
                     <LayersControl.Overlay checked name={isKa ? "ხაზები & თხრილები" : "Lines & Trenches"}>
                         <LayerGroup>
-                            {filteredFeatures.filter(f => f.type === 'line' || f.type === 'trench' || f.type === 'irrigation_line').map(feature => renderFeature(feature))}
+                            {lineFeatures.map(feature => renderFeature(feature))}
                             {trenchPreviewLines && trenchPreviewLines.map((lineCoords, idx) => {
                                 const validCoords = lineCoords.filter(isValidCoordinate).map(p => [Number(p[0]), Number(p[1])] as [number, number]);
                                 if (validCoords.length < 2) return null;
@@ -2383,12 +2429,12 @@ export const MapComponent: React.FC<MapComponentProps> = (props) => {
                     </LayersControl.Overlay>
                     <LayersControl.Overlay checked name={isKa ? "ნერგები" : "Seedlings"}>
                         <LayerGroup>
-                            {filteredFeatures.filter(f => f.type === 'seedling').map(feature => renderFeature(feature))}
+                            {seedlingFeatures.map(feature => renderFeature(feature))}
                         </LayerGroup>
                     </LayersControl.Overlay>
                     <LayersControl.Overlay checked name={isKa ? "ჩანაწერები & წერტილები" : "Notes & Checkpoints"}>
                         <LayerGroup>
-                            {filteredFeatures.filter(f => f.type === 'note' || f.type === 'checkpoint').map(feature => renderFeature(feature))}
+                            {monitoringFeatures.map(feature => renderFeature(feature))}
                         </LayerGroup>
                     </LayersControl.Overlay>
                     <LayersControl.Overlay checked name={isKa ? "ოპერაციების ჟურნალი" : "Operations Log"}>
@@ -2639,7 +2685,12 @@ export const MapComponent: React.FC<MapComponentProps> = (props) => {
                                     click: () => {
                                         onSelectCameraForProperties?.(cam);
                                     },
+                                    dragstart: (e) => {
+                                        try { e.target._map?.dragging?.disable(); } catch {}
+                                        onSelectCameraForProperties?.(cam);
+                                    },
                                     dragend: (e) => {
+                                        try { e.target._map?.dragging?.enable(); } catch {}
                                         const marker = e.target;
                                         const pos = marker.getLatLng();
                                         onUpdateCameraPosition?.(cam.id, pos.lat, pos.lng);
@@ -2651,7 +2702,7 @@ export const MapComponent: React.FC<MapComponentProps> = (props) => {
                                     <div className="text-slate-400">Tilt: {cam.tiltAngleDeg || 4}° • Range: {cam.rangeM}m</div>
                                 </Tooltip>
                                 <Popup>
-                                    <div className="p-3 min-w-[220px] text-slate-800">
+                                    <div className="p-3 min-w-[220px] text-slate-800 touch-auto">
                                         <div className="flex items-center justify-between gap-2 mb-2">
                                             <span className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 font-mono font-bold text-[10px]">
                                                 CH0{cam.channel}
@@ -2674,21 +2725,31 @@ export const MapComponent: React.FC<MapComponentProps> = (props) => {
                                         <div className="flex gap-2">
                                             <button
                                                 type="button"
+                                                onPointerDown={(e) => e.stopPropagation()}
+                                                onTouchEnd={(e) => {
+                                                    e.stopPropagation();
+                                                    onSelectCameraForLiveView?.(cam);
+                                                }}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     onSelectCameraForLiveView?.(cam);
                                                 }}
-                                                className="flex-1 py-2 px-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-1 shadow-md shadow-blue-500/30 transition-all cursor-pointer active:scale-95"
+                                                className="flex-1 py-2.5 px-3 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1 shadow-md shadow-blue-500/30 transition-all cursor-pointer active:scale-95 touch-manipulation min-h-[40px]"
                                             >
                                                 <span>🎥 Live</span>
                                             </button>
                                             <button
                                                 type="button"
+                                                onPointerDown={(e) => e.stopPropagation()}
+                                                onTouchEnd={(e) => {
+                                                    e.stopPropagation();
+                                                    onSelectCameraForProperties?.(cam);
+                                                }}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     onSelectCameraForProperties?.(cam);
                                                 }}
-                                                className="flex-1 py-2 px-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95"
+                                                className="flex-1 py-2.5 px-3 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95 touch-manipulation min-h-[40px]"
                                             >
                                                 <span>⚙️ Config</span>
                                             </button>

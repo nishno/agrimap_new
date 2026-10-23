@@ -97,7 +97,7 @@ const Header: React.FC<HeaderProps> = ({
 
   return (
     <div 
-      className={`flex-shrink-0 h-14 md:h-16 flex items-center justify-between px-3 md:px-6 z-[1000] shadow-sm relative transition-colors border-b ${
+      className={`module-header flex-shrink-0 h-14 md:h-16 flex items-center justify-between px-3 md:px-6 z-[1000] shadow-sm relative transition-colors border-b ${
         isDark 
           ? 'bg-[#0d1527] border-slate-800/90 text-slate-100' 
           : 'bg-white border-gray-200 text-slate-800'

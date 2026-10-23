@@ -226,6 +226,8 @@
         }
       }, 16000);
     </script>
+    <!-- Include the official go2rtc web component for live WebRTC camera streaming -->
+    <script type="module" src="http://localhost:1984/video-stream.js" onerror="/* handled gracefully by app when go2rtc is offline */"></script>
     <script type="module" src="/src/index.tsx" onerror="window.__agrimapReportError('Failed to load entry module /src/index.tsx. Please refresh.')"></script>
   </body>
 </html>

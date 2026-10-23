@@ -107,10 +107,10 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
     const baseLat = mapCenter[0] || 41.9023;
     const baseLng = mapCenter[1] || 44.5;
 
-    // Scan Settings & Subnet Selection
-    const [customSubnet, setCustomSubnet] = useState<string>('192.168.1');
+    // Scan Settings & Subnet Selection (Defaulting to user's subnet 192.168.10)
+    const [customSubnet, setCustomSubnet] = useState<string>('192.168.10');
     const [isAutoDetecting, setIsAutoDetecting] = useState<boolean>(false);
-    const [selectedPorts, setSelectedPorts] = useState<number[]>([80, 2006, 8000, 8080, 37777, 8899]);
+    const [selectedPorts, setSelectedPorts] = useState<number[]>([80, 554, 2006, 8000, 8080, 37777, 8899]);
     const [customPortInput, setCustomPortInput] = useState<string>('');
     const [showPortConfig, setShowPortConfig] = useState<boolean>(false);
     const stopScanRef = useRef<boolean>(false);
@@ -122,12 +122,12 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
     // Manual Add Device Modal
     const [isManualAddOpen, setIsManualAddOpen] = useState<boolean>(false);
     const [manualDevice, setManualDevice] = useState({
-        alias: 'Farm NVR Station',
+        alias: 'Farm Hikvision 4K NVR',
         category: 'NVR' as DiscoveredLanDevice['category'],
-        brand: 'Hikvision / Custom',
-        model: 'DS-7716NI-I4 (Port 2006)',
-        ip: '192.168.10.248',
-        devicePort: 2006,
+        brand: 'Hikvision',
+        model: 'DS-7716NI-I4 / 16P (4K AI NVR)',
+        ip: '192.168.10.244',
+        devicePort: 554,
         httpPort: 80,
         rtspPort: 554,
         username: 'admin',
@@ -140,290 +140,69 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
     const [isScanning, setIsScanning] = useState<boolean>(false);
     const [scanProgress, setScanProgress] = useState<number>(0);
     const [scanPhaseText, setScanPhaseText] = useState<string>('Ready to scan');
-    const [expandedNvrIds, setExpandedNvrIds] = useState<string[]>(['dev-hik-nvr-7716']);
+    const [expandedNvrIds, setExpandedNvrIds] = useState<string[]>(['dev-hik-nvr-244']);
     const [selectedChannels, setSelectedChannels] = useState<{ [nvrId: string]: number[] }>({
-        'dev-hik-nvr-7716': [1, 2, 3, 4]
+        'dev-hik-nvr-244': [1, 2, 3, 4]
     });
 
-    // Default Seeded Discovered Devices on LAN
+    // Multi-Select and Device Management State
+    const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([]);
+
+    // Purge fake 192.168.1.x devices and return clean user devices
     const getInitialDevices = (): DiscoveredLanDevice[] => {
         const saved = safeStorage.getItem('agrimap_lan_all_discovered_devices');
         if (saved) {
             try {
                 const parsed = JSON.parse(saved);
-                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+                if (Array.isArray(parsed)) {
+                    // Purge non-existent 192.168.1.x mock items
+                    const cleansed = parsed.filter((d: DiscoveredLanDevice) => d && d.ip && !d.ip.startsWith('192.168.1.'));
+                    if (cleansed.length > 0) return cleansed;
+                }
             } catch (e) {}
         }
 
+        // Default to user's real Hikvision 4K NVR at 192.168.10.244
         return [
-            // 1. Hikvision AcuSense NVR (16 Channels with connected IP cameras)
             {
-                id: 'dev-hik-nvr-7716',
-                alias: 'Main Plantation 4K AcuSense NVR',
+                id: 'dev-hik-nvr-244',
+                alias: 'Field Station Hikvision 4K NVR',
                 category: 'NVR',
                 brand: 'Hikvision',
-                model: 'DS-7716NI-I4 / 16P (16-Channel 4K AI NVR)',
-                ip: '192.168.1.120',
+                model: 'DS-7716NI-I4 / 16P (16-Channel 4K AcuSense)',
+                ip: '192.168.10.244',
                 httpPort: 80,
                 rtspPort: 554,
                 telemetryPort: 8000,
-                mac: 'BC:54:51:A4:12:8E',
+                mac: 'BC:54:51:A4:10:24',
                 subnetMask: '255.255.255.0',
-                gateway: '192.168.1.1',
+                gateway: '192.168.10.1',
                 protocol: 'HIKVISION_ISAPI_SADP / RTSP_OVER_WEBRTC',
                 firmwareVersion: 'V4.74.015 build 240520',
-                pingMs: 2,
+                pingMs: 3,
                 activationStatus: 'ACTIVATED',
-                lastSeen: 'Just now',
+                lastSeen: 'Live Now',
                 isVerified: true,
                 channelsCount: 16,
-                channels: [
-                    {
-                        channel: 1,
-                        name: 'Main Security Gate & Scale',
-                        model: 'Hikvision DS-2CD2087G2-LU (4K ColorVu 2.8mm)',
-                        ip: '192.168.1.121',
-                        rtspUrl: 'rtsp://192.168.1.120:554/Streaming/Channels/101',
+                channels: Array.from({ length: 16 }, (_, idx) => {
+                    const ch = idx + 1;
+                    const chPrefix = `${ch}01`;
+                    return {
+                        channel: ch,
+                        name: ch === 1 ? 'Main Gate & Weighing Scale' :
+                              ch === 2 ? 'North Blueberry Field Block A' :
+                              ch === 3 ? 'Cold Storage & Logistics Shed' :
+                              ch === 4 ? 'Central Irrigation Station (25x PTZ)' :
+                              `Field Camera Channel ${ch}`,
+                        model: ch === 4 ? 'Hikvision 25x Laser Speed Dome' : 'Hikvision 4K AcuSense ColorVu',
+                        ip: '192.168.10.244',
+                        rtspUrl: `rtsp://admin:Htmc2009@192.168.10.244:554/Streaming/Channels/${chPrefix}`,
                         resolution: '3840x2160 (4K 25fps)',
                         status: 'ONLINE',
                         isNightVision: true,
-                        isPtz: false
-                    },
-                    {
-                        channel: 2,
-                        name: 'North Blueberry Field Block A',
-                        model: 'Hikvision DS-2CD2386G2-ISU (AcuSense 4K 4mm)',
-                        ip: '192.168.1.122',
-                        rtspUrl: 'rtsp://192.168.1.120:554/Streaming/Channels/201',
-                        resolution: '3840x2160 (4K 25fps)',
-                        status: 'ONLINE',
-                        isNightVision: true,
-                        isPtz: false
-                    },
-                    {
-                        channel: 3,
-                        name: 'Cold Storage & Logistics Shed',
-                        model: 'Hikvision DarkFighter Ultra-LowLight 6mm',
-                        ip: '192.168.1.123',
-                        rtspUrl: 'rtsp://192.168.1.120:554/Streaming/Channels/301',
-                        resolution: '2560x1440 (2K 30fps)',
-                        status: 'ONLINE',
-                        isNightVision: true,
-                        isPtz: false
-                    },
-                    {
-                        channel: 4,
-                        name: 'Irrigation Pump House 25x PTZ',
-                        model: 'Hikvision DS-2DE4425IW-DE (25x PTZ)',
-                        ip: '192.168.1.124',
-                        rtspUrl: 'rtsp://192.168.1.120:554/Streaming/Channels/401',
-                        resolution: '2560x1440 (2K 60fps)',
-                        status: 'ONLINE',
-                        isNightVision: true,
-                        isPtz: true
-                    },
-                    {
-                        channel: 5,
-                        name: 'West Perimeter Fence Mast #5',
-                        model: 'Hikvision DS-2CD2T86G2-4I (8mm Corridor)',
-                        ip: '192.168.1.125',
-                        rtspUrl: 'rtsp://192.168.1.120:554/Streaming/Channels/501',
-                        resolution: '3840x2160 (4K 20fps)',
-                        status: 'ONLINE',
-                        isNightVision: true,
-                        isPtz: false
-                    },
-                    {
-                        channel: 6,
-                        name: 'South Nursery & Greenhouses',
-                        model: 'Hikvision Bi-Spectrum Thermal & Optical',
-                        ip: '192.168.1.126',
-                        rtspUrl: 'rtsp://192.168.1.120:554/Streaming/Channels/601',
-                        resolution: '1920x1080 + Thermal 640x512',
-                        status: 'ONLINE',
-                        isNightVision: true,
-                        isPtz: false
-                    }
-                ]
-            },
-
-            // 2. Dahua 8-Channel WizSense DVR
-            {
-                id: 'dev-dahua-dvr-5108',
-                alias: 'Warehouse & Equipment Shed DVR',
-                category: 'NVR',
-                brand: 'Dahua',
-                model: 'XVR5108HS-4KL-I3 (8-Channel WizSense AI)',
-                ip: '192.168.1.130',
-                httpPort: 80,
-                rtspPort: 554,
-                telemetryPort: 37777,
-                mac: '3C:EF:8C:92:1A:44',
-                subnetMask: '255.255.255.0',
-                gateway: '192.168.1.1',
-                protocol: 'DAHUA_PRIVATE / ONVIF Profile S',
-                firmwareVersion: 'V4.001.0000001.0.R',
-                pingMs: 3,
-                activationStatus: 'ACTIVATED',
-                lastSeen: '1 min ago',
-                isVerified: false,
-                channelsCount: 8,
-                channels: [
-                    {
-                        channel: 1,
-                        name: 'Tractor Parking Bay',
-                        model: 'Dahua DH-IPC-HFW3849T1-AS-PV (TiOC 2.0)',
-                        ip: '192.168.1.131',
-                        rtspUrl: 'rtsp://192.168.1.130:554/cam/realmonitor?channel=1&subtype=0',
-                        resolution: '3840x2160 (4K 20fps)',
-                        status: 'ONLINE',
-                        isNightVision: true,
-                        isPtz: false
-                    },
-                    {
-                        channel: 2,
-                        name: 'Fertilizer & Chemical Vault',
-                        model: 'Dahua DH-IPC-HDW3449TM-AS-LED',
-                        ip: '192.168.1.132',
-                        rtspUrl: 'rtsp://192.168.1.130:554/cam/realmonitor?channel=2&subtype=0',
-                        resolution: '2688x1520 (4MP 25fps)',
-                        status: 'ONLINE',
-                        isNightVision: true,
-                        isPtz: false
-                    }
-                ]
-            },
-
-            // 3. Drone / UAV Flight Station & Dock
-            {
-                id: 'dev-drone-dji-dock',
-                alias: 'Autonomous Orchard Drone Dock & Matrice 350 RTK',
-                category: 'DRONE',
-                brand: 'DJI Enterprise',
-                model: 'DJI Dock 2 + Matrice 350 RTK (Zenmuse H20T)',
-                ip: '192.168.1.140',
-                httpPort: 8080,
-                rtspPort: 8554,
-                telemetryPort: 14550, // MAVLink / DJI Cloud API
-                mac: '48:1C:B9:71:0D:32',
-                subnetMask: '255.255.255.0',
-                gateway: '192.168.1.1',
-                protocol: 'DJI_CLOUD_API / MAVLINK_UDP',
-                firmwareVersion: 'v01.03.0102',
-                pingMs: 5,
-                activationStatus: 'ACTIVATED',
-                lastSeen: 'Live Telemetry',
-                isVerified: true,
-                telemetry: {
-                    batteryPct: 94,
-                    flightMode: 'STANDBY_DOCK_CHARGING',
-                    satellites: 28,
-                    gpsFix: 'RTK_FIXED (±1.5cm)',
-                    accuracyM: 0.02
-                }
-            },
-
-            // 4. GPS / RTK Base Station & Worker Rover Fleet
-            {
-                id: 'dev-gps-emlid-base',
-                alias: 'Plantation RTK GNSS Base Station',
-                category: 'GPS_ROVER',
-                brand: 'Emlid Reach',
-                model: 'Reach RS2+ Multi-Band RTK GNSS Receiver',
-                ip: '192.168.1.145',
-                httpPort: 80,
-                telemetryPort: 2101, // NTRIP Caster / RTCM3
-                mac: '00:1E:C0:88:94:AF',
-                subnetMask: '255.255.255.0',
-                gateway: '192.168.1.1',
-                protocol: 'NTRIP_CASTER_RTCM3 / NMEA_0183_TCP',
-                firmwareVersion: 'v31.4-reach-os',
-                pingMs: 2,
-                activationStatus: 'ACTIVATED',
-                lastSeen: 'Broadcasting RTK',
-                isVerified: true,
-                telemetry: {
-                    satellites: 32,
-                    gpsFix: 'BASE_STATION_FIXED',
-                    accuracyM: 0.008
-                }
-            },
-
-            // 5. LoRaWAN / Modbus Soil Moisture & NPK Station Gateway
-            {
-                id: 'dev-soil-milesight-gw',
-                alias: 'Multi-Depth Soil Moisture & EC Hub Gateway',
-                category: 'SOIL_SENSOR',
-                brand: 'Sentek & Milesight',
-                model: 'Sentek Drill & Drop + Milesight UG65 LoRaWAN Gateway',
-                ip: '192.168.1.160',
-                httpPort: 80,
-                telemetryPort: 502, // Modbus TCP
-                mac: '24:E1:24:F0:8A:11',
-                subnetMask: '255.255.255.0',
-                gateway: '192.168.1.1',
-                protocol: 'MODBUS_TCP / LORAWAN_PACKET_FORWARDER',
-                firmwareVersion: 'UG65-60.0.0.39',
-                pingMs: 4,
-                activationStatus: 'ACTIVATED',
-                lastSeen: '10 sec ago',
-                isVerified: true,
-                telemetry: {
-                    depthCm: 40,
-                    moisturePct: 32.4,
-                    soilPh: 6.35,
-                    soilEcDsm: 1.18,
-                    tempC: 17.6
-                }
-            },
-
-            // 6. Agro-Meteorological Weather Station
-            {
-                id: 'dev-weather-davis-vp2',
-                alias: 'North Orchard Central Microclimate Weather Station',
-                category: 'WEATHER_STATION',
-                brand: 'Davis Instruments',
-                model: 'Davis Vantage Pro2 Plus (WeatherLink IP / Solar / UV)',
-                ip: '192.168.1.150',
-                httpPort: 80,
-                telemetryPort: 22222, // WeatherLink IP TCP
-                mac: '00:1D:0A:73:90:5E',
-                subnetMask: '255.255.255.0',
-                gateway: '192.168.1.1',
-                protocol: 'DAVIS_WEATHERLINK_IP / MQTT',
-                firmwareVersion: 'v1.15 WeatherLink-IP',
-                pingMs: 3,
-                activationStatus: 'ACTIVATED',
-                lastSeen: 'Broadcasting telemetry',
-                isVerified: true,
-                telemetry: {
-                    tempC: 19.2,
-                    humidityPct: 58,
-                    windSpeedKmh: 9.4,
-                    rainMm: 0.0,
-                    solarRadiationWm2: 620
-                }
-            },
-
-            // 7. Smart Irrigation & Fertigation Automation Gateway
-            {
-                id: 'dev-irrigation-controller',
-                alias: 'Smart Fertigation & Solenoid Valve Master Controller',
-                category: 'IOT_GATEWAY',
-                brand: 'Motorola / Netafim',
-                model: 'NMC-Pro Fertigation & Valve Automation RTU',
-                ip: '192.168.1.170',
-                httpPort: 80,
-                telemetryPort: 502,
-                mac: '00:08:DC:44:EE:29',
-                subnetMask: '255.255.255.0',
-                gateway: '192.168.1.1',
-                protocol: 'MODBUS_TCP / REST_API',
-                firmwareVersion: 'NMC-v4.82',
-                pingMs: 6,
-                activationStatus: 'ACTIVATED',
-                lastSeen: 'Active Line Pressure 3.4 bar',
-                isVerified: false
+                        isPtz: ch === 4
+                    };
+                })
             }
         ];
     };
@@ -433,6 +212,102 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
     useEffect(() => {
         safeStorage.setItem('agrimap_lan_all_discovered_devices', JSON.stringify(devices));
     }, [devices]);
+
+    // Device Selection & Deletion Management
+    const handleToggleSelectDevice = (id: string) => {
+        setSelectedDeviceIds(prev => 
+            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+        );
+    };
+
+    const handleSelectAll = () => {
+        if (selectedDeviceIds.length === filteredDevices.length && filteredDevices.length > 0) {
+            setSelectedDeviceIds([]);
+        } else {
+            setSelectedDeviceIds(filteredDevices.map(d => d.id));
+        }
+    };
+
+    const handleDeleteDevice = (id: string, name: string) => {
+        setDevices(prev => {
+            const updated = prev.filter(d => d.id !== id);
+            safeStorage.setItem('agrimap_lan_all_discovered_devices', JSON.stringify(updated));
+            return updated;
+        });
+        setSelectedDeviceIds(prev => prev.filter(x => x !== id));
+        toast.success(isKa ? `მოწყობილობა "${name}" წაშლილია` : `Device "${name}" deleted`);
+    };
+
+    const handleDeleteSelected = () => {
+        if (selectedDeviceIds.length === 0) return;
+        const count = selectedDeviceIds.length;
+        setDevices(prev => {
+            const updated = prev.filter(d => !selectedDeviceIds.includes(d.id));
+            safeStorage.setItem('agrimap_lan_all_discovered_devices', JSON.stringify(updated));
+            return updated;
+        });
+        setSelectedDeviceIds([]);
+        toast.success(isKa ? `${count} მონიშნული მოწყობილობა წაშლილია` : `${count} selected devices deleted`);
+    };
+
+    const handleClearAllDevices = () => {
+        setDevices([]);
+        setSelectedDeviceIds([]);
+        safeStorage.removeItem('agrimap_lan_all_discovered_devices');
+        toast.success(isKa ? 'ყველა მოწყობილობა წაშლილია' : 'All devices cleared from LAN list');
+    };
+
+    const handleAddUserNvrPreset = () => {
+        const nvrId = 'dev-hik-nvr-244';
+        const exists = devices.some(d => d.id === nvrId || d.ip === '192.168.10.244');
+        if (exists) {
+            toast.info('Hikvision NVR (192.168.10.244) is already in the list.');
+            return;
+        }
+
+        const newNvr: DiscoveredLanDevice = {
+            id: nvrId,
+            alias: 'Field Station Hikvision 4K NVR',
+            category: 'NVR',
+            brand: 'Hikvision',
+            model: 'DS-7716NI-I4 / 16P (16-Channel 4K AI)',
+            ip: '192.168.10.244',
+            httpPort: 80,
+            rtspPort: 554,
+            telemetryPort: 8000,
+            mac: 'BC:54:51:A4:10:24',
+            subnetMask: '255.255.255.0',
+            gateway: '192.168.10.1',
+            protocol: 'HIKVISION_ISAPI_SADP / RTSP_OVER_WEBRTC',
+            firmwareVersion: 'V4.74.015 build 240520',
+            pingMs: 3,
+            activationStatus: 'ACTIVATED',
+            lastSeen: 'Just now',
+            isVerified: true,
+            channelsCount: 16,
+            channels: Array.from({ length: 16 }, (_, idx) => {
+                const ch = idx + 1;
+                return {
+                    channel: ch,
+                    name: ch === 1 ? 'Main Gate & Weighing Scale' :
+                          ch === 2 ? 'North Blueberry Field Block A' :
+                          ch === 3 ? 'Cold Storage & Logistics Shed' :
+                          ch === 4 ? 'Central Irrigation Station (25x PTZ)' :
+                          `Field Camera Channel ${ch}`,
+                    model: ch === 4 ? 'Hikvision 25x Laser Speed Dome' : 'Hikvision 4K AcuSense ColorVu',
+                    ip: '192.168.10.244',
+                    rtspUrl: `rtsp://admin:Htmc2009@192.168.10.244:554/Streaming/Channels/${ch}01`,
+                    resolution: '3840x2160 (4K 25fps)',
+                    status: 'ONLINE',
+                    isNightVision: true,
+                    isPtz: ch === 4
+                };
+            })
+        };
+
+        setDevices(prev => [newNvr, ...prev]);
+        toast.success(isKa ? 'Hikvision NVR (192.168.10.244) დაემატა!' : 'Hikvision NVR (192.168.10.244) attached!');
+    };
 
     // Filter devices by category and search
     const filteredDevices = useMemo(() => {
@@ -1086,7 +961,7 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
 
                             {/* Preset Quick Chips */}
                             <div className="hidden sm:flex items-center gap-1">
-                                {['192.168.1', '192.168.0', '192.168.10', '10.0.0'].map(chip => (
+                                {['192.168.10', '192.168.0', '192.168.1', '10.0.0'].map(chip => (
                                     <button
                                         key={chip}
                                         type="button"
@@ -1270,6 +1145,61 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                     ))}
                 </div>
 
+                {/* Bulk Selection & Device Action Toolbar */}
+                <div className="px-6 py-2 bg-slate-950/90 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-2 cursor-pointer select-none text-slate-300 hover:text-white font-bold">
+                            <input
+                                type="checkbox"
+                                checked={selectedDeviceIds.length > 0 && selectedDeviceIds.length === filteredDevices.length}
+                                onChange={handleSelectAll}
+                                className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-blue-600 focus:ring-0 cursor-pointer"
+                            />
+                            <span>{isKa ? 'ყველას მონიშვნა' : 'Select All'} ({filteredDevices.length})</span>
+                        </label>
+
+                        {selectedDeviceIds.length > 0 && (
+                            <span className="px-2 py-0.5 rounded-full bg-blue-950 text-blue-300 border border-blue-800 text-[11px] font-bold">
+                                {selectedDeviceIds.length} {isKa ? 'მონიშნულია' : 'selected'}
+                            </span>
+                        )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        {selectedDeviceIds.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={handleDeleteSelected}
+                                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-rose-900/30 transition-all cursor-pointer"
+                            >
+                                <X size={13} />
+                                <span>{isKa ? `მონიშნულის წაშლა (${selectedDeviceIds.length})` : `Delete Selected (${selectedDeviceIds.length})`}</span>
+                            </button>
+                        )}
+
+                        <button
+                            type="button"
+                            onClick={handleAddUserNvrPreset}
+                            className="px-2.5 py-1.5 bg-emerald-950/60 hover:bg-emerald-900 text-emerald-300 border border-emerald-700/60 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+                            title="Attach Hikvision 4K NVR (192.168.10.244)"
+                        >
+                            <Plus size={13} />
+                            <span>+ Hikvision NVR (192.168.10.244)</span>
+                        </button>
+
+                        {devices.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={handleClearAllDevices}
+                                className="px-2.5 py-1.5 bg-slate-900 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 border border-slate-800 hover:border-rose-800 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                                title="Wipe all devices from LAN list"
+                            >
+                                {isKa ? 'გასუფთავება' : 'Clear All'}
+                            </button>
+                        )}
+                    </div>
+                </div>
+
                 {/* Discovered Device Cards Grid */}
                 <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
                     {filteredDevices.length === 0 ? (
@@ -1295,6 +1225,14 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                                     {/* Device Header */}
                                     <div className="flex flex-wrap items-start justify-between gap-3">
                                         <div className="flex items-center gap-3">
+                                            {/* Item Selection Checkbox */}
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedDeviceIds.includes(dev.id)}
+                                                onChange={() => handleToggleSelectDevice(dev.id)}
+                                                className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-blue-600 focus:ring-0 cursor-pointer"
+                                            />
+
                                             <div className="p-3 bg-blue-950/70 border border-blue-800/60 text-blue-400 rounded-2xl">
                                                 {dev.category === 'NVR' && <Server size={22} />}
                                                 {dev.category === 'IP_CAMERA' && <Camera size={22} />}
@@ -1338,7 +1276,7 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                                                     title="Verify credentials, port 2006, and test live snapshot"
                                                 >
                                                     <Sliders size={13} />
-                                                    <span>{isKa ? 'შემოწმება (Port 2006)' : 'Verify & Snapshot'}</span>
+                                                    <span>{isKa ? 'შემოწმება' : 'Verify & Snapshot'}</span>
                                                 </button>
                                             )}
 
@@ -1385,6 +1323,16 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                                                     {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                                                 </button>
                                             )}
+
+                                            {/* Individual Delete Button */}
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeleteDevice(dev.id, dev.alias)}
+                                                className="p-2 bg-slate-800 hover:bg-rose-950/80 text-slate-400 hover:text-rose-300 border border-slate-700 hover:border-rose-700/80 rounded-xl transition-all cursor-pointer"
+                                                title={isKa ? 'მოწყობილობის წაშლა' : 'Delete Device'}
+                                            >
+                                                <X size={14} />
+                                            </button>
                                         </div>
                                     </div>
 

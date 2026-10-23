@@ -27,34 +27,62 @@
 
 /* Ensure all inputs and text fields in all modals, popups, and panels are ALWAYS legible */
 input, textarea, select {
-  color: #0f172a;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
-input::placeholder,
-textarea::placeholder {
-  color: #94a3b8;
+/* Dark background inputs: letters MUST be crisp bright and 100% visible */
+.dark input,
+.dark textarea,
+.dark select,
+input[class*="bg-slate-9"],
+input[class*="bg-slate-8"],
+input[class*="bg-slate-7"],
+input[class*="bg-zinc-9"],
+input[class*="bg-zinc-8"],
+input[class*="bg-neutral-9"],
+input[class*="bg-black"],
+input[class*="bg-gray-9"],
+input[class*="bg-gray-8"],
+textarea[class*="bg-slate-9"],
+textarea[class*="bg-slate-8"],
+textarea[class*="bg-black"],
+select[class*="bg-slate-9"],
+select[class*="bg-slate-8"],
+select[class*="bg-black"],
+.module-labs input:not(.bg-white):not([class*="bg-white"]):not([class*="bg-slate-50"]),
+.module-labs textarea:not(.bg-white):not([class*="bg-white"]),
+.module-labs select:not(.bg-white):not([class*="bg-white"]) {
+  color: #f8fafc !important;
+  -webkit-text-fill-color: #f8fafc !important;
 }
 
-/* Modals and pop-up windows input protection: text is never white on white */
+/* Light background inputs: text MUST be crisp dark */
+input.bg-white,
+input[class*="bg-white"],
+input[class*="bg-slate-50"],
+input[class*="bg-slate-100"],
+input[class*="bg-gray-50"],
+input[class*="bg-gray-100"],
+textarea.bg-white,
+textarea[class*="bg-white"],
+select.bg-white,
+select[class*="bg-white"],
 .bg-white input,
 .bg-slate-50 input,
 .bg-indigo-50 input,
 .modal-content input,
-[role="dialog"] input,
-[role="dialog"] textarea,
-[role="dialog"] select {
+[role="dialog"] input:not([class*="bg-slate-9"]):not([class*="bg-slate-8"]):not([class*="bg-black"]),
+[role="dialog"] textarea:not([class*="bg-slate-9"]):not([class*="bg-slate-8"]):not([class*="bg-black"]),
+[role="dialog"] select:not([class*="bg-slate-9"]):not([class*="bg-slate-8"]):not([class*="bg-black"]) {
   color: #0f172a !important;
   -webkit-text-fill-color: #0f172a !important;
 }
 
-/* In dark mode, only style inputs that have an explicit dark class */
-.dark input.bg-slate-900,
-.dark input.bg-slate-800,
-.dark input.bg-slate-950,
-.dark textarea.bg-slate-900,
-.dark textarea.bg-slate-800 {
-  color: #f8fafc !important;
-  -webkit-text-fill-color: #f8fafc !important;
+input::placeholder,
+textarea::placeholder {
+  color: #94a3b8 !important;
+  -webkit-text-fill-color: #94a3b8 !important;
+  opacity: 0.85;
 }
 
 /* Global Theme Helper Utilities */

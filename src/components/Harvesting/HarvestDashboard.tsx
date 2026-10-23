@@ -2634,8 +2634,8 @@ const HarvestDashboard: React.FC<HarvestDashboardProps> = (props) => {
     ]);
 
     return (
-        <div className="flex flex-col md:flex-row h-full w-full bg-slate-50 relative overflow-hidden">
-            {/* Sidebar Toggle (Mobile) */}
+        <div className="flex flex-col h-full w-full bg-slate-50 relative overflow-hidden">
+            {/* Sidebar Toggle (Quick switch) */}
             <button 
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)}
                 className="md:hidden absolute top-4 right-4 z-[2005] p-3 bg-white border border-slate-200 rounded-2xl shadow-xl text-slate-800"
@@ -2643,13 +2643,10 @@ const HarvestDashboard: React.FC<HarvestDashboardProps> = (props) => {
                 {isSidebarOpen ? <XIcon size={20} /> : <ListFilter size={20} />}
             </button>
 
-            <div 
-                className={`fixed inset-0 md:relative md:inset-auto z-[2004] md:z-10 w-full flex-shrink-0 flex flex-col bg-white border-r border-slate-200 h-full ${!isSidebarOpen ? 'hidden md:flex' : 'flex'}`}
-                style={{
-                    width: typeof window !== 'undefined' && window.innerWidth > 768 ? `${panelWidth}px` : undefined,
-                    maxWidth: '85vw'
-                }}
-            >
+            {isSidebarOpen && (
+                <div 
+                    className="w-full h-full flex flex-col bg-white border-r border-slate-200 z-10"
+                >
                 <div className="p-4 border-b flex-shrink-0 flex items-center gap-3">
                     <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition-all">
                         <ChevronLeftIcon className="h-6 w-6 text-slate-800" />
@@ -2678,6 +2675,15 @@ const HarvestDashboard: React.FC<HarvestDashboardProps> = (props) => {
                         )}
                     </div>
                     <div className="flex items-center gap-1.5">
+                        <button 
+                            type="button" 
+                            onClick={() => setIsSidebarOpen(false)}
+                            className="px-2.5 py-1.5 bg-slate-900 hover:bg-black text-white rounded-lg text-[10px] font-black uppercase flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95 border border-slate-700"
+                            title={t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka' ? 'მხოლოდ რუკა' : 'Only Map'}
+                        >
+                            <MapPin size={13} className="text-emerald-400" />
+                            <span>{t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka' ? 'მხოლოდ რუკა' : 'Only Map'}</span>
+                        </button>
                         <button 
                             type="button" 
                             onClick={() => setIsShareModalOpen(true)}
@@ -3267,27 +3273,27 @@ const HarvestDashboard: React.FC<HarvestDashboardProps> = (props) => {
                     )}
                 </div>
             </div>
-
-            {/* Live Resizing Tool between Harvest Panel and Map */}
-            {isSidebarOpen && (
-                <ResizableDivider 
-                    direction="horizontal"
-                    currentSize={panelWidth}
-                    onResize={(newWidth) => setPanelWidth(newWidth)}
-                    minSize={280}
-                    maxSize={typeof window !== 'undefined' ? Math.max(window.innerWidth - 300, 600) : 850}
-                    storageKey="harvest_monitoring_panel_width"
-                    isKa={t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka'}
-                    className="hidden md:flex"
-                />
             )}
 
-            <div className="flex-1 flex flex-col relative overflow-hidden bg-slate-200 h-full">
-                 {memoizedMap}
-                <div className="absolute top-4 left-4 z-[1000] bg-white/80 backdrop-blur p-2 rounded-lg shadow-md text-xs font-bold">
-                    TARGET AREA: {sectorNames}
+            {!isSidebarOpen && (
+                <div className="w-full h-full flex-1 flex flex-col relative overflow-hidden bg-slate-200">
+                    <div className="absolute top-4 left-4 z-[2005]">
+                        <button
+                            type="button"
+                            onClick={() => setIsSidebarOpen(true)}
+                            className="px-4 py-2.5 bg-slate-900/95 hover:bg-black text-white rounded-2xl shadow-2xl flex items-center gap-2 border border-slate-700/80 backdrop-blur-md active:scale-95 transition-all text-xs font-black uppercase tracking-wider cursor-pointer"
+                            title="Back to Harvest Monitoring Panel"
+                        >
+                            <ListFilter size={16} className="text-emerald-400 shrink-0" />
+                            <span>{t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka' ? 'პანელზე დაბრუნება' : 'Back to Panel'}</span>
+                        </button>
+                    </div>
+                    {memoizedMap}
+                    <div className="absolute top-4 right-4 z-[1000] bg-white/80 backdrop-blur p-2 rounded-lg shadow-md text-xs font-bold">
+                        TARGET AREA: {sectorNames}
+                    </div>
                 </div>
-            </div>
+            )}
 
             {isWeighModalOpen && (
                 <WeighStationModal 

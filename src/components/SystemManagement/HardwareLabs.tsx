@@ -56,6 +56,7 @@ import { CameraNvrLab } from './HardwareLabs/CameraNvrLab';
 import { DroneHardwareLab } from './HardwareLabs/DroneHardwareLab';
 import { WeatherStationLab } from './HardwareLabs/WeatherStationLab';
 import { SoilSensorsLab } from './HardwareLabs/SoilSensorsLab';
+import { getMainPlantation, resolvePlantationCenter } from '../../utils/plantationHelper';
 
 interface HardwareLabsProps {
     employees?: Employee[];
@@ -83,6 +84,16 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({
     onSelectLabTab
 }) => {
     const { resetToDefault } = useAppTheme();
+
+    // Accurately resolve user's plantation center & metadata for active profile
+    const resolvedPlantationCenter = useMemo(() => {
+        return resolvePlantationCenter(plantationFeatures, mapCenter || [41.9023, 44.5], organizationId);
+    }, [plantationFeatures, mapCenter, organizationId]);
+
+    const mainPlantation = useMemo(() => {
+        return getMainPlantation(plantationFeatures, resolvedPlantationCenter, organizationId);
+    }, [plantationFeatures, resolvedPlantationCenter, organizationId]);
+
     const [activeTab, setActiveTab] = useState<'sandbox_map' | 'bluetooth' | 'gps' | 'cameras' | 'drone' | 'weather' | 'sensors' | 'printer' | 'qr' | 'nfc' | 'scale' | 'ports'>(
         initialTab ? initialTab : (fullScreenMap ? 'sandbox_map' : 'bluetooth')
     );
@@ -95,6 +106,16 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({
             setActiveTab('bluetooth');
         }
     }, [initialTab, fullScreenMap]);
+
+    useEffect(() => {
+        const handleOpenTab = (e: any) => {
+            if (e.detail) {
+                setActiveTab(e.detail);
+            }
+        };
+        window.addEventListener('agrimap_open_hardware_tab', handleOpenTab);
+        return () => window.removeEventListener('agrimap_open_hardware_tab', handleOpenTab);
+    }, []);
     
     // Custom Adopted Printer and active Printing path selection
     const [selectedPrinterId, setSelectedPrinterId] = useState<string>(() => safeStorage.getItem('agrimap_selected_printer') || '');
@@ -1296,10 +1317,10 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({
 
     if (activeTab === 'sandbox_map' && fullScreenMap) {
         return (
-            <div className="w-full h-full relative overflow-hidden flex flex-col">
+            <div className="module-labs w-full h-full relative overflow-hidden flex flex-col">
                 <HardwareTestingSandboxMap 
                     plantationFeatures={plantationFeatures}
-                    mapCenter={mapCenter}
+                    mapCenter={resolvedPlantationCenter}
                     onSwitchTab={(tab: string) => {
                         if (onSelectLabTab) {
                             onSelectLabTab('hardware');
@@ -1312,7 +1333,7 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({
     }
 
     return (
-        <div className="bg-white dark:bg-slate-950 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden min-h-[700px] flex flex-col">
+        <div className="module-labs bg-white dark:bg-slate-950 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden min-h-[700px] flex flex-col">
             <div className="p-6 sm:p-8 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex flex-wrap items-center justify-between gap-4">
                 <div>
                     <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter flex items-center gap-2">
@@ -1323,6 +1344,25 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({
                     </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2.5">
+                    {/* Main Plantation Testing Map Link */}
+                    <button
+                        onClick={() => {
+                            if (onOpenDevicesMap) {
+                                onOpenDevicesMap();
+                            } else if (onSelectLabTab) {
+                                onSelectLabTab('devices_map');
+                            } else {
+                                setActiveTab('sandbox_map');
+                            }
+                            toast.success(`Opening map on: ${mainPlantation.name}`);
+                        }}
+                        className="px-3.5 py-2 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-600/50 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer"
+                        title="Open device testing map on Main Plantation"
+                    >
+                        <MapPin size={13} className="text-emerald-400" />
+                        <span className="truncate max-w-[160px]">🌿 {mainPlantation.name}</span>
+                    </button>
+
                     <button
                         onClick={() => {
                             if (onOpenDevicesMap) {
@@ -1405,7 +1445,7 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({
                         {activeTab === 'sandbox_map' && (
                             <HardwareTestingSandboxMap 
                                 plantationFeatures={plantationFeatures}
-                                mapCenter={mapCenter}
+                                mapCenter={resolvedPlantationCenter}
                             />
                         )}
 
@@ -1422,24 +1462,28 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({
                             <GpsTrackerLab 
                                 employees={employees}
                                 activeOrgId={organizationId}
+                                mapCenter={resolvedPlantationCenter}
                             />
                         )}
 
                         {activeTab === 'cameras' && (
                             <CameraNvrLab 
                                 plantationFeatures={plantationFeatures}
-                                mapCenter={mapCenter}
+                                mapCenter={resolvedPlantationCenter}
                             />
                         )}
 
                         {activeTab === 'drone' && (
                             <DroneHardwareLab 
-                                mapCenter={mapCenter}
+                                mapCenter={resolvedPlantationCenter}
                             />
                         )}
 
                         {activeTab === 'weather' && (
-                            <WeatherStationLab />
+                            <WeatherStationLab 
+                                mapCenter={resolvedPlantationCenter}
+                                plantationFeatures={plantationFeatures}
+                            />
                         )}
 
                         {activeTab === 'sensors' && (

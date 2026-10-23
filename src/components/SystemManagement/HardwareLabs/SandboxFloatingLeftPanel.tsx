@@ -11,7 +11,7 @@ import type { PlantationFeature } from '../../../types';
 
 interface SandboxFloatingLeftPanelProps {
     selectedObject: {
-        type: 'camera' | 'drone' | 'soil' | 'water' | 'worker' | 'seedling' | 'trench' | 'weather';
+        type: 'camera' | 'drone' | 'soil' | 'water' | 'worker' | 'seedling' | 'trench' | 'weather' | 'slope_point';
         data: any;
     } | null;
     onClose: () => void;

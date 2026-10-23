@@ -1,15 +1,17 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
     ZoomIn, ZoomOut, RotateCcw, Eye, EyeOff, Layers, MapPin, 
     Compass, AlertTriangle, ShieldCheck, Maximize2, Sliders, Info,
     Satellite, Map as MapIcon, Crosshair, Plus, Trash2, Edit3, 
     Move, Check, X, Navigation, Radio, Video, ArrowRight
 } from 'lucide-react';
-import { MapContainer, TileLayer, Polygon, Polyline, Marker, Tooltip, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Polygon, Polyline, Marker, Tooltip, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { toast } from 'sonner';
 import type { PlantationFeature } from '../../../types';
 import type { PlantationCamera } from './CameraNvrLab';
+import { DeviceControlPanel } from './DeviceControlPanel';
+import { getMainPlantation, getPlantationsList, resolvePlantationCenter, CANONICAL_PLANTATION_NAME, CANONICAL_AGROBARI_CENTER } from '../../../utils/plantationHelper';
 import { 
     computeFovConePolygon, 
     computeBlindZonePolygon, 
@@ -45,6 +47,35 @@ const MapClickHandler: React.FC<{
     return null;
 };
 
+// Map Fly To Controller for Leaflet
+const MapFlyToController: React.FC<{ target: [number, number] | null }> = ({ target }) => {
+    const map = useMap();
+    useEffect(() => {
+        if (
+            target && 
+            Array.isArray(target) && 
+            Number.isFinite(target[0]) && 
+            Number.isFinite(target[1]) &&
+            target[0] >= -90 && target[0] <= 90 &&
+            target[1] >= -180 && target[1] <= 180
+        ) {
+            try {
+                const container = map.getContainer();
+                if (container && container.clientWidth > 0 && container.clientHeight > 0) {
+                    map.flyTo(target, 17, { animate: true, duration: 1.2 });
+                } else {
+                    map.setView(target, 17);
+                }
+            } catch {
+                try {
+                    map.setView(target, 17);
+                } catch {}
+            }
+        }
+    }, [target, map]);
+    return null;
+};
+
 // Custom Leaflet Icons for Camera Poles with Directional Heading Arrow & Status
 const createLeafletCameraIcon = (
     cam: PlantationCamera, 
@@ -59,23 +90,23 @@ const createLeafletCameraIcon = (
     const opacity = isHidden ? '0.45' : '1';
 
     return L.divIcon({
-        className: 'custom-camera-pole-marker',
+        className: 'custom-camera-pole-marker touch-none',
         html: `
-            <div style="position: relative; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -50%); cursor: grab; opacity: ${opacity};">
+            <div style="position: relative; width: 40px; height: 48px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; cursor: grab; opacity: ${opacity}; touch-action: none;">
                 <div style="
-                    width: 28px; height: 28px; border-radius: 50%;
+                    width: 32px; height: 32px; border-radius: 50%;
                     background: ${color}; border: 2.5px solid #ffffff;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+                    box-shadow: 0 4px 14px rgba(0,0,0,0.6);
                     display: flex; align-items: center; justify-content: center;
                     color: white; font-size: 11px; position: relative;
                 ">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate(${heading}deg); transition: transform 0.2s;">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate(${heading}deg); transition: transform 0.2s;">
                         <polygon points="12 2 19 21 12 17 5 21 12 2" fill="white" />
                     </svg>
                     ${isHidden ? '<div style="position: absolute; top:-3px; right:-3px; background:#ef4444; width:10px; height:10px; border-radius:50%; border:1.5px solid white;"></div>' : ''}
                 </div>
                 <div style="
-                    margin-top: 2px; background: rgba(15, 23, 42, 0.92);
+                    margin-top: 2px; background: rgba(15, 23, 42, 0.95);
                     color: #ffffff; font-size: 8px; font-weight: 800; font-family: monospace;
                     padding: 1.5px 5px; border-radius: 5px; border: 1px solid ${border};
                     white-space: nowrap; pointer-events: none;
@@ -86,8 +117,8 @@ const createLeafletCameraIcon = (
                 </div>
             </div>
         `,
-        iconSize: [32, 44],
-        iconAnchor: [16, 22]
+        iconSize: [40, 48],
+        iconAnchor: [20, 24]
     });
 };
 
@@ -130,8 +161,27 @@ export const PlantationCameraMap: React.FC<PlantationCameraMapProps> = ({
     const [editingCamId, setEditingCamId] = useState<string | null>(null);
     const [editForm, setEditForm] = useState<Partial<PlantationCamera>>({});
 
-    const baseLat = mapCenter[0] || 41.9023;
-    const baseLng = mapCenter[1] || 44.5;
+    // Smooth Fly Target
+    const [flyTarget, setFlyTarget] = useState<[number, number] | null>(null);
+    const [showDeviceControl, setShowDeviceControl] = useState<boolean>(true);
+
+    // Resolved Main Plantation Center & Info
+    const resolvedPlantationCenter = useMemo(() => {
+        return resolvePlantationCenter(plantationFeatures, mapCenter || [41.9023, 44.5]);
+    }, [plantationFeatures, mapCenter]);
+
+    const mainPlantation = useMemo(() => {
+        return getMainPlantation(plantationFeatures, resolvedPlantationCenter);
+    }, [plantationFeatures, resolvedPlantationCenter]);
+
+    const plantationList = useMemo(() => {
+        return getPlantationsList(plantationFeatures, resolvedPlantationCenter, false);
+    }, [plantationFeatures, resolvedPlantationCenter]);
+
+    const [selectedPlantationName, setSelectedPlantationName] = useState<string>(mainPlantation.name);
+
+    const baseLat = resolvedPlantationCenter[0];
+    const baseLng = resolvedPlantationCenter[1];
 
     // Collect all geo points from plantation features to calculate bounding box and center
     const allGeoPoints = useMemo<[number, number][]>(() => {
@@ -464,6 +514,41 @@ export const PlantationCameraMap: React.FC<PlantationCameraMapProps> = ({
 
                 {/* Layer Visibility Controls */}
                 <div className="flex items-center gap-1.5">
+                    {/* Active Profile Plantation & Sector Selector */}
+                    <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-1 rounded-xl border border-emerald-500/50 shadow-sm">
+                        <span className="text-emerald-400 text-xs">🌿</span>
+                        <select
+                            value={selectedPlantationName || mainPlantation.name}
+                            onChange={(e) => {
+                                const targetName = e.target.value;
+                                const item = plantationList.find(p => p.name === targetName) || mainPlantation;
+                                setSelectedPlantationName(targetName);
+                                setFlyTarget(item.center);
+                                toast.success(`Flying map to: ${item.name}`);
+                            }}
+                            className="bg-transparent text-emerald-300 text-[10px] font-bold font-mono outline-none cursor-pointer max-w-[150px] truncate"
+                            title="Choose plantation sector and fly map"
+                        >
+                            {plantationList.map((p, idx) => (
+                                <option key={`cam-plant-${p.id}-${idx}`} value={p.name} className="bg-slate-950 text-slate-200">
+                                    {p.name}
+                                </option>
+                            ))}
+                        </select>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const item = plantationList.find(p => p.name === selectedPlantationName) || mainPlantation;
+                                setFlyTarget(item.center);
+                                toast.success(`Flying map to: ${item.name}`);
+                            }}
+                            className="p-0.5 hover:bg-emerald-900/60 rounded text-emerald-400 cursor-pointer transition-colors"
+                            title="Fly to selected plantation"
+                        >
+                            <Navigation size={11} />
+                        </button>
+                    </div>
+
                     <button
                         type="button"
                         onClick={() => setShowBlindZones(!showBlindZones)}
@@ -571,6 +656,7 @@ export const PlantationCameraMap: React.FC<PlantationCameraMapProps> = ({
                         attributionControl={false}
                     >
                         <MapClickHandler onMapClick={handleMapClickPosition} />
+                        <MapFlyToController target={flyTarget} />
 
                         {viewMode === 'real_satellite' ? (
                             <TileLayer
@@ -681,8 +767,17 @@ export const PlantationCameraMap: React.FC<PlantationCameraMapProps> = ({
                                     icon={createLeafletCameraIcon(c, false, isSel, isHidden)}
                                     draggable={true}
                                     eventHandlers={{
-                                        click: () => onSelectCamera?.(c),
+                                        click: () => {
+                                            onSelectCamera?.(c);
+                                            setEditingCamId(c.id);
+                                            setEditForm({ ...c });
+                                        },
+                                        dragstart: (e) => {
+                                            try { e.target._map?.dragging?.disable(); } catch {}
+                                            onSelectCamera?.(c);
+                                        },
                                         dragend: (e) => {
+                                            try { e.target._map?.dragging?.enable(); } catch {}
                                             const marker = e.target;
                                             const pos = marker.getLatLng();
                                             if (onUpdateCamera) {
@@ -745,7 +840,11 @@ export const PlantationCameraMap: React.FC<PlantationCameraMapProps> = ({
                                     icon={createLeafletCameraIcon(plannedCam, true, true, false)}
                                     draggable={true}
                                     eventHandlers={{
+                                        dragstart: (e) => {
+                                            try { e.target._map?.dragging?.disable(); } catch {}
+                                        },
                                         dragend: (e) => {
+                                            try { e.target._map?.dragging?.enable(); } catch {}
                                             const marker = e.target;
                                             const pos = marker.getLatLng();
                                             onUpdatePlannedCamPosition?.(pos.lat, pos.lng);
@@ -921,6 +1020,21 @@ export const PlantationCameraMap: React.FC<PlantationCameraMapProps> = ({
                                 <span>{editingCamId === selectedCam.id ? 'Close' : 'Edit'}</span>
                             </button>
 
+                            {/* Device Control & Move Panel Toggle */}
+                            <button
+                                type="button"
+                                onClick={() => setShowDeviceControl(!showDeviceControl)}
+                                className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
+                                    showDeviceControl 
+                                        ? 'bg-blue-600 text-white shadow-md' 
+                                        : 'bg-slate-800 hover:bg-slate-700 text-blue-300'
+                                }`}
+                                title="Open Device Control & Moving Panel"
+                            >
+                                <Move size={13} />
+                                <span>{showDeviceControl ? 'Hide Controls' : 'Device Control & Move'}</span>
+                            </button>
+
                             {/* Delete */}
                             {onDeleteCamera && (
                                 <button
@@ -970,6 +1084,41 @@ export const PlantationCameraMap: React.FC<PlantationCameraMapProps> = ({
                             Pole Tip ASL: <span className="text-white">{(getElevationAtCoords(selectedCam.lat, selectedCam.lng, baseLat, baseLng) + (selectedCam.mountHeightM || 6)).toFixed(1)}m</span>
                         </div>
                     </div>
+
+                    {/* DEVICE CONTROL & MOVING PANEL */}
+                    {showDeviceControl && (
+                        <div className="pt-1">
+                            <DeviceControlPanel
+                                camera={{
+                                    id: selectedCam.id,
+                                    name: selectedCam.name,
+                                    channel: selectedCam.channel,
+                                    model: selectedCam.model,
+                                    ipAddress: selectedCam.ipAddress,
+                                    lat: selectedCam.lat,
+                                    lng: selectedCam.lng,
+                                    azimuthDeg: selectedCam.azimuthDeg,
+                                    tiltAngleDeg: selectedCam.tiltAngleDeg,
+                                    opticalZoomX: (selectedCam as any).opticalZoomX || 2,
+                                    rangeM: selectedCam.rangeM,
+                                    mountHeightM: selectedCam.mountHeightM,
+                                    isPtz: selectedCam.isPtz,
+                                    isNightVision: selectedCam.isNightVision
+                                }}
+                                onUpdateCamera={(updated) => {
+                                    const patched = { ...selectedCam, ...updated };
+                                    if (onUpdateCamera) onUpdateCamera(patched);
+                                    setEditForm(patched);
+                                }}
+                                onFlyToCoords={(coords, label) => {
+                                    setFlyTarget(coords);
+                                    if (label) toast.info(label);
+                                }}
+                                mapCenterCoords={[selectedCam.lat, selectedCam.lng]}
+                                isKa={false}
+                            />
+                        </div>
+                    )}
 
                     {/* INLINE PROPERTY EDIT FORM */}
                     {editingCamId === selectedCam.id && (

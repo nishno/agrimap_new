@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
     ScanLine, Usb, Bluetooth, RefreshCw, CheckCircle, AlertTriangle, 
-    Trash2, Play, Volume2, Key, HelpCircle, Camera, Check, Copy, ExternalLink 
+    Trash2, Play, Volume2, Key, HelpCircle, Camera, Check, Copy, ExternalLink,
+    Navigation, MapPin 
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { toast } from 'sonner';
@@ -13,6 +14,7 @@ import {
     initGlobalHardwareScannerListener 
 } from '../../../utils/hardwareScannerBus';
 import { Employee } from '../../../types';
+import { getMainPlantation, getPlantationsList } from '../../../utils/plantationHelper';
 
 interface UsbScannerLabProps {
     employees?: Employee[];
@@ -220,6 +222,10 @@ export const UsbScannerLab: React.FC<UsbScannerLabProps> = ({
     const adoptedScanners = installedDevices.filter(d => d.type === 'scanner');
     const activeAdopted = adoptedScanners.find(s => s.id === selectedScannerId) || adoptedScanners[0];
 
+    const mainPlantation = getMainPlantation([], [41.9023, 44.5], activeOrgId);
+    const plantationList = getPlantationsList([], [41.9023, 44.5], false, activeOrgId);
+    const [selectedPlantationName, setSelectedPlantationName] = useState(mainPlantation.name);
+
     return (
         <div className="space-y-6">
             {/* Header & Quick Adoption Bar */}
@@ -234,6 +240,41 @@ export const UsbScannerLab: React.FC<UsbScannerLabProps> = ({
                     </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                    {/* Active Profile Plantation Selector */}
+                    <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-900 px-3 py-2 rounded-xl border border-emerald-500/50 shadow-sm text-xs">
+                        <span className="text-emerald-500 font-bold">🌿</span>
+                        <select
+                            value={selectedPlantationName}
+                            onChange={(e) => {
+                                const targetName = e.target.value;
+                                const item = plantationList.find(p => p.name === targetName) || mainPlantation;
+                                setSelectedPlantationName(targetName);
+                                window.dispatchEvent(new CustomEvent('agrimap:fly-to-location', { detail: { center: item.center, name: item.name } }));
+                                toast.success(`რუკა გადაფრინდა: ${item.name}`);
+                            }}
+                            className="bg-transparent text-emerald-600 dark:text-emerald-300 font-bold font-mono outline-none cursor-pointer max-w-[170px] truncate"
+                            title="Bound Plantation Area for scanned hardware"
+                        >
+                            {plantationList.map((p, idx) => (
+                                <option key={`scan-p-${p.id}-${idx}`} value={p.name} className="bg-slate-950 text-slate-200">
+                                    {p.name}
+                                </option>
+                            ))}
+                        </select>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const item = plantationList.find(p => p.name === selectedPlantationName) || mainPlantation;
+                                window.dispatchEvent(new CustomEvent('agrimap:fly-to-location', { detail: { center: item.center, name: item.name } }));
+                                toast.success(`რუკა გადაფრინდა: ${item.name}`);
+                            }}
+                            className="p-1 hover:bg-emerald-500/20 rounded text-emerald-500 cursor-pointer transition-colors"
+                            title="Fly to Plantation"
+                        >
+                            <Navigation size={12} />
+                        </button>
+                    </div>
+
                     <button
                         onClick={handleConnectWebHID}
                         className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-md shadow-blue-500/20 flex items-center gap-2 active:scale-95 cursor-pointer"

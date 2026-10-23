@@ -135,26 +135,7 @@ export const MapDisplayVisibilityControl: React.FC<MapDisplayVisibilityControlPr
             label: isKa ? 'გაუქმება / გამეორება ღილაკები' : 'Undo / Redo Buttons', 
             desc: isKa ? 'ისტორიის ნაბიჯების მოძრავი ღილაკები' : 'Movable floating history action buttons' 
         },
-        { 
-            key: 'showGoogleMeet' as const, 
-            label: isKa ? 'Google Meet ვიდეო' : 'Google Meet Video', 
-            desc: isKa ? 'საკონფერენციო ოთახი და სივრცითი ზარები' : 'Movable conference room & spatial call' 
-        },
-        { 
-            key: 'showGoogleChat' as const, 
-            label: isKa ? 'Google Chat ჰაბი' : 'Google Chat Hub', 
-            desc: isKa ? 'გუნდური სივრცეები და შეტყობინებები' : 'Movable team spaces & messaging' 
-        },
-        { 
-            key: 'showVoiceNotes' as const, 
-            label: isKa ? 'ხმოვანი & საველე ჩანაწერები' : 'Voice & Field Notes', 
-            desc: isKa ? 'აუდიო ჩაწერა და საველე პინები' : 'Audio recording & field pins' 
-        },
-        { 
-            key: 'showAiAssistant' as const, 
-            label: isKa ? 'Agri-Assistant AI ასისტენტი' : 'Agri-Assistant AI', 
-            desc: isKa ? 'მოძრავი ინტელექტუალური ასისტენტი & ავტომატიზაცია' : 'Movable intelligent assistant & automation' 
-        },
+
         { 
             key: 'showMeasurementGuide' as const, 
             label: isKa ? 'გაზომვის გზამკვლევი' : 'Measurement Guide', 

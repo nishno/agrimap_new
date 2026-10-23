@@ -468,9 +468,9 @@ const PlannerAndRemainderView: React.FC<PlannerAndRemainderViewProps> = (props) 
     const relevantTasks = useMemo(() => {
         const todayStr = new Date().toISOString().split('T')[0];
         
-        // Combine assignments, notes, checkpoints AND drawn features from map labeled for planner or note/checkpoint types
+        // Combine assignments AND drawn features from map labeled for planner (excluding notes and checkpoints from panel)
         const drawnPlannerFeatures = mapProps.plantationFeatures
-            .filter(f => f.type === 'note' || f.type === 'checkpoint' || (f as any).source === 'planner' || (f as any).source === 'tasks' || (f as any).source === 'remainder')
+            .filter(f => f.type !== 'note' && f.type !== 'checkpoint' && ((f as any).source === 'planner' || (f as any).source === 'tasks' || (f as any).source === 'remainder'))
             .map(f => ({
                 id: f.id,
                 workName: f.name || `Drawn ${f.type}`,
@@ -478,14 +478,12 @@ const PlannerAndRemainderView: React.FC<PlannerAndRemainderViewProps> = (props) 
                 status: (f as any).status || 'planned',
                 notes: f.notes || '',
                 source: (f as any).source || 'planner',
-                unifiedType: f.type === 'note' ? 'note' : f.type === 'checkpoint' ? 'checkpoint' : 'area',
+                unifiedType: 'task' as const,
                 sectorIds: [f.id]
             }));
 
         const unifiedList = [
             ...workAssignments.map(w => ({ ...w, unifiedType: 'task' as const })),
-            ...notes.map(n => ({ ...n, id: n.id || `note-${Math.random()}`, unifiedType: 'note' as const, workName: n.title || n.name || 'Note', date: n.date || todayStr, status: 'note' })),
-            ...checkpoints.map(cp => ({ ...cp, id: cp.id || `cp-${Math.random()}`, unifiedType: 'checkpoint' as const, workName: cp.name || 'Checkpoint', date: cp.date || todayStr, status: 'checkpoint' })),
             ...drawnPlannerFeatures
         ];
 
@@ -642,115 +640,43 @@ const PlannerAndRemainderView: React.FC<PlannerAndRemainderViewProps> = (props) 
     }, [mapProps.plantationFeatures, workAssignments, mapFilterDate, mapTheme]);
 
     return (
-        <main className="flex-1 bg-slate-50 overflow-hidden flex flex-col md:flex-row h-full">
-            {/* Sidebar: Tasks & Controls */}
-            <div 
-                className={`w-full bg-white border-r border-slate-200 flex flex-col shadow-xl z-10 transition-all ${view === 'map' ? 'h-auto md:h-full' : 'h-full md:h-full'}`}
-                style={{
-                    width: typeof window !== 'undefined' && window.innerWidth > 768 ? `${sidebarWidth}px` : undefined,
-                    maxWidth: '85vw'
-                }}
-            >
-                <div className={`p-8 border-b border-slate-100 bg-slate-50/50 flex flex-col gap-6 ${view === 'map' ? 'hidden md:flex' : 'flex'}`}>
+        <main className="flex-1 bg-slate-50 overflow-hidden flex flex-col h-full w-full relative">
+            {/* Switcher Button: 100% Map vs 100% Panel */}
+            <div className="absolute top-3 right-3 z-[1005] flex items-center gap-1.5">
+                <button 
+                    type="button"
+                    onClick={() => setView(view === 'map' ? 'list' : 'map')}
+                    className="px-3.5 py-2.5 bg-slate-900/95 hover:bg-black text-white rounded-2xl shadow-xl flex items-center gap-2 border border-slate-700/80 backdrop-blur-md active:scale-95 transition-all text-xs font-black uppercase tracking-wider cursor-pointer"
+                    title={view === 'map' ? "Back to Panel" : "Switch to Map View"}
+                >
+                    {view === 'map' ? (
+                        <>
+                            <RectangleStackIcon className="h-4 w-4 text-emerald-400 shrink-0" />
+                            <span>Only Panel</span>
+                        </>
+                    ) : (
+                        <>
+                            <MapIcon className="h-4 w-4 text-emerald-400 shrink-0" />
+                            <span>Only Map</span>
+                        </>
+                    )}
+                </button>
+            </div>
+
+            {/* Sidebar: Tasks & Controls - 100% width and height when on panel */}
+            {view !== 'map' && (
+                <div 
+                    className="w-full h-full bg-white flex flex-col shadow-xl z-10"
+                >
+                <div className="p-6 sm:p-8 border-b border-slate-100 bg-slate-50/50 flex flex-col gap-4">
                     <div className="flex justify-between items-center">
                         <div>
                             <h2 className="text-3xl font-black italic tracking-tighter uppercase leading-none text-slate-900">PLANNER</h2>
                             <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.3em] mt-2">Precision Agriculture Sync</p>
                         </div>
-                        <div className="flex gap-2">
-                            <button 
-                                onClick={() => setView('map')} 
-                                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/20 active:scale-95 transition-all text-[9.5px] font-black uppercase tracking-widest border border-indigo-500"
-                                title="Switch to Map"
-                            >
-                                <MapIcon className="h-4 w-4 shrink-0" />
-                                <span>Switch to Map</span>
-                            </button>
-                        </div>
                     </div>
 
-                    <div className="flex flex-col gap-3">
-                        <div className="flex gap-2">
-                            <button 
-                                onClick={() => onSetActiveDrawingTool({...activeDrawingTool, tool: 'note'})}
-                                className="flex-1 py-3 px-4 bg-slate-50 border border-slate-200 rounded-2xl text-[9px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-100 transition-all flex flex-col items-center gap-1 shadow-sm"
-                            >
-                                <MapPinIcon size={16} className="text-rose-500" /> New Note
-                            </button>
-                            <button 
-                                onClick={() => onSetActiveDrawingTool({...activeDrawingTool, tool: 'checkpoint'})}
-                                className="flex-1 py-3 px-4 bg-slate-50 border border-slate-200 rounded-2xl text-[9px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-100 transition-all flex flex-col items-center gap-1 shadow-sm"
-                            >
-                                <BellIcon size={16} className="text-violet-500" /> Checkpoint
-                            </button>
-                            {isTrackingWalk ? (
-                                <button 
-                                    onClick={handleCancelTrackedWalk}
-                                    className="flex-1 py-3 px-4 bg-red-50 border border-red-200 rounded-2xl text-[9px] font-black uppercase tracking-widest text-red-600 hover:bg-red-100 transition-all flex flex-col items-center justify-center gap-1 shadow-sm animate-pulse"
-                                >
-                                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping mb-0.5 shrink-0" />
-                                    Cancel Walk
-                                </button>
-                            ) : (
-                                <button 
-                                    onClick={() => {
-                                        setIsTrackingWalk(true);
-                                        const c = mapProps.center;
-                                        let centerPoint: [number, number] = [42.14, 42.0];
-                                        if (c && Array.isArray(c) && c.length === 2) {
-                                            const lat = typeof c[0] === 'string' ? parseFloat(c[0]) : c[0];
-                                            const lng = typeof c[1] === 'string' ? parseFloat(c[1]) : c[1];
-                                            if (Number.isFinite(lat) && Number.isFinite(lng)) {
-                                                centerPoint = [lat, lng];
-                                            }
-                                        }
-                                        setTrackedPath([centerPoint]);
-                                        toast.success("Walk tracking started! Press 'Simulate Step' or walk to record position.");
-                                    }}
-                                    className="flex-1 py-3 px-4 bg-orange-50 border border-orange-200 rounded-2xl text-[9px] font-black uppercase tracking-widest text-orange-700 hover:bg-orange-100/50 transition-all flex flex-col items-center gap-1 shadow-sm border-dashed"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 5H19V11H13V5ZM13 13H19V19H13V13ZM5 5H11V11H5V5ZM5 13H11V19H5V13Z" />
-                                    </svg>
-                                    Track Walk
-                                </button>
-                            )}
-                        </div>
 
-                        {isTrackingWalk && (
-                            <div className="p-4 bg-gradient-to-br from-orange-50 to-amber-50 border border-orange-100 rounded-3xl shadow-sm space-y-3 animate-in slide-in-from-top duration-300">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                        <span className="relative flex h-2.5 w-2.5">
-                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-                                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-orange-600"></span>
-                                        </span>
-                                        <h4 className="text-[9px] font-black text-orange-850 uppercase tracking-widest">Walk Session Tracking</h4>
-                                    </div>
-                                    <span className="text-[9px] font-mono text-slate-500 font-bold bg-white px-2 py-0.5 rounded-lg shadow-sm border border-slate-100">{trackedPath.length} points</span>
-                                </div>
-                                <p className="text-[9px] text-orange-700/80 font-bold uppercase tracking-tight">
-                                    Simulating GPS movement local state only. Walk or trigger simulation steps.
-                                </p>
-                                <div className="flex gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={handleSimulateStep}
-                                        className="flex-1 py-2.5 bg-white border border-orange-200 text-orange-750 rounded-2xl font-black uppercase tracking-widest text-[9px] shadow-sm hover:bg-orange-100/50 active:scale-95 transition-all flex items-center justify-center gap-1"
-                                    >
-                                        Simulate Step
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={handleSaveTrackedWalk}
-                                        className="flex-1 py-2.5 bg-orange-600 text-white rounded-2xl font-black uppercase tracking-widest text-[9px] shadow-md shadow-orange-600/20 hover:bg-orange-700 active:scale-95 transition-all flex items-center justify-center gap-1"
-                                    >
-                                        Stop & Save
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
 
                     <div className="grid grid-cols-2 gap-4">
                         <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
@@ -776,27 +702,9 @@ const PlannerAndRemainderView: React.FC<PlannerAndRemainderViewProps> = (props) 
                     <button onClick={() => setView('calendar')} className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-2xl transition-all flex items-center justify-center gap-2 ${view === 'calendar' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>
                         <CalendarDaysIcon className="h-4 w-4"/> Calendar
                     </button>
-                    <button onClick={() => setView('map')} className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-2xl transition-all flex items-center justify-center gap-2 ${view === 'map' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>
+                    <button onClick={() => setView('map')} className="flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-2xl transition-all flex items-center justify-center gap-2 text-slate-400 hover:bg-slate-50">
                         <MapIcon className="h-4 w-4"/> Map
                     </button>
-                </div>
-
-                <div className={`px-6 py-2 border-b border-slate-50 flex items-center justify-between ${view === 'map' ? 'hidden md:flex' : 'flex'}`}>
-                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Map Theme</span>
-                    <div className="flex bg-slate-100 p-1 rounded-xl">
-                        <button 
-                            onClick={() => setMapTheme('default')}
-                            className={`px-3 py-1.5 text-[8px] font-black uppercase rounded-lg transition-all ${mapTheme === 'default' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}
-                        >
-                            Default
-                        </button>
-                        <button 
-                            onClick={() => setMapTheme('status')}
-                            className={`px-3 py-1.5 text-[8px] font-black uppercase rounded-lg transition-all ${mapTheme === 'status' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}
-                        >
-                            Status
-                        </button>
-                    </div>
                 </div>
 
                 {view === 'list' && (
@@ -818,7 +726,7 @@ const PlannerAndRemainderView: React.FC<PlannerAndRemainderViewProps> = (props) 
                     </div>
                 )}
 
-                <div className={`flex-grow overflow-y-auto p-6 space-y-4 ${view === 'map' ? 'hidden md:block' : ''}`}>
+                <div className="flex-grow overflow-y-auto p-6 space-y-4">
                     {selectedFeature ? (
                         <div className="space-y-6 animate-in slide-in-from-left duration-300">
                             <button 
@@ -1041,68 +949,7 @@ const PlannerAndRemainderView: React.FC<PlannerAndRemainderViewProps> = (props) 
                                     );
                                 })}
 
-                                {/* Informational items (Notes/Checkpoints) */}
-                                {relevantTasks.filter(t => t.status === 'note' || t.status === 'checkpoint').map(task => {
-                                    const linkedFeature = task.sectorIds?.[0] ? mapProps.plantationFeatures.find(f => f.id === task.sectorIds![0]) : null;
-                                    return (
-                                        <div 
-                                            key={task.id} 
-                                            className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex items-center gap-3 cursor-pointer hover:bg-white hover:border-indigo-100 transition-all"
-                                            onClick={() => task.sectorIds?.[0] && onSelectFeature(task.sectorIds[0])}
-                                        >
-                                            {task.status === 'note' ? <RectangleStackIcon className="h-4 w-4 text-indigo-400"/> : <BellIcon className="h-4 w-4 text-violet-400"/>}
-                                            <div className="flex-1">
-                                                <p className="text-[10px] font-black uppercase text-slate-600">{renderSafeText(task.workName)}</p>
-                                                <p className="text-[9px] text-slate-400">{new Date(task.date).toLocaleDateString()}</p>
-                                            </div>
-                                            <div className="flex items-center gap-1">
-                                                {linkedFeature && (
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleShareFeatureNote(linkedFeature);
-                                                        }}
-                                                        className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg text-[9px] font-black flex items-center gap-1"
-                                                        title="Share Note to Google Chat"
-                                                    >
-                                                        <MessageSquare size={12} />
-                                                    </button>
-                                                )}
-                                                <button onClick={(e) => { e.stopPropagation(); task.sectorIds?.[0] && handleZoomToFeature(task.sectorIds[0]); }} className="p-2 text-slate-300 hover:text-indigo-400" title={isKa ? "რუკაზე ჩვენება" : "Locate on Map"}><MapPinIcon size={14}/></button>
-                                                {task.sectorIds?.[0] && (
-                                                    <button 
-                                                        onClick={(e) => { 
-                                                            e.stopPropagation(); 
-                                                            if (task.sectorIds?.[0] && onDeleteFeature) {
-                                                                onDeleteFeature([task.sectorIds[0]]);
-                                                            }
-                                                            onSetWorkAssignments(workAssignments.map(w => w.id === task.id ? { ...w, sectorIds: [] } : w));
-                                                            toast.success(isKa ? "მარკერი წაიშალა რუკიდან (ჩანაწერი შენარჩუნებულია)" : "Marker removed from map (Task kept).");
-                                                        }} 
-                                                        className="p-1.5 text-slate-400 hover:text-amber-500 rounded-lg hover:bg-amber-50"
-                                                        title={isKa ? "რუკიდან მოხსნა" : "Remove marker from map"}
-                                                    >
-                                                        <EyeOff size={14}/>
-                                                    </button>
-                                                )}
-                                                <button 
-                                                    onClick={(e) => { 
-                                                        e.stopPropagation(); 
-                                                        if (task.sectorIds?.[0] && onDeleteFeature) {
-                                                            onDeleteFeature([task.sectorIds[0]]);
-                                                        }
-                                                        onSetWorkAssignments(workAssignments.filter(w => w.id !== task.id));
-                                                        toast.success(isKa ? "დავალება და რუკის მარკერი წაიშალა." : "Task and map marker deleted.");
-                                                    }} 
-                                                    className="p-2 text-slate-300 hover:text-red-500"
-                                                    title={isKa ? "წაშლა (რუკიდან & სიიდან)" : "Delete Task & Map Marker"}
-                                                >
-                                                    <TrashIcon size={14}/>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+
 
                                 {/* Completed Tasks Section */}
                                 <div className="pt-6 border-t border-slate-50">
@@ -1142,78 +989,81 @@ const PlannerAndRemainderView: React.FC<PlannerAndRemainderViewProps> = (props) 
                     )}
                 </div>
             </div>
+            )}
 
-            {/* Resizable Divider between Planner Sidebar and Map */}
-            <ResizableDivider 
-                direction="horizontal"
-                currentSize={sidebarWidth}
-                onResize={(newWidth) => setSidebarWidth(newWidth)}
-                minSize={280}
-                maxSize={typeof window !== 'undefined' ? Math.max(window.innerWidth - 300, 600) : 800}
-                storageKey="planner_sidebar_width"
-                isKa={language === 'ka'}
-                className="hidden md:flex"
-            />
-
-            {/* Main Content: Map */}
-            <div className={`flex-1 relative bg-slate-200 ${view !== 'map' ? 'hidden md:block' : 'block'}`}>
-                <MapComponent 
-                    {...mapProps} 
-                    plantationFeatures={filteredFeaturesForMap}
-                    showSearch={true} 
-                    activeDrawingTool={activeDrawingTool}
-                    highlightedFeatureIds={highlightedIds}
-                    onFeatureDrawn={handleFeatureDrawnWithModal}
-                    onSetActiveDrawingTool={onSetActiveDrawingTool}
-                    onUpdateFeature={onUpdateFeature}
-                    onDeleteFeature={onDeleteFeature}
-                >
-                    {isTrackingWalk && trackedPath.filter(isValidCoordinate).length >= 2 && (
-                        <Polyline 
-                            positions={trackedPath.filter(isValidCoordinate).map(p => [
-                                typeof p[0] === 'string' ? parseFloat(p[0]) : p[0],
-                                typeof p[1] === 'string' ? parseFloat(p[1]) : p[1]
-                            ] as [number, number])} 
-                            pathOptions={{ color: '#f97316', weight: 6, dashArray: '8, 8', lineCap: 'round', lineJoin: 'round' }} 
-                        />
-                    )}
-                </MapComponent>
-
-                {/* Date Choice Overlay */}
-                <div className="absolute bottom-10 left-10 z-[1001] bg-white/90 backdrop-blur-xl border border-slate-200 shadow-2xl rounded-3xl p-4 flex flex-col gap-2 min-w-[200px]">
-                    <div className="flex justify-between items-center">
-                        <h4 className="text-[9px] font-black uppercase tracking-widest text-slate-400">Map View Date</h4>
-                        <button onClick={() => setMapFilterDate(null)} className="text-[8px] font-black text-blue-600 uppercase">Clear</button>
+            {/* Main Content: Map - 100% width and height when in map mode */}
+            {view === 'map' && (
+                <div className="w-full h-full flex-1 relative bg-slate-200">
+                    {/* Floating Return to Panel Button when in Map View */}
+                    <div className="absolute top-4 left-4 z-[1005]">
+                        <button
+                            type="button"
+                            onClick={() => setView('list')}
+                            className="px-4 py-2.5 bg-slate-900/95 hover:bg-black text-white rounded-2xl shadow-2xl flex items-center gap-2 border border-slate-700/80 backdrop-blur-md active:scale-95 transition-all text-xs font-black uppercase tracking-wider cursor-pointer"
+                            title="Back to Panel / Task List"
+                        >
+                            <RectangleStackIcon className="w-4 h-4 text-emerald-400 shrink-0" />
+                            <span>Back to Panel</span>
+                        </button>
                     </div>
-                    <div className="flex items-center gap-3">
-                        <CalendarDaysIcon className="h-4 w-4 text-indigo-600" />
-                        <input 
-                            type="date" 
-                            value={mapFilterDate || ''} 
-                            onChange={(e) => setMapFilterDate(e.target.value)} 
-                            className="text-xs font-black text-slate-800 bg-transparent outline-none flex-1"
+                    <MapComponent 
+                        {...mapProps} 
+                        plantationFeatures={filteredFeaturesForMap}
+                        showSearch={true} 
+                        activeDrawingTool={activeDrawingTool}
+                        highlightedFeatureIds={highlightedIds}
+                        onFeatureDrawn={handleFeatureDrawnWithModal}
+                        onSetActiveDrawingTool={onSetActiveDrawingTool}
+                        onUpdateFeature={onUpdateFeature}
+                        onDeleteFeature={onDeleteFeature}
+                    >
+                        {isTrackingWalk && trackedPath.filter(isValidCoordinate).length >= 2 && (
+                            <Polyline 
+                                positions={trackedPath.filter(isValidCoordinate).map(p => [
+                                    typeof p[0] === 'string' ? parseFloat(p[0]) : p[0],
+                                    typeof p[1] === 'string' ? parseFloat(p[1]) : p[1]
+                                ] as [number, number])} 
+                                pathOptions={{ color: '#f97316', weight: 6, dashArray: '8, 8', lineCap: 'round', lineJoin: 'round' }} 
+                            />
+                        )}
+                    </MapComponent>
+
+                    {/* Date Choice Overlay */}
+                    <div className="absolute bottom-10 left-10 z-[1001] bg-white/90 backdrop-blur-xl border border-slate-200 shadow-2xl rounded-3xl p-4 flex flex-col gap-2 min-w-[200px]">
+                        <div className="flex justify-between items-center">
+                            <h4 className="text-[9px] font-black uppercase tracking-widest text-slate-400">Map View Date</h4>
+                            <button onClick={() => setMapFilterDate(null)} className="text-[8px] font-black text-blue-600 uppercase">Clear</button>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <CalendarDaysIcon className="h-4 w-4 text-indigo-600" />
+                            <input 
+                                type="date" 
+                                value={mapFilterDate || ''} 
+                                onChange={(e) => setMapFilterDate(e.target.value)} 
+                                className="text-xs font-black text-slate-800 bg-transparent outline-none flex-1"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Relocated Floating Toolbar - Now at the Bottom */}
+                    <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-[1001] flex items-center gap-2 bg-white/90 backdrop-blur-xl border border-slate-200 shadow-2xl rounded-3xl p-1.5 animate-in fade-in slide-in-from-bottom-4">
+                        <button onClick={() => onSetActiveDrawingTool({...activeDrawingTool, tool: activeDrawingTool.tool === 'note' ? null : 'note'})} className={`p-3 rounded-2xl transition-all ${activeDrawingTool.tool === 'note' ? 'bg-indigo-600 text-white shadow-lg' : 'hover:bg-slate-100 text-slate-600'}`} title="Add Note"><MapPinIcon size={20}/></button>
+                        <button onClick={() => onSetActiveDrawingTool({...activeDrawingTool, tool: activeDrawingTool.tool === 'checkpoint' ? null : 'checkpoint'})} className={`p-3 rounded-2xl transition-all ${activeDrawingTool.tool === 'checkpoint' ? 'bg-indigo-600 text-white shadow-lg' : 'hover:bg-slate-100 text-slate-600'}`} title="Add Checkpoint"><BellIcon size={20}/></button>
+                        <button onClick={() => onSetActiveDrawingTool({...activeDrawingTool, tool: activeDrawingTool.tool === 'area' ? null : 'area'})} className={`p-3 rounded-2xl transition-all ${activeDrawingTool.tool === 'area' ? 'bg-indigo-600 text-white shadow-lg' : 'hover:bg-slate-100 text-slate-600'}`} title="Draw Area"><RectangleGroupIcon size={20}/></button>
+                    </div>
+
+                    {/* AI Assistant */}
+                    <div className="absolute bottom-8 right-8 z-[1001]">
+                        <ModuleAiAssistant 
+                            onSendCommand={handleSendCommand} 
+                            isLoading={isAssistantLoading} 
+                            context={{ workAssignments, alerts }}
+                            title="Planner AI"
+                            placeholder="Ask anything about your schedule..."
                         />
                     </div>
                 </div>
-
-                {/* Relocated Floating Toolbar - Now at the Bottom */}
-                <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-[1001] flex items-center gap-2 bg-white/90 backdrop-blur-xl border border-slate-200 shadow-2xl rounded-3xl p-1.5 animate-in fade-in slide-in-from-bottom-4">
-                    <button onClick={() => onSetActiveDrawingTool({...activeDrawingTool, tool: activeDrawingTool.tool === 'note' ? null : 'note'})} className={`p-3 rounded-2xl transition-all ${activeDrawingTool.tool === 'note' ? 'bg-indigo-600 text-white shadow-lg' : 'hover:bg-slate-100 text-slate-600'}`} title="Add Note"><MapPinIcon size={20}/></button>
-                    <button onClick={() => onSetActiveDrawingTool({...activeDrawingTool, tool: activeDrawingTool.tool === 'checkpoint' ? null : 'checkpoint'})} className={`p-3 rounded-2xl transition-all ${activeDrawingTool.tool === 'checkpoint' ? 'bg-indigo-600 text-white shadow-lg' : 'hover:bg-slate-100 text-slate-600'}`} title="Add Checkpoint"><BellIcon size={20}/></button>
-                    <button onClick={() => onSetActiveDrawingTool({...activeDrawingTool, tool: activeDrawingTool.tool === 'area' ? null : 'area'})} className={`p-3 rounded-2xl transition-all ${activeDrawingTool.tool === 'area' ? 'bg-indigo-600 text-white shadow-lg' : 'hover:bg-slate-100 text-slate-600'}`} title="Draw Area"><RectangleGroupIcon size={20}/></button>
-                </div>
-
-                {/* AI Assistant */}
-                <div className="absolute bottom-8 right-8 z-[1001]">
-                    <ModuleAiAssistant 
-                        onSendCommand={handleSendCommand} 
-                        isLoading={isAssistantLoading} 
-                        context={{ workAssignments, alerts }}
-                        title="Planner AI"
-                        placeholder="Ask anything about your schedule..."
-                    />
-                </div>
-            </div>
+            )}
 
             {isModalOpen && (
                 <TaskModal 

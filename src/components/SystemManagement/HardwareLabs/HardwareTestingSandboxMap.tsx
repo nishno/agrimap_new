@@ -8,7 +8,7 @@ import {
     ChevronDown, ChevronUp, RefreshCw, Satellite, Map as MapIcon,
     Maximize2, Minimize2, Video, Sparkles, Wind, Crosshair, Edit3, X,
     FileText, ZoomIn, ZoomOut, Film, Camera as PhotoIcon, Save, Move,
-    Mountain, Copy, Undo2
+    Mountain, Copy, Undo2, Hexagon
 } from 'lucide-react';
 import { 
     MapContainer, TileLayer, Polygon, Polyline, Marker, 
@@ -18,7 +18,14 @@ import L from 'leaflet';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { safeStorage } from '../../../services/storageService';
-import type { PlantationFeature, SeedlingPlantationFeature } from '../../../types';
+import type { 
+    PlantationFeature, 
+    SeedlingPlantationFeature, 
+    AreaPlantationFeature, 
+    LinePlantationFeature, 
+    CameraPlantationFeature,
+    BoundaryPlantationFeature
+} from '../../../types';
 import type { PlantationCamera } from './CameraNvrLab';
 import { 
     computeFovConePolygon, 
@@ -35,13 +42,25 @@ import {
     computeTerrainViewshed,
     type HillSpineProfile,
     type SpineControlPoint,
-    setActiveSpineProfilesCache
+    type PerimeterSlopeVertex,
+    type PerimeterSlopeObject,
+    type PhotoGpsPin,
+    setActiveSpineProfilesCache,
+    setActivePerimeterSlopesCache
 } from '../../../utils/demTerrainViewshed';
 import { HardwareAndDroneControlPopUp, type RegisteredPlantationArea } from './HardwareAndDroneControlPopUp';
+import { getMainPlantation, getPlantationsList, resolvePlantationCenter } from '../../../utils/plantationHelper';
+import { FloatingOnlineWeatherBadge } from './FloatingOnlineWeatherBadge';
 import { SandboxFloatingTopToolbar } from './SandboxFloatingTopToolbar';
 import { SandboxFloatingVisibilityMenu } from './SandboxFloatingVisibilityMenu';
 import { SandboxFloatingLeftPanel } from './SandboxFloatingLeftPanel';
 import { SandboxFloatingRightPanel } from './SandboxFloatingRightPanel';
+import { SandboxLayerTreePanel, type LayerId } from './SandboxLayerTreePanel';
+import { SandboxPlannerImportModal } from './SandboxPlannerImportModal';
+import { calculatePathSegments, calculatePointToPointSegment, type TerrainSegmentMetrics } from '../../../utils/terrainSlopeAnalysis';
+import { PhotoInspectionModal } from './PhotoInspectionModal';
+import { extractPhotoMetadata, loadSavedPhotoPins, savePhotoPins } from '../../../utils/photoGpsHelper';
+import { SandboxBottomDevicePanel } from './SandboxBottomDevicePanel';
 import { SandboxContextMenu, type ContextMenuState } from './SandboxContextMenu';
 import { SandboxLocationSearchBar } from './SandboxLocationSearchBar';
 
@@ -147,30 +166,108 @@ interface HardwareTestingSandboxMapProps {
 const SandboxMapEvents: React.FC<{
     activeTool: string;
     onMapClick: (lat: number, lng: number) => void;
-}> = ({ activeTool, onMapClick }) => {
+    onMapMove?: (lat: number, lng: number) => void;
+}> = ({ activeTool, onMapClick, onMapMove }) => {
     useMapEvents({
         click(e) {
             onMapClick(e.latlng.lat, e.latlng.lng);
+        },
+        moveend(e) {
+            try {
+                const c = e.target.getCenter();
+                if (c && Number.isFinite(c.lat) && Number.isFinite(c.lng)) {
+                    onMapMove?.(c.lat, c.lng);
+                }
+            } catch (err) {}
         }
     });
     return null;
 };
 
-// Smooth map recenter controller
-const MapRecenterController: React.FC<{ center: [number, number] }> = ({ center }) => {
+// Smooth map recenter controller - only centers once on initial load or on explicit user request
+const MapRecenterController: React.FC<{ center: [number, number]; trigger?: number }> = ({ center, trigger = 0 }) => {
     const map = useMap();
+    const hasInitializedRef = useRef<boolean>(false);
+    const lastTriggerRef = useRef<number>(trigger);
+
     useEffect(() => {
-        map.setView(center, map.getZoom(), { animate: true });
-    }, [center, map]);
+        const isTriggerChanged = trigger !== lastTriggerRef.current;
+        lastTriggerRef.current = trigger;
+
+        if (!hasInitializedRef.current || isTriggerChanged) {
+            hasInitializedRef.current = true;
+            if (
+                center &&
+                Array.isArray(center) &&
+                typeof center[0] === 'number' &&
+                typeof center[1] === 'number' &&
+                Number.isFinite(center[0]) &&
+                Number.isFinite(center[1])
+            ) {
+                try {
+                    map.setView(center, map.getZoom() || 17, { animate: true });
+                } catch (err) {
+                    console.warn('[MapRecenterController] Suppressed invalid setView:', err);
+                }
+            }
+        }
+    }, [trigger, map]);
     return null;
 };
 
 // Smooth map fly-to controller
 const MapFlyController: React.FC<{ flyTarget: { lat: number; lng: number; zoom?: number; timestamp: number } | null }> = ({ flyTarget }) => {
     const map = useMap();
+    const lastTimestampRef = useRef<number>(0);
+
     useEffect(() => {
-        if (flyTarget) {
-            map.flyTo([flyTarget.lat, flyTarget.lng], flyTarget.zoom || 18, { animate: true, duration: 1.2 });
+        if (!flyTarget || !map) return;
+        if (flyTarget.timestamp === lastTimestampRef.current) return;
+        lastTimestampRef.current = flyTarget.timestamp;
+
+        if (
+            typeof flyTarget.lat !== 'number' ||
+            typeof flyTarget.lng !== 'number' ||
+            !Number.isFinite(flyTarget.lat) ||
+            !Number.isFinite(flyTarget.lng) ||
+            flyTarget.lat < -90 || flyTarget.lat > 90 ||
+            flyTarget.lng < -180 || flyTarget.lng > 180
+        ) {
+            return;
+        }
+
+        try {
+            const size = map.getSize ? map.getSize() : null;
+            if (!size || size.x <= 10 || size.y <= 10) {
+                // Map container is not rendered or has 0 dimensions, use safe setView
+                map.setView([flyTarget.lat, flyTarget.lng], flyTarget.zoom || 18);
+                return;
+            }
+
+            const currentCenter = map.getCenter ? map.getCenter() : null;
+            if (!currentCenter || !Number.isFinite(currentCenter.lat) || !Number.isFinite(currentCenter.lng)) {
+                map.setView([flyTarget.lat, flyTarget.lng], flyTarget.zoom || 18);
+                return;
+            }
+
+            const targetZoom = Number.isFinite(flyTarget.zoom) && (flyTarget.zoom || 0) > 0
+                ? flyTarget.zoom!
+                : (map.getZoom() || 18);
+
+            // If already at or extremely close to the coordinates, skip flyTo animation to prevent 0/0 NaN
+            const dist = Math.hypot(currentCenter.lat - flyTarget.lat, currentCenter.lng - flyTarget.lng);
+            if (dist < 0.00001 && Math.abs((map.getZoom() || 18) - targetZoom) < 0.1) {
+                return;
+            }
+
+            map.flyTo([flyTarget.lat, flyTarget.lng], targetZoom, { animate: true, duration: 1.2 });
+        } catch (err) {
+            console.warn('[MapFlyController] Suppressed invalid flyTo:', err);
+            try {
+                map.setView([flyTarget.lat, flyTarget.lng]);
+            } catch {
+                // Ignore fallback error
+            }
         }
     }, [flyTarget, map]);
     return null;
@@ -299,49 +396,36 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
     const { language } = useLanguage();
     const isKa = language === 'ka';
 
-    // Compute accurate Plantation Center from features (or mapCenter)
+    // Compute accurate Plantation Center from features, organization, or mapCenter
     const plantationCenter = useMemo<[number, number]>(() => {
-        if (plantationFeatures && plantationFeatures.length > 0) {
-            let totalLat = 0, totalLng = 0, count = 0;
-            plantationFeatures.forEach(f => {
-                const geom = (f as any).geometry;
-                if (geom?.type === 'Polygon' && Array.isArray(geom.coordinates)) {
-                    const ring = geom.coordinates[0];
-                    if (Array.isArray(ring)) {
-                        ring.forEach((c: any) => {
-                            if (Array.isArray(c) && typeof c[0] === 'number' && typeof c[1] === 'number') {
-                                totalLng += c[0];
-                                totalLat += c[1];
-                                count++;
-                            }
-                        });
-                    }
-                } else if (geom?.type === 'Point' && Array.isArray(geom.coordinates)) {
-                    totalLng += geom.coordinates[0];
-                    totalLat += geom.coordinates[1];
-                    count++;
-                }
-            });
-            if (count > 0) {
-                return [totalLat / count, totalLng / count];
-            }
-        }
-        if (mapCenter && (mapCenter[0] !== 0 || mapCenter[1] !== 0)) {
-            return mapCenter;
-        }
-        return [41.9023, 44.5];
+        return resolvePlantationCenter(plantationFeatures, mapCenter || [41.9023, 44.5]);
     }, [plantationFeatures, mapCenter]);
 
-    const baseLat = plantationCenter[0];
-    const baseLng = plantationCenter[1];
+    const mainPlantation = useMemo(() => {
+        return getMainPlantation(plantationFeatures, plantationCenter);
+    }, [plantationFeatures, plantationCenter]);
+
+    // Persistent LABS module plantation center (user can choose and save for LABS)
+    const [labsPlantationCenter, setLabsPlantationCenter] = useState<[number, number]>(() => {
+        const saved = safeStorage.getItem('agrimap_labs_saved_plantation_center');
+        if (saved) {
+            try {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed) && parsed.length === 2 && Number.isFinite(parsed[0]) && Number.isFinite(parsed[1])) {
+                    return [parsed[0], parsed[1]];
+                }
+            } catch (_) {}
+        }
+        return Number.isFinite(plantationCenter[0]) && Number.isFinite(plantationCenter[1])
+            ? plantationCenter
+            : [41.9023, 44.5];
+    });
+
+    const baseLat = Number.isFinite(labsPlantationCenter[0]) ? labsPlantationCenter[0] : (Number.isFinite(plantationCenter[0]) ? plantationCenter[0] : 41.9023);
+    const baseLng = Number.isFinite(labsPlantationCenter[1]) ? labsPlantationCenter[1] : (Number.isFinite(plantationCenter[1]) ? plantationCenter[1] : 44.5);
 
     // Smooth Map Fly-To Target
-    const [flyTarget, setFlyTarget] = useState<{ lat: number; lng: number; zoom?: number; timestamp: number } | null>({
-        lat: plantationCenter[0],
-        lng: plantationCenter[1],
-        zoom: 17,
-        timestamp: Date.now()
-    });
+    const [flyTarget, setFlyTarget] = useState<{ lat: number; lng: number; zoom?: number; timestamp: number } | null>(null);
 
     // Right-Click Context Menu State
     const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -406,7 +490,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
     const [activeTool, setActiveTool] = useState<
         'select' | 'add_camera' | 'add_drone' | 'add_worker' | 'add_soil' | 'add_water' | 'add_weather' | 'live_stream' |
         'move_camera' | 'drone_waypoint' | 'drone_direction' | 'inspect_target' | 'add_spine_point' |
-        'draw_slope' | 'draw_perimeter'
+        'draw_slope' | 'draw_perimeter' | 'draw_hill' | 'pick_plantation'
     >('select');
 
     // Direction line drawing state (Point A -> Point B)
@@ -435,7 +519,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
         });
     };
 
-    // Clutter Visibility Controls (Avoid map cluttering)
+    // Clutter Visibility Controls (Avoid map cluttering - trenches and seedlings off by default)
     const [visibility, setVisibility] = useState({
         showAll: true,
         showCameras: true,
@@ -444,8 +528,8 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
         showWaterSensors: true,
         showWorkersGps: true,
         showWeatherStations: true,
-        showTrenches: true,
-        showSeedlings: true,
+        showTrenches: false,
+        showSeedlings: false,
         showBlindZones: true,
         showDirections: true,
         showMoundSlope: true,
@@ -455,6 +539,8 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
         showBottomHud: true,
         showFleetTable: false
     });
+
+    const [recenterTrigger, setRecenterTrigger] = useState<number>(0);
 
     const [isVisibilityMenuOpen, setIsVisibilityMenuOpen] = useState(false);
 
@@ -477,8 +563,6 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                 showWaterSensors: nextAll,
                 showWorkersGps: nextAll,
                 showWeatherStations: nextAll,
-                showTrenches: nextAll,
-                showSeedlings: nextAll,
                 showBlindZones: nextAll,
                 showMoundSlope: nextAll,
                 showSectors: nextAll,
@@ -593,46 +677,13 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
     };
 
     // Central Ridge Hill Spine Profile (Spine & Cross-Section Profile method)
+    // Starts EMPTY by default so no unrequested hill automatically appears on map refresh
     const [hillSpineProfile, setHillSpineProfile] = useState<HillSpineProfile>(() => {
-        const defaultProfile: HillSpineProfile = {
+        const emptyProfile: HillSpineProfile = {
             id: 'spine-hill-main',
             name: 'Plantation Mound Ridge & Terrace',
-            enabled: true,
-            points: [
-                {
-                    id: 'pt-A',
-                    name: 'Start Point A',
-                    lat: baseLat + 0.00045,
-                    lng: baseLng - 0.00075,
-                    widthM: 40,
-                    startOffsetM: 0,
-                    endDistanceM: 60,
-                    peakHeightM: 15,
-                    slopeFalloff: 'cosine'
-                },
-                {
-                    id: 'pt-B',
-                    name: 'Midpoint (Ridge Apex) B',
-                    lat: baseLat - 0.00010,
-                    lng: baseLng + 0.00005,
-                    widthM: 60,
-                    startOffsetM: 2,
-                    endDistanceM: 85,
-                    peakHeightM: 35,
-                    slopeFalloff: 'cosine'
-                },
-                {
-                    id: 'pt-C',
-                    name: 'End Point C',
-                    lat: baseLat - 0.00065,
-                    lng: baseLng + 0.00085,
-                    widthM: 45,
-                    startOffsetM: 0,
-                    endDistanceM: 65,
-                    peakHeightM: 18,
-                    slopeFalloff: 'cosine'
-                }
-            ]
+            enabled: false,
+            points: []
         };
 
         const saved = safeStorage.getItem('agrimap_sandbox_hill_spine_profile');
@@ -640,23 +691,32 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
             try { 
                 const parsed = JSON.parse(saved);
                 if (parsed && Array.isArray(parsed.points) && parsed.points.length >= 2) {
-                    return {
-                        ...parsed,
-                        points: sanitizeSpinePoints(parsed.points)
-                    };
+                    // Check if this was the hardcoded legacy dummy hill that user never requested
+                    const isLegacyDummy = parsed.id === 'spine-hill-main' && 
+                        parsed.points.length === 3 && 
+                        parsed.points.some((p: any) => p.id === 'pt-A' && (p.peakHeightM === 15 || p.peakHeightM === 18));
+                    if (!isLegacyDummy) {
+                        return {
+                            ...parsed,
+                            points: sanitizeSpinePoints(parsed.points)
+                        };
+                    } else {
+                        safeStorage.removeItem('agrimap_sandbox_hill_spine_profile');
+                    }
                 }
             } catch (e) {}
         }
-        return {
-            ...defaultProfile,
-            points: sanitizeSpinePoints(defaultProfile.points)
-        };
+        return emptyProfile;
     });
 
-    const [activePointId, setActivePointId] = useState<string>('pt-B');
+    const [activePointId, setActivePointId] = useState<string>(() => {
+        return hillSpineProfile.points[0]?.id || '';
+    });
     const [lastEditedPointId, setLastEditedPointId] = useState<string | null>(null);
     const pointHistoryRef = useRef<string[]>([]);
     const [isClearMapConfirmOpen, setIsClearMapConfirmOpen] = useState<boolean>(false);
+    const [isPlannerImportOpen, setIsPlannerImportOpen] = useState<boolean>(false);
+    const [drawingPointHeight, setDrawingPointHeight] = useState<number>(20);
     const [terrainCounter, setTerrainCounter] = useState<number>(0);
     const handleDeleteLastEditedPointRef = useRef<() => void>(() => {});
 
@@ -777,38 +837,205 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
         });
     };
 
-    const updatePointById = (id: string, patch: Partial<SpineControlPoint>) => {
+    const updatePointById = (id: string, patch: Partial<SpineControlPoint>, shouldPersist: boolean = true) => {
         setLastEditedPointId(id);
-        pointHistoryRef.current.push(id);
         setHillSpineProfile(prev => {
             const nextPoints = prev.points.map(p => p.id === id ? { ...p, ...patch } : p);
             const next = { ...prev, points: nextPoints };
-            safeStorage.setItem('agrimap_sandbox_hill_spine_profile', JSON.stringify(next));
             setActiveSpineProfilesCache([next]);
-            setTerrainCounter(c => c + 1);
+            if (shouldPersist) {
+                pointHistoryRef.current.push(id);
+                safeStorage.setItem('agrimap_sandbox_hill_spine_profile', JSON.stringify(next));
+                setTerrainCounter(c => c + 1);
+            }
             return next;
+        });
+        setHillProfiles(prev => {
+            return prev.map(h => {
+                if (h.points.some(p => p.id === id)) {
+                    return { ...h, points: h.points.map(p => p.id === id ? { ...p, ...patch } : p) };
+                }
+                return h;
+            });
         });
     };
 
-    // Live mouse width resizing from draggable handles on the map
-    const handleResizeWidthFromMap = (pointId: string, handlePos: [number, number], centerPos: [number, number]) => {
+    const handleUpdateHillSpineProfile = (patch: Partial<HillSpineProfile>) => {
+        setHillSpineProfile(prev => {
+            const next = { ...prev, ...patch };
+            safeStorage.setItem('agrimap_sandbox_hill_spine_profile', JSON.stringify(next));
+            setActiveSpineProfilesCache([next]);
+            return next;
+        });
+        setTerrainCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
+    };
+
+    // Live mouse width resizing for LEFT handle (independent, asymmetric, inside or outside drawn area)
+    // ONLY resizes left side. Right side is strictly preserved and never changed.
+    const handleResizeLeftHandle = (pointId: string, handlePos: [number, number], centerPos: [number, number], persist: boolean = false) => {
         const mLat = 111111;
         const mLng = 111111 * Math.cos((centerPos[0] * Math.PI) / 180);
         const dy = (handlePos[0] - centerPos[0]) * mLat;
         const dx = (handlePos[1] - centerPos[1]) * mLng;
-        const dist = Math.hypot(dx, dy);
-        const newWidth = Math.max(5, Math.min(300, Math.round(dist)));
-        updatePointById(pointId, { 
-            widthM: newWidth, 
-            endDistanceM: Math.round(newWidth * 1.25) 
+        const leftDist = Math.max(2, Math.round(Math.hypot(dx, dy)));
+        
+        setHillSpineProfile(prev => {
+            const target = prev.points.find(p => p.id === pointId);
+            if (!target) return prev;
+            // Strictly lock the current right side so right side NEVER changes when left handle is moved
+            const currentRightW = target.rightWidthM !== undefined ? target.rightWidthM : (target.widthM !== undefined ? target.widthM : 45);
+            const avgW = Math.round((leftDist + currentRightW) / 2);
+            const nextPoints = prev.points.map(p => {
+                if (p.id !== pointId) return p;
+                return {
+                    ...p,
+                    leftLat: handlePos[0],
+                    leftLng: handlePos[1],
+                    leftWidthM: leftDist,
+                    rightWidthM: currentRightW,
+                    widthM: avgW,
+                    endDistanceM: Math.round(Math.max(leftDist, currentRightW) * 1.25)
+                };
+            });
+            const next = { ...prev, points: nextPoints };
+            setActiveSpineProfilesCache([next]);
+            if (persist) {
+                pointHistoryRef.current.push(pointId);
+                safeStorage.setItem('agrimap_sandbox_hill_spine_profile', JSON.stringify(next));
+                setTerrainCounter(c => c + 1);
+            }
+            return next;
         });
+    };
+
+    // Live mouse width resizing for RIGHT handle (independent, asymmetric, inside or outside drawn area)
+    // ONLY resizes right side. Left side is strictly preserved and never changed.
+    const handleResizeRightHandle = (pointId: string, handlePos: [number, number], centerPos: [number, number], persist: boolean = false) => {
+        const mLat = 111111;
+        const mLng = 111111 * Math.cos((centerPos[0] * Math.PI) / 180);
+        const dy = (handlePos[0] - centerPos[0]) * mLat;
+        const dx = (handlePos[1] - centerPos[1]) * mLng;
+        const rightDist = Math.max(2, Math.round(Math.hypot(dx, dy)));
+        
+        setHillSpineProfile(prev => {
+            const target = prev.points.find(p => p.id === pointId);
+            if (!target) return prev;
+            // Strictly lock the current left side so left side NEVER changes when right handle is moved
+            const currentLeftW = target.leftWidthM !== undefined ? target.leftWidthM : (target.widthM !== undefined ? target.widthM : 45);
+            const avgW = Math.round((currentLeftW + rightDist) / 2);
+            const nextPoints = prev.points.map(p => {
+                if (p.id !== pointId) return p;
+                return {
+                    ...p,
+                    rightLat: handlePos[0],
+                    rightLng: handlePos[1],
+                    rightWidthM: rightDist,
+                    leftWidthM: currentLeftW,
+                    widthM: avgW,
+                    endDistanceM: Math.round(Math.max(currentLeftW, rightDist) * 1.25)
+                };
+            });
+            const next = { ...prev, points: nextPoints };
+            setActiveSpineProfilesCache([next]);
+            if (persist) {
+                pointHistoryRef.current.push(pointId);
+                safeStorage.setItem('agrimap_sandbox_hill_spine_profile', JSON.stringify(next));
+                setTerrainCounter(c => c + 1);
+            }
+            return next;
+        });
+    };
+
+    // Moving an entire connection point (Point A, B, C...)
+    // Moves the center point AND shifts both Left and Right width handles by (dLat, dLng)
+    // preserving their exact independent lengths and orientation without resizing!
+    const handleMoveSpinePoint = (pointId: string, newLat: number, newLng: number, persist: boolean = false) => {
+        setHillSpineProfile(prev => {
+            const target = prev.points.find(p => p.id === pointId);
+            if (!target) return prev;
+            const dLat = newLat - target.lat;
+            const dLng = newLng - target.lng;
+
+            const mLat = 111111;
+            const mLng = 111111 * Math.cos((baseLat * Math.PI) / 180);
+
+            let curLeftLat = target.leftLat;
+            let curLeftLng = target.leftLng;
+            let curRightLat = target.rightLat;
+            let curRightLng = target.rightLng;
+
+            const leftW = target.leftWidthM ?? target.widthM ?? 45;
+            const rightW = target.rightWidthM ?? target.widthM ?? 45;
+
+            // If explicit coordinates were not yet stored, calculate their starting positions before translating
+            if (curLeftLat === undefined || curLeftLng === undefined || curRightLat === undefined || curRightLng === undefined) {
+                const idx = prev.points.findIndex(p => p.id === pointId);
+                let dirX = 0;
+                let dirY = 0;
+                if (idx === 0 && prev.points.length > 1) {
+                    dirX = (prev.points[1].lng - prev.points[0].lng) * mLng;
+                    dirY = (prev.points[1].lat - prev.points[0].lat) * mLat;
+                } else if (idx === prev.points.length - 1 && idx > 0) {
+                    dirX = (prev.points[idx].lng - prev.points[idx - 1].lng) * mLng;
+                    dirY = (prev.points[idx].lat - prev.points[idx - 1].lat) * mLat;
+                } else if (idx > 0 && idx < prev.points.length - 1) {
+                    dirX = (prev.points[idx + 1].lng - prev.points[idx - 1].lng) * mLng;
+                    dirY = (prev.points[idx + 1].lat - prev.points[idx - 1].lat) * mLat;
+                } else {
+                    dirX = 1;
+                    dirY = 0;
+                }
+                const len = Math.hypot(dirX, dirY) || 1;
+                const nx = -dirY / len;
+                const ny = dirX / len;
+
+                if (curLeftLat === undefined || curLeftLng === undefined) {
+                    curLeftLat = target.lat + (ny * leftW) / mLat;
+                    curLeftLng = target.lng + (nx * leftW) / mLng;
+                }
+                if (curRightLat === undefined || curRightLng === undefined) {
+                    curRightLat = target.lat - (ny * rightW) / mLat;
+                    curRightLng = target.lng - (nx * rightW) / mLng;
+                }
+            }
+
+            const nextPoints = prev.points.map(p => {
+                if (p.id !== pointId) return p;
+                return {
+                    ...p,
+                    lat: newLat,
+                    lng: newLng,
+                    leftLat: curLeftLat! + dLat,
+                    leftLng: curLeftLng! + dLng,
+                    rightLat: curRightLat! + dLat,
+                    rightLng: curRightLng! + dLng,
+                    leftWidthM: leftW,
+                    rightWidthM: rightW,
+                    widthM: Math.round((leftW + rightW) / 2)
+                };
+            });
+            const next = { ...prev, points: nextPoints };
+            setActiveSpineProfilesCache([next]);
+            if (persist) {
+                pointHistoryRef.current.push(pointId);
+                safeStorage.setItem('agrimap_sandbox_hill_spine_profile', JSON.stringify(next));
+                setTerrainCounter(c => c + 1);
+            }
+            return next;
+        });
+    };
+
+    const handleResizeWidthFromMap = (pointId: string, handlePos: [number, number], centerPos: [number, number]) => {
+        handleResizeRightHandle(pointId, handlePos, centerPos, true);
     };
 
     // Auto-fit slope spine and widths to active orchard parcel
     const handleFitSlopeToOrchard = () => {
         const [cLat, cLng] = plantationCenter;
+        const targetHillId = selectedLayerId.startsWith('hill') ? selectedLayerId : 'hill_1';
         const newProfile: HillSpineProfile = {
-            id: `spine-${Date.now()}`,
+            id: targetHillId,
             name: 'Plantation Mound Ridge',
             enabled: true,
             points: [
@@ -820,6 +1047,10 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
         setHillSpineProfile(newProfile);
         safeStorage.setItem('agrimap_sandbox_hill_spine_profile', JSON.stringify(newProfile));
         setActiveSpineProfilesCache([newProfile]);
+        setHillProfiles(prev => {
+            const cleaned = prev.filter(h => h.id !== targetHillId && !h.id.startsWith('spine-'));
+            return [...cleaned, newProfile];
+        });
         setActivePointId('pt-B');
         setTerrainCounter(c => c + 1);
         setFlyTarget({ lat: cLat, lng: cLng, zoom: 18, timestamp: Date.now() });
@@ -828,8 +1059,9 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
 
     // Start a fresh ridge line by clicking points on the map
     const handleStartNewSlope = () => {
+        const targetHillId = selectedLayerId.startsWith('hill') ? selectedLayerId : 'hill_1';
         const freshProfile: HillSpineProfile = {
-            id: `spine-${Date.now()}`,
+            id: targetHillId,
             name: 'Custom Ridge Slope',
             enabled: true,
             points: []
@@ -837,6 +1069,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
         setHillSpineProfile(freshProfile);
         safeStorage.setItem('agrimap_sandbox_hill_spine_profile', JSON.stringify(freshProfile));
         setActiveSpineProfilesCache([freshProfile]);
+        setHillProfiles(prev => prev.filter(h => h.id !== targetHillId && !h.id.startsWith('spine-')));
         setTerrainCounter(c => c + 1);
         setActiveTool('draw_slope');
         toast.info(isKa ? 'დააწკაპუნეთ რუკაზე წერტილების (A, B, C...) დასასმელად' : 'Click on map to place your ridge points (Point A, B, C...)');
@@ -867,6 +1100,21 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
         return Math.round(total * 100) / 100;
     }, [hillSpineProfile.points, baseLat]);
 
+    // Live calculated Point-to-Point Segments (Distance, Height Delta, and Incline/Decline %)
+    const hillSegments = useMemo<TerrainSegmentMetrics[]>(() => {
+        if (!hillSpineProfile.points || hillSpineProfile.points.length < 2) return [];
+        return calculatePathSegments(
+            hillSpineProfile.points.map((p, idx) => ({
+                id: p.id,
+                lat: p.lat,
+                lng: p.lng,
+                z: p.peakHeightM,
+                label: p.name || `Pt ${String.fromCharCode(65 + idx)}`
+            })),
+            false
+        );
+    }, [hillSpineProfile.points]);
+
     // Cross-section perpendicular bars at Connection Points A, B...
     const crossSectionBars = useMemo(() => {
         if (!hillSpineProfile.points || hillSpineProfile.points.length < 2) return [];
@@ -891,11 +1139,23 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
             const nx = -dirY / len;
             const ny = dirX / len;
 
-            const w = pt.widthM || 45;
-            const leftLat = pt.lat + (ny * w) / mLat;
-            const leftLng = pt.lng + (nx * w) / mLng;
-            const rightLat = pt.lat - (ny * w) / mLat;
-            const rightLng = pt.lng - (nx * w) / mLng;
+            const leftW = pt.leftWidthM ?? pt.widthM ?? 45;
+            const rightW = pt.rightWidthM ?? pt.widthM ?? 45;
+
+            const leftLat = (pt.leftLat !== undefined && Number.isFinite(pt.leftLat)) 
+                ? pt.leftLat 
+                : pt.lat + (ny * leftW) / mLat;
+            const leftLng = (pt.leftLng !== undefined && Number.isFinite(pt.leftLng)) 
+                ? pt.leftLng 
+                : pt.lng + (nx * leftW) / mLng;
+
+            const rightLat = (pt.rightLat !== undefined && Number.isFinite(pt.rightLat)) 
+                ? pt.rightLat 
+                : pt.lat - (ny * rightW) / mLat;
+            const rightLng = (pt.rightLng !== undefined && Number.isFinite(pt.rightLng)) 
+                ? pt.rightLng 
+                : pt.lng - (nx * rightW) / mLng;
+
             return {
                 id: `${pt.id || 'bar'}-${idx}`,
                 pointId: pt.id,
@@ -904,51 +1164,26 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                 line: [[leftLat, leftLng], [rightLat, rightLng]] as [number, number][],
                 leftEnd: [leftLat, leftLng] as [number, number],
                 rightEnd: [rightLat, rightLng] as [number, number],
-                widthM: w
+                leftWidthM: leftW,
+                rightWidthM: rightW,
+                widthM: Math.round(leftW + rightW)
             };
         });
     }, [hillSpineProfile.points, baseLat]);
 
     // Planting Mound Perimeter Polygon (interpolates left & right bounds along ridge)
     const moundPerimeterPolygon = useMemo(() => {
-        if (!hillSpineProfile.points || hillSpineProfile.points.length < 2) return [];
-        const mLat = 111111;
-        const mLng = 111111 * Math.cos((baseLat * Math.PI) / 180);
-        const pts = hillSpineProfile.points;
-
+        if (!crossSectionBars || crossSectionBars.length < 2) return [];
         const leftPts: [number, number][] = [];
         const rightPts: [number, number][] = [];
 
-        for (let i = 0; i < pts.length; i++) {
-            let dirX = 0;
-            let dirY = 0;
-            if (i === 0) {
-                dirX = (pts[1].lng - pts[0].lng) * mLng;
-                dirY = (pts[1].lat - pts[0].lat) * mLat;
-            } else if (i === pts.length - 1) {
-                dirX = (pts[i].lng - pts[i - 1].lng) * mLng;
-                dirY = (pts[i].lat - pts[i - 1].lat) * mLat;
-            } else {
-                dirX = (pts[i + 1].lng - pts[i - 1].lng) * mLng;
-                dirY = (pts[i + 1].lat - pts[i - 1].lat) * mLat;
-            }
-            const len = Math.hypot(dirX, dirY) || 1;
-            const normX = -dirY / len;
-            const normY = dirX / len;
-
-            const w = pts[i].endDistanceM || pts[i].widthM || 45;
-            leftPts.push([
-                pts[i].lat + (normY * w) / mLat,
-                pts[i].lng + (normX * w) / mLng
-            ]);
-            rightPts.push([
-                pts[i].lat - (normY * w) / mLat,
-                pts[i].lng - (normX * w) / mLng
-            ]);
+        for (let i = 0; i < crossSectionBars.length; i++) {
+            leftPts.push(crossSectionBars[i].leftEnd);
+            rightPts.push(crossSectionBars[i].rightEnd);
         }
 
         return [...leftPts, ...rightPts.reverse()];
-    }, [hillSpineProfile.points, baseLat]);
+    }, [crossSectionBars]);
 
     // Measured total perimeter of the planting mound (in meters)
     const measuredMoundPerimeterM = useMemo(() => {
@@ -1009,72 +1244,701 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
     const [isSatelliteDemLoaded, setIsSatelliteDemLoaded] = useState<boolean>(true);
     const [isAiSlopeScanning, setIsAiSlopeScanning] = useState<boolean>(false);
 
-    // Registered Plantation Areas
-    const REGISTERED_PLANTATIONS = useMemo(() => [
-        {
-            id: 'plant-agrobari-small',
-            name: 'Agrobari - Small Sector (პატარა სექტორი)',
-            nameKa: 'აგრობარი - პატარა სექტორი',
-            sectorName: 'პატარა სექტორი (Small Sector)',
-            center: [41.9023, 44.5000] as [number, number],
-            elevationBaseM: 480
-        },
-        {
-            id: 'plant-agrobari-block-a',
-            name: 'Agrobari - Main Orchard Block A',
-            nameKa: 'აგრობარი - მთავარი ბაღი ბლოკი A',
-            sectorName: 'მთავარი ბლოკი A',
-            center: [41.9038, 44.5025] as [number, number],
-            elevationBaseM: 485
-        },
-        {
-            id: 'plant-agrobari-blueberry',
-            name: 'Agrobari - Blueberry Terraces (მოცვის ტერასა)',
-            nameKa: 'აგრობარი - მოცვის ტერასა',
-            sectorName: 'მოცვის ტერასა',
-            center: [41.9008, 44.4975] as [number, number],
-            elevationBaseM: 476
-        },
-        {
-            id: 'plant-agrobari-greenhouse',
-            name: 'Agrobari - Greenhouse Complex (სათბურები)',
-            nameKa: 'აგრობარი - სათბურების კომპლექსი',
-            sectorName: 'სათბურების კომპლექსი',
-            center: [41.9042, 44.4960] as [number, number],
-            elevationBaseM: 490
-        }
-    ], []);
 
-    const [selectedPlantationId, setSelectedPlantationId] = useState<string>('plant-agrobari-small');
-    const [currentCenter, setCurrentCenter] = useState<[number, number]>(plantationCenter);
+    // =========================================================================
+    // 1. WORKSPACE & LAYER TREE STATE (Base Grid, Hill 1, Hill 2, Slope 1, Slope 2, Photo Pins)
+    // =========================================================================
+    const [isLayerTreeOpen, setIsLayerTreeOpen] = useState<boolean>(true);
+    const [selectedLayerId, setSelectedLayerId] = useState<LayerId>('hill_1');
+    const [layerVisibility, setLayerVisibility] = useState({
+        baseGrid: true,
+        hill1: true,
+        slope1: true,
+        photoPins: true
+    });
+    const [layerLocks, setLayerLocks] = useState({
+        baseGrid: false,
+        hill1: false,
+        slope1: false,
+        photoPins: false
+    });
+
+    // Multi-Layer Hills state (EMPTY by default so no unrequested hill automatically appears)
+    const [hillProfiles, setHillProfiles] = useState<HillSpineProfile[]>(() => {
+        const saved = safeStorage.getItem('agrimap_sandbox_hill_profiles');
+        if (saved) {
+            try {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed)) {
+                    const validHills = parsed.filter(h => {
+                        if (!h || !Array.isArray(h.points) || h.points.length === 0) return false;
+                        const isLegacyDummy = h.id === 'hill_1' && h.name === 'Hill 1 (Ridge Spine)' && 
+                            h.points.length === 3 && h.points.some((p: any) => p.id === 'pt-A' && (p.peakHeightM === 18 || p.peakHeightM === 15));
+                        return !isLegacyDummy;
+                    });
+                    if (validHills.length > 0) {
+                        const seenIds = new Set<string>();
+                        const uniqueHills: HillSpineProfile[] = [];
+                        for (const h of validHills) {
+                            const id = h.id || `hill_${uniqueHills.length + 1}`;
+                            if (!seenIds.has(id)) {
+                                seenIds.add(id);
+                                uniqueHills.push({ ...h, id });
+                            }
+                        }
+                        const firstPt = uniqueHills[0]?.points?.[0];
+                        if (firstPt && (Math.abs(firstPt.lat - baseLat) > 0.1 || Math.abs(firstPt.lng - baseLng) > 0.1)) {
+                            const dLat = baseLat - firstPt.lat;
+                            const dLng = baseLng - firstPt.lng;
+                            return uniqueHills.map((h: HillSpineProfile) => ({
+                                ...h,
+                                points: (h.points || []).map(p => ({
+                                    ...p,
+                                    lat: p.lat + dLat,
+                                    lng: p.lng + dLng
+                                }))
+                            }));
+                        }
+                        return uniqueHills;
+                    } else {
+                        safeStorage.removeItem('agrimap_sandbox_hill_profiles');
+                    }
+                }
+            } catch (_) {}
+        }
+        return [];
+    });
+
+    // Multi-Layer Slopes state
+    const [slopeObjects, setSlopeObjects] = useState<PerimeterSlopeObject[]>(() => {
+        const saved = safeStorage.getItem('agrimap_sandbox_slope_objects');
+        if (saved) {
+            try {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed)) {
+                    if (parsed.length === 0) return [];
+                    const validSlopes = parsed.filter(s => s && Array.isArray(s.vertices) && s.vertices.length > 0);
+                    if (validSlopes.length > 0) {
+                        const seenIds = new Set<string>();
+                        const uniqueSlopes: PerimeterSlopeObject[] = [];
+                        for (const s of validSlopes) {
+                            const id = s.id || `slope_${uniqueSlopes.length + 1}`;
+                            if (!seenIds.has(id)) {
+                                seenIds.add(id);
+                                uniqueSlopes.push({ ...s, id });
+                            }
+                        }
+                        const firstV = uniqueSlopes[0]?.vertices?.[0];
+                        if (firstV && (Math.abs(firstV.lat - baseLat) > 0.1 || Math.abs(firstV.lng - baseLng) > 0.1)) {
+                            const dLat = baseLat - firstV.lat;
+                            const dLng = baseLng - firstV.lng;
+                            return uniqueSlopes.map((s: PerimeterSlopeObject) => ({
+                                ...s,
+                                vertices: (s.vertices || []).map(v => ({
+                                    ...v,
+                                    lat: v.lat + dLat,
+                                    lng: v.lng + dLng
+                                }))
+                            }));
+                        }
+                        return uniqueSlopes;
+                    }
+                    return [];
+                }
+            } catch (_) {}
+        }
+        return [];
+    });
+
+    // Sync hill profiles cache and storage (deduplicated by ID)
+    useEffect(() => {
+        const seenIds = new Set<string>();
+        const uniqueHills = hillProfiles.filter(h => {
+            if (!h || !h.id) return false;
+            if (seenIds.has(h.id)) return false;
+            seenIds.add(h.id);
+            return true;
+        });
+        safeStorage.setItem('agrimap_sandbox_hill_profiles', JSON.stringify(uniqueHills));
+        setActiveSpineProfilesCache(uniqueHills.filter(h => h.enabled));
+    }, [hillProfiles]);
+
+    // Sync slope objects cache and storage (deduplicated by ID)
+    useEffect(() => {
+        const seenIds = new Set<string>();
+        const uniqueSlopes = slopeObjects.filter(s => {
+            if (!s || !s.id) return false;
+            if (seenIds.has(s.id)) return false;
+            seenIds.add(s.id);
+            return true;
+        });
+        safeStorage.setItem('agrimap_sandbox_slope_objects', JSON.stringify(uniqueSlopes));
+        setActivePerimeterSlopesCache(uniqueSlopes.filter(s => s.enabled));
+    }, [slopeObjects]);
+
+    // Add New Hill Layer (spawns right around current view / plantation center)
+    const handleAddHillLayer = () => {
+        const cLat = currentCenter[0] || baseLat;
+        const cLng = currentCenter[1] || baseLng;
+        const newId = `hill_${Date.now()}`;
+        const newHill: HillSpineProfile = {
+            id: newId,
+            name: `Hill ${hillProfiles.length + 1} (Ridge)`,
+            enabled: true,
+            locked: false,
+            generationMode: 'elongated_ridge',
+            points: [
+                { id: `pt-${newId}-A`, name: 'Point A', lat: cLat + 0.00035, lng: cLng - 0.00055, widthM: 40, startOffsetM: 0, endDistanceM: 50, peakHeightM: 18, slopeFalloff: 'cosine' },
+                { id: `pt-${newId}-B`, name: 'Point B', lat: cLat, lng: cLng, widthM: 65, startOffsetM: 2, endDistanceM: 80, peakHeightM: 30, slopeFalloff: 'cosine' },
+                { id: `pt-${newId}-C`, name: 'Point C', lat: cLat - 0.00035, lng: cLng + 0.00055, widthM: 45, startOffsetM: 0, endDistanceM: 55, peakHeightM: 16, slopeFalloff: 'cosine' }
+            ]
+        };
+        const next = [...hillProfiles, newHill];
+        setHillProfiles(next);
+        setHillSpineProfile(newHill);
+        setSelectedLayerId(newId);
+        setActivePointId(`pt-${newId}-B`);
+        setIsSlopeSculptorOpen(true);
+        setTerrainCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
+        toast.success(isKa ? `ახალი შრე "${newHill.name}" დაემატა` : `New Layer "${newHill.name}" created at current view`);
+    };
+
+    // Delete Hill Layer
+    const handleDeleteHillLayer = (id: string) => {
+        const next = hillProfiles.filter(h => h.id !== id);
+        setHillProfiles(next);
+        safeStorage.setItem('agrimap_sandbox_hill_profiles', JSON.stringify(next));
+        if (selectedLayerId === id || next.length === 0) {
+            const fallback = next[0]?.id || 'base_grid';
+            setSelectedLayerId(fallback);
+            if (next[0]) {
+                setHillSpineProfile(next[0]);
+            } else {
+                setHillSpineProfile({
+                    id: 'spine-cleared',
+                    name: 'Cleared Slope',
+                    enabled: false,
+                    points: []
+                });
+                safeStorage.removeItem('agrimap_sandbox_hill_spine_profile');
+                setActiveSpineProfilesCache([]);
+                setActivePointId('');
+            }
+        }
+        setTerrainCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
+        toast.info(isKa ? 'ბორცვის შრე წაიშალა' : 'Hill layer deleted');
+    };
+
+    // Toggle Hill Visibility
+    const handleToggleHillVisibility = (id: string) => {
+        setHillProfiles(prev => {
+            const next = prev.map(h => h.id === id ? { ...h, enabled: !h.enabled } : h);
+            if (id === 'hill_1') {
+                setLayerVisibility(v => ({ ...v, hill1: !v.hill1 }));
+            }
+            return next;
+        });
+        setTerrainCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
+    };
+
+    // Toggle Hill Lock
+    const handleToggleHillLock = (id: string) => {
+        setHillProfiles(prev => prev.map(h => h.id === id ? { ...h, locked: !h.locked } : h));
+    };
+
+    // Add New Slope Layer (immediately adds a distinct layer with 3D vertices around current view)
+    const handleAddSlopeLayer = () => {
+        const cLat = currentCenter[0] || baseLat;
+        const cLng = currentCenter[1] || baseLng;
+        const newSlopeId = `slope_${Date.now()}`;
+        const defaultVertices: PerimeterSlopeVertex[] = [
+            { id: `pv-${newSlopeId}-1`, lat: cLat - 0.0004, lng: cLng - 0.0006, elevationOffsetM: 8 },
+            { id: `pv-${newSlopeId}-2`, lat: cLat - 0.0002, lng: cLng + 0.0005, elevationOffsetM: 14 },
+            { id: `pv-${newSlopeId}-3`, lat: cLat + 0.0005, lng: cLng + 0.0004, elevationOffsetM: 20 },
+            { id: `pv-${newSlopeId}-4`, lat: cLat + 0.0003, lng: cLng - 0.0005, elevationOffsetM: 10 }
+        ];
+        const newSlope: PerimeterSlopeObject = {
+            id: newSlopeId,
+            name: `Slope ${slopeObjects.length + 1} (Uneven)`,
+            enabled: true,
+            locked: false,
+            hasRoadZeroLevel: true,
+            vertices: defaultVertices
+        };
+        const next = [...slopeObjects, newSlope];
+        setSlopeObjects(next);
+        setPerimeterVertices(defaultVertices);
+        setCustomSlopePerimeter(defaultVertices.map(v => [v.lat, v.lng]));
+        setSelectedLayerId(newSlopeId);
+        setIsSlopeSculptorOpen(true);
+        setActiveTool('select');
+        setTerrainCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
+        toast.success(isKa ? `ახალი ფერდობის შრე "${newSlope.name}" შეიქმნა` : `New Slope Layer "${newSlope.name}" created at current view`);
+    };
+
+    // Delete Slope Layer
+    const handleDeleteSlopeLayer = (id: string) => {
+        const next = slopeObjects.filter(s => s.id !== id);
+        setSlopeObjects(next);
+        if (selectedLayerId === id) {
+            const fallback = next[0];
+            setSelectedLayerId(fallback?.id || 'base_grid');
+            if (fallback) {
+                setPerimeterVertices(fallback.vertices);
+                setCustomSlopePerimeter(fallback.vertices.map(v => [v.lat, v.lng]));
+            } else {
+                setPerimeterVertices([]);
+                setCustomSlopePerimeter([]);
+            }
+        }
+        setTerrainCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
+        toast.info(isKa ? 'ფერდობის შრე წაიშალა' : 'Slope layer deleted');
+    };
+
+    // Toggle Slope Visibility
+    const handleToggleSlopeVisibility = (id: string) => {
+        setSlopeObjects(prev => {
+            const next = prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s);
+            if (id === 'slope_1') {
+                setLayerVisibility(v => ({ ...v, slope1: !v.slope1 }));
+            }
+            return next;
+        });
+        setTerrainCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
+    };
+
+    // Toggle Slope Lock
+    const handleToggleSlopeLock = (id: string) => {
+        setSlopeObjects(prev => prev.map(s => s.id === id ? { ...s, locked: !s.locked } : s));
+    };
+
+    // Generate Hill inside drawn perimeter
+    const handleGenerateHillInsidePerimeter = () => {
+        if (customSlopePerimeter.length < 3) {
+            toast.warning(isKa ? 'დახატეთ მინიმუმ 3 პერიმეტრის წერტილი' : 'Place at least 3 perimeter points first');
+            return;
+        }
+        const lats = customSlopePerimeter.map(p => p[0]);
+        const lngs = customSlopePerimeter.map(p => p[1]);
+        const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+        const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+        const centerLat = (minLat + maxLat) / 2;
+        const centerLng = (minLng + maxLng) / 2;
+        const dLat = (maxLat - minLat) * 0.35;
+        const dLng = (maxLng - minLng) * 0.35;
+
+        const newHillId = `hill_${Date.now()}`;
+        const newHill: HillSpineProfile = {
+            id: newHillId,
+            name: `Mound (Perimeter ${hillProfiles.length + 1})`,
+            enabled: true,
+            locked: false,
+            generationMode: 'elongated_ridge',
+            points: [
+                { id: `pt-${newHillId}-A`, name: 'Start A', lat: centerLat - dLat, lng: centerLng - dLng, widthM: 35, startOffsetM: 0, endDistanceM: 45, peakHeightM: 16, slopeFalloff: 'cosine' },
+                { id: `pt-${newHillId}-B`, name: 'Apex B', lat: centerLat, lng: centerLng, widthM: 65, startOffsetM: 2, endDistanceM: 80, peakHeightM: 32, slopeFalloff: 'cosine' },
+                { id: `pt-${newHillId}-C`, name: 'End C', lat: centerLat + dLat, lng: centerLng + dLng, widthM: 40, startOffsetM: 0, endDistanceM: 50, peakHeightM: 18, slopeFalloff: 'cosine' }
+            ]
+        };
+
+        setHillProfiles(prev => [...prev, newHill]);
+        setHillSpineProfile(newHill);
+        setSelectedLayerId(newHillId);
+        setActivePointId(`pt-${newHillId}-B`);
+        setIsSlopeSculptorOpen(true);
+        setActiveTool('select');
+        setTerrainCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
+        toast.success(isKa ? `🏔️ ბორცვი შეიქმნა პერიმეტრის შიგნით!` : `🏔️ Hill / Mound generated inside perimeter!`);
+    };
+
+    // Generate 3D Uneven Slope Mesh from drawn perimeter
+    const handleGenerateSlopeFromPerimeter = () => {
+        if (customSlopePerimeter.length < 3) {
+            toast.warning(isKa ? 'დახატეთ მინიმუმ 3 წერტილი' : 'Place at least 3 perimeter points first');
+            return;
+        }
+        const newSlopeId = `slope_${Date.now()}`;
+        const vertices: PerimeterSlopeVertex[] = customSlopePerimeter.map((coords, i) => ({
+            id: `pv-${newSlopeId}-${i + 1}`,
+            lat: coords[0],
+            lng: coords[1],
+            elevationOffsetM: 12 + (i % 3) * 6
+        }));
+
+        const newSlope: PerimeterSlopeObject = {
+            id: newSlopeId,
+            name: `Slope ${slopeObjects.length + 1} (Perimeter)`,
+            enabled: true,
+            locked: false,
+            hasRoadZeroLevel: true,
+            vertices
+        };
+
+        setSlopeObjects(prev => [...prev, newSlope]);
+        setPerimeterVertices(vertices);
+        setSelectedLayerId(newSlopeId);
+        setActiveTool('select');
+        setTerrainCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
+        toast.success(isKa ? `📐 3D ფერდობის ბადე დაგენერირდა!` : `📐 3D Uneven Slope mesh generated from perimeter!`);
+    };
+
+    // Elevate all vertices in customSlopePerimeter
+    const handleElevatePerimeter = (deltaM: number) => {
+        setPerimeterVertices(prev => {
+            const next = prev.map(v => ({ ...v, elevationOffsetM: Math.max(0, (v.elevationOffsetM || 10) + deltaM) }));
+            safeStorage.setItem('agrimap_sandbox_perimeter_vertices', JSON.stringify(next));
+            return next;
+        });
+        setSlopeObjects(prev => prev.map(s => s.id === selectedLayerId ? {
+            ...s,
+            vertices: s.vertices.map(v => ({ ...v, elevationOffsetM: Math.max(0, (v.elevationOffsetM || 10) + deltaM) }))
+        } : s));
+        setTerrainCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
+        toast.info(`Perimeter elevation adjusted by ${deltaM > 0 ? '+' : ''}${deltaM}m`);
+    };
+
+    const handleToggleLayerVisibility = (layerKey: keyof typeof layerVisibility) => {
+        setLayerVisibility(prev => {
+            const next = { ...prev, [layerKey]: !prev[layerKey] };
+            return next;
+        });
+        setTerrainCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
+    };
+
+    const handleToggleLayerLock = (layerKey: keyof typeof layerLocks) => {
+        setLayerLocks(prev => ({ ...prev, [layerKey]: !prev[layerKey] }));
+    };
+
+    // =========================================================================
+    // 2. PHOTO INTEGRATION (GPS PINS & EXIF HEADING EXTRACTION)
+    // =========================================================================
+    const [photoPins, setPhotoPins] = useState<PhotoGpsPin[]>(() => {
+        const saved = loadSavedPhotoPins();
+        if (saved.length > 0) return saved;
+        return [
+            {
+                id: 'photo-pin-sample-1',
+                name: 'Drone Inspection - South Ridge (Mast #1)',
+                dataUrl: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=800&auto=format&fit=crop&q=80',
+                lat: 41.9023 - 0.00045,
+                lng: 44.5000 - 0.00035,
+                altitudeM: 504,
+                azimuthDeg: 48,
+                fovDeg: 65,
+                timestamp: new Date().toLocaleDateString(),
+                hasExifGps: true,
+                notes: 'Drone high-angle verification shot with compass heading'
+            }
+        ];
+    });
+    const [selectedPhotoPin, setSelectedPhotoPin] = useState<PhotoGpsPin | null>(null);
+    const [isPhotoModalOpen, setIsPhotoModalOpen] = useState<boolean>(false);
+    const photoInputRef = useRef<HTMLInputElement | null>(null);
+
+    const handlePhotoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+            toast.info(isKa ? '📷 ფოტოს EXIF მეტამონაცემების ანალიზი...' : '📷 Analyzing photo EXIF GPS & compass orientation...');
+            const meta = await extractPhotoMetadata(file, plantationCenter[0], plantationCenter[1]);
+            const newPin: PhotoGpsPin = {
+                id: `photo-${Date.now()}`,
+                name: meta.fileName.replace(/\.[^/.]+$/, ''),
+                dataUrl: meta.dataUrl,
+                lat: meta.lat,
+                lng: meta.lng,
+                altitudeM: meta.altitudeM,
+                azimuthDeg: meta.azimuthDeg,
+                fovDeg: 60,
+                timestamp: meta.timestamp,
+                hasExifGps: meta.hasExifGps,
+                notes: meta.hasExifGps ? 'EXIF GPS & Orientation verified' : 'Manual GPS placement'
+            };
+            const nextPins = [newPin, ...photoPins];
+            setPhotoPins(nextPins);
+            savePhotoPins(nextPins);
+            setSelectedPhotoPin(newPin);
+            setIsPhotoModalOpen(true);
+            setSelectedLayerId('photo_pins');
+            setTerrainCounter(c => c + 1);
+            toast.success(isKa ? `📷 ფოტო პინი განთავსდა რუკაზე (${newPin.azimuthDeg}°)` : `📷 Photo Pin placed at (${newPin.lat.toFixed(5)}, ${newPin.lng.toFixed(5)}) with ${newPin.azimuthDeg}° heading`);
+        } catch (err) {
+            console.error('Photo upload failed:', err);
+            toast.error(isKa ? 'ფოტოს დამუშავება ვერ მოხერხდა' : 'Failed to parse photo metadata');
+        } finally {
+            if (e.target) e.target.value = '';
+        }
+    };
+
+    const handleDeletePhotoPin = (id: string) => {
+        if (layerLocks.photoPins) {
+            toast.warning(isKa ? 'Photo Pins შრე ჩაკეტილია' : 'Photo Pins layer is locked');
+            return;
+        }
+        const nextPins = photoPins.filter(p => p.id !== id);
+        setPhotoPins(nextPins);
+        savePhotoPins(nextPins);
+        if (selectedPhotoPin?.id === id) {
+            setSelectedPhotoPin(null);
+            setIsPhotoModalOpen(false);
+        }
+        setTerrainCounter(c => c + 1);
+        toast.info(isKa ? 'ფოტოს პინი წაიშალა' : 'Photo pin removed');
+    };
+
+    // =========================================================================
+    // 3. SLOPE 1 PERIMETER VERTICES (3D Triangulation & Uneven Terrain X,Y,Z)
+    // =========================================================================
+    const [perimeterVertices, setPerimeterVertices] = useState<PerimeterSlopeVertex[]>(() => {
+        const raw = safeStorage.getItem('agrimap_sandbox_perimeter_vertices');
+        if (raw) {
+            try {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    const firstV = parsed[0];
+                    if (firstV && (Math.abs(firstV.lat - baseLat) > 0.1 || Math.abs(firstV.lng - baseLng) > 0.1)) {
+                        const dLat = baseLat - firstV.lat;
+                        const dLng = baseLng - firstV.lng;
+                        return parsed.map((v: PerimeterSlopeVertex) => ({
+                            ...v,
+                            lat: v.lat + dLat,
+                            lng: v.lng + dLng
+                        }));
+                    }
+                    return parsed;
+                }
+            } catch (_) {}
+        }
+        return [
+            { id: 'pv-1', lat: baseLat - 0.0005, lng: baseLng - 0.0007, elevationOffsetM: 8 },
+            { id: 'pv-2', lat: baseLat - 0.0003, lng: baseLng + 0.0006, elevationOffsetM: 16 },
+            { id: 'pv-3', lat: baseLat + 0.0006, lng: baseLng + 0.0005, elevationOffsetM: 22 },
+            { id: 'pv-4', lat: baseLat + 0.0004, lng: baseLng - 0.0006, elevationOffsetM: 12 }
+        ];
+    });
 
     useEffect(() => {
-        setCurrentCenter(plantationCenter);
-    }, [plantationCenter]);
+        safeStorage.setItem('agrimap_sandbox_perimeter_vertices', JSON.stringify(perimeterVertices));
+        setActivePerimeterSlopesCache([{
+            id: 'slope_1',
+            name: 'Slope 1 (Uneven Terrain)',
+            enabled: layerVisibility.slope1,
+            locked: layerLocks.slope1,
+            vertices: perimeterVertices
+        }]);
+    }, [perimeterVertices, layerVisibility.slope1, layerLocks.slope1]);
+
+    // Live calculated Point-to-Point Segments for Slope 3D Perimeter
+    const slopeSegments = useMemo<TerrainSegmentMetrics[]>(() => {
+        if (!perimeterVertices || perimeterVertices.length < 2) return [];
+        return calculatePathSegments(
+            perimeterVertices.map((v, idx) => ({
+                id: v.id,
+                lat: v.lat,
+                lng: v.lng,
+                z: v.elevationOffsetM,
+                label: `V${idx + 1}`
+            })),
+            perimeterVertices.length >= 3
+        );
+    }, [perimeterVertices]);
+
+    const handleUpdatePerimeterVertex = (id: string, patch: Partial<PerimeterSlopeVertex>) => {
+        if (layerLocks.slope1) {
+            toast.warning(isKa ? 'Slope 1 ჩაკეტილია რედაქტირებისგან' : 'Slope 1 layer is locked against edits');
+            return;
+        }
+        setPerimeterVertices(prev => {
+            const next = prev.map(v => v.id === id ? { ...v, ...patch } : v);
+            // Also keep customSlopePerimeter coordinates in sync
+            setCustomSlopePerimeter(next.map(v => [v.lat, v.lng]));
+            return next;
+        });
+        setSlopeObjects(prev => {
+            return prev.map(s => {
+                if (s.vertices?.some(v => v.id === id)) {
+                    return { ...s, vertices: s.vertices.map(v => v.id === id ? { ...v, ...patch } : v) };
+                }
+                return s;
+            });
+        });
+        setTerrainCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
+    };
+
+    const handleAddPerimeterVertex = () => {
+        if (layerLocks.slope1) {
+            toast.warning(isKa ? 'Slope 1 ჩაკეტილია' : 'Slope 1 layer is locked');
+            return;
+        }
+        const cLat = currentCenter[0] || baseLat;
+        const cLng = currentCenter[1] || baseLng;
+        const lastV = perimeterVertices[perimeterVertices.length - 1];
+        const newLat = lastV && Math.abs(lastV.lat - cLat) < 0.01 ? lastV.lat + 0.0002 : cLat + 0.0002;
+        const newLng = lastV && Math.abs(lastV.lng - cLng) < 0.01 ? lastV.lng + 0.0002 : cLng + 0.0002;
+        const newVertex: PerimeterSlopeVertex = {
+            id: `pv-${Date.now()}-${perimeterVertices.length + 1}`,
+            lat: newLat,
+            lng: newLng,
+            elevationOffsetM: 14
+        };
+        const next = [...perimeterVertices, newVertex];
+        setPerimeterVertices(next);
+        const nextCoords: [number, number][] = next.map(v => [v.lat, v.lng]);
+        setCustomSlopePerimeter(nextCoords);
+        safeStorage.setItem('agrimap_sandbox_perimeter_vertices', JSON.stringify(next));
+        safeStorage.setItem('agrimap_sandbox_custom_perimeter', JSON.stringify(nextCoords));
+        
+        const targetSlopeId = selectedLayerId.startsWith('slope') ? selectedLayerId : 'slope_1';
+        setSlopeObjects(prev => {
+            const exists = prev.some(s => s.id === targetSlopeId);
+            const updated = exists 
+                ? prev.map(s => s.id === targetSlopeId ? { ...s, vertices: next, enabled: true } : s)
+                : [...prev, {
+                    id: targetSlopeId,
+                    name: 'Slope 1 (Uneven Terrain)',
+                    enabled: true,
+                    locked: false,
+                    hasRoadZeroLevel: true,
+                    vertices: next
+                }];
+            safeStorage.setItem('agrimap_sandbox_slope_objects', JSON.stringify(updated));
+            return updated;
+        });
+
+        setTerrainCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
+        toast.success(isKa ? 'დაემატა ახალი წვერო Slope 1-ისთვის' : 'Added new 3D vertex to Slope 1');
+    };
+
+    const handleDeletePerimeterVertex = (idOrIndex: string | number, index?: number) => {
+        if (layerLocks.slope1) {
+            toast.warning(isKa ? 'Slope 1 ჩაკეტილია' : 'Slope 1 layer is locked');
+            return;
+        }
+        const idx = typeof idOrIndex === 'number' 
+            ? idOrIndex 
+            : (index !== undefined ? index : perimeterVertices.findIndex(v => v.id === idOrIndex));
+        const id = typeof idOrIndex === 'string' 
+            ? idOrIndex 
+            : (perimeterVertices[idx]?.id || '');
+
+        const next = perimeterVertices.filter((v, i) => {
+            if (idx >= 0 && i === idx) return false;
+            if (id && v.id === id) return false;
+            return true;
+        });
+        setPerimeterVertices(next);
+        const nextCoords: [number, number][] = next.map(v => [v.lat, v.lng] as [number, number]);
+        setCustomSlopePerimeter(nextCoords);
+        safeStorage.setItem('agrimap_sandbox_perimeter_vertices', JSON.stringify(next));
+        safeStorage.setItem('agrimap_sandbox_custom_perimeter', JSON.stringify(nextCoords));
+        
+        const targetSlopeId = selectedLayerId.startsWith('slope') ? selectedLayerId : 'slope_1';
+        setSlopeObjects(prev => {
+            const updated = prev.map(s => {
+                if (s.id === targetSlopeId || (id && s.vertices?.some(v => v.id === id))) {
+                    const filteredVertices = (s.vertices || []).filter((v, i) => {
+                        if (idx >= 0 && i === idx) return false;
+                        if (id && v.id === id) return false;
+                        return true;
+                    });
+                    return { ...s, vertices: filteredVertices };
+                }
+                return s;
+            });
+            safeStorage.setItem('agrimap_sandbox_slope_objects', JSON.stringify(updated));
+            return updated;
+        });
+
+        setTerrainCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
+        toast.success(isKa ? 'წერტილი წაიშალა' : 'Vertex deleted successfully');
+    };
+
+    // Registered Plantation Areas - Per user specification: only the main should be seen
+    // Registered Plantation Areas - Dynamically retrieved for active profile (company or personal)
+    const REGISTERED_PLANTATIONS = useMemo(() => {
+        const list = getPlantationsList(plantationFeatures, plantationCenter, false);
+        return list.map(item => ({
+            id: item.id,
+            name: item.name,
+            nameKa: item.name,
+            sectorName: item.name,
+            center: item.center,
+            elevationBaseM: 480
+        }));
+    }, [plantationFeatures, plantationCenter]);
+
+    const [selectedPlantationId, setSelectedPlantationId] = useState<string>(() => {
+        return REGISTERED_PLANTATIONS[0]?.id || 'plant-agrobari-main';
+    });
+    const [currentCenter, setCurrentCenter] = useState<[number, number]>(() => {
+        return Number.isFinite(plantationCenter[0]) && Number.isFinite(plantationCenter[1])
+            ? plantationCenter
+            : [41.9023, 44.5];
+    });
+
+    const initialCenterDoneRef = useRef(false);
+    useEffect(() => {
+        if (!initialCenterDoneRef.current && Number.isFinite(plantationCenter[0]) && Number.isFinite(plantationCenter[1])) {
+            initialCenterDoneRef.current = true;
+            setCurrentCenter(plantationCenter);
+        }
+        if (REGISTERED_PLANTATIONS.length > 0 && !REGISTERED_PLANTATIONS.some(p => p.id === selectedPlantationId)) {
+            setSelectedPlantationId(REGISTERED_PLANTATIONS[0].id);
+        }
+    }, [plantationCenter, REGISTERED_PLANTATIONS]);
 
     const handleSelectPlantation = (id: string) => {
         setSelectedPlantationId(id);
         const found = REGISTERED_PLANTATIONS.find(p => p.id === id);
         if (found) {
             setCurrentCenter(found.center);
+            setRecenterTrigger(prev => prev + 1);
             setTestDroneMission(prev => ({
                 ...prev,
-                plantationName: 'აგრობარი (Agrobari)',
+                plantationName: mainPlantation.name,
                 sectorName: found.sectorName
             }));
             toast.success(isKa 
-                ? `არჩეულია რეგისტრირებული პლანტაცია: ${found.nameKa}` 
-                : `Active Registered Plantation: ${found.name}`);
+                ? `რუკა გადავიდა: ${found.nameKa}` 
+                : `Moved map to: ${found.name}`);
         } else {
             const feat = (plantationFeatures || []).find(f => f.id === id);
             if (feat && Array.isArray(feat.geometry) && feat.geometry.length > 0) {
-                const coords = feat.geometry as [number, number][];
-                const avgLat = coords.reduce((acc, c) => acc + c[0], 0) / coords.length;
-                const avgLng = coords.reduce((acc, c) => acc + c[1], 0) / coords.length;
-                setCurrentCenter([avgLat, avgLng]);
+                const coords = feat.geometry as any[];
+                let validLatSum = 0;
+                let validLngSum = 0;
+                let validCount = 0;
+                coords.forEach(c => {
+                    if (Array.isArray(c) && typeof c[0] === 'number' && typeof c[1] === 'number' && Number.isFinite(c[0]) && Number.isFinite(c[1])) {
+                        validLatSum += c[0];
+                        validLngSum += c[1];
+                        validCount++;
+                    }
+                });
+                if (validCount > 0) {
+                    const avgLat = validLatSum / validCount;
+                    const avgLng = validLngSum / validCount;
+                    if (Number.isFinite(avgLat) && Number.isFinite(avgLng)) {
+                        setCurrentCenter([avgLat, avgLng]);
+                        setRecenterTrigger(prev => prev + 1);
+                    }
+                }
                 setTestDroneMission(prev => ({
                     ...prev,
-                    plantationName: 'აგრობარი (Agrobari)',
+                    plantationName: mainPlantation.name,
                     sectorName: feat.name || 'Custom Sector'
                 }));
                 toast.success(isKa 
@@ -1082,6 +1946,51 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                     : `Active Plantation Sector: ${feat.name || 'Sector'}`);
             }
         }
+    };
+
+    // Save current map view as LABS Plantation Location
+    const handleSaveCurrentAsPlantation = () => {
+        const newCoords: [number, number] = [
+            Math.round(currentCenter[0] * 1e6) / 1e6,
+            Math.round(currentCenter[1] * 1e6) / 1e6
+        ];
+        setLabsPlantationCenter(newCoords);
+        safeStorage.setItem('agrimap_labs_saved_plantation_center', JSON.stringify(newCoords));
+        toast.success(isKa 
+            ? `პლანტაციის ადგილი წარმატებით შეინახა LABS მოდულისთვის: [${newCoords[0].toFixed(5)}, ${newCoords[1].toFixed(5)}]` 
+            : `Plantation location saved for LABS module: [${newCoords[0].toFixed(5)}, ${newCoords[1].toFixed(5)}]`);
+    };
+
+    // Pick Plantation Location on Map
+    const [isPickingPlantation, setIsPickingPlantation] = useState<boolean>(false);
+
+    const handleStartPickPlantationLocation = () => {
+        setIsPickingPlantation(true);
+        setActiveTool('pick_plantation');
+        toast.info(isKa
+            ? '📍 დააწკაპუნეთ რუკაზე "აგრობარი" პლანტაციის ზუსტი ადგილის ასარჩევად'
+            : '📍 Click anywhere on map to select Agrobari plantation location');
+    };
+
+    // Sync plantation location directly from Map Planner
+    const handleSyncPlantationFromPlanner = () => {
+        const resolved = resolvePlantationCenter(plantationFeatures, mapCenter || [41.9023, 44.5]);
+        setLabsPlantationCenter(resolved);
+        safeStorage.setItem('agrimap_labs_saved_plantation_center', JSON.stringify(resolved));
+        setCurrentCenter(resolved);
+        setFlyTarget({ lat: resolved[0], lng: resolved[1], zoom: 18, timestamp: Date.now() });
+        toast.success(isKa 
+            ? `პლანტაციის ადგილი გადმოტანილია Map Planner-იდან: [${resolved[0].toFixed(5)}, ${resolved[1].toFixed(5)}]` 
+            : `Plantation location synced from Map Planner: [${resolved[0].toFixed(5)}, ${resolved[1].toFixed(5)}]`);
+    };
+
+    // Fly to saved LABS plantation location
+    const handleFlyToPlantation = () => {
+        setFlyTarget({ lat: labsPlantationCenter[0], lng: labsPlantationCenter[1], zoom: 18, timestamp: Date.now() });
+        setCurrentCenter(labsPlantationCenter);
+        toast.info(isKa 
+            ? `რუკა გადაფრინდა თქვენს LABS პლანტაციაზე [${labsPlantationCenter[0].toFixed(4)}, ${labsPlantationCenter[1].toFixed(4)}]` 
+            : `Flew to LABS plantation location [${labsPlantationCenter[0].toFixed(4)}, ${labsPlantationCenter[1].toFixed(4)}]`);
     };
 
     // Master camera toggle: Show all / hide all cameras
@@ -1104,16 +2013,85 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
             : '🛰️ Satellite Elevation (Mapbox Terrain-DEM API) loaded! (InSAR Radar & Stereo DEM, Base 480m ASL)');
     };
 
-    // AI Auto-Detect Slope feature
+    // AI Auto-Detect Slope feature: Generates real ridge geometry with break points and independent widths
     const handleAiAutoDetectSlope = () => {
         setIsAiSlopeScanning(true);
         setTimeout(() => {
             setIsAiSlopeScanning(false);
+            const [cLat, cLng] = plantationCenter;
+            const detectedProfile: HillSpineProfile = {
+                id: `spine-ai-${Date.now()}`,
+                name: isKa ? 'AI დეტექტირებული ქედი' : 'AI-Detected Contour Ridge',
+                enabled: true,
+                generationMode: 'elongated_ridge',
+                points: [
+                    {
+                        id: 'ai-pt-A',
+                        name: 'Ascent Crest Point A',
+                        lat: cLat - 0.0006,
+                        lng: cLng - 0.0008,
+                        peakHeightM: 22,
+                        widthM: 45,
+                        leftWidthM: 35,
+                        rightWidthM: 20,
+                        startOffsetM: 4,
+                        endDistanceM: 50,
+                        plateauStartM: -5,
+                        plateauEndM: 5,
+                        slopeFalloff: 'cosine',
+                        breakPoints: [
+                            { id: 'bp-a1', distanceM: -20, heightM: 10 }
+                        ]
+                    },
+                    {
+                        id: 'ai-pt-B',
+                        name: 'Peak Ridgeline Apex B',
+                        lat: cLat,
+                        lng: cLng,
+                        peakHeightM: 32,
+                        widthM: 65,
+                        leftWidthM: 45,
+                        rightWidthM: 25,
+                        startOffsetM: 6,
+                        endDistanceM: 70,
+                        plateauStartM: -8,
+                        plateauEndM: 6,
+                        slopeFalloff: 'cosine',
+                        breakPoints: [
+                            { id: 'bp-b1', distanceM: -25, heightM: 15 },
+                            { id: 'bp-b2', distanceM: 15, heightM: 8 }
+                        ]
+                    },
+                    {
+                        id: 'ai-pt-C',
+                        name: 'Descent Terminal Point C',
+                        lat: cLat + 0.0006,
+                        lng: cLng + 0.0008,
+                        peakHeightM: 18,
+                        widthM: 40,
+                        leftWidthM: 30,
+                        rightWidthM: 15,
+                        startOffsetM: 3,
+                        endDistanceM: 45,
+                        plateauStartM: -4,
+                        plateauEndM: 4,
+                        slopeFalloff: 'cosine',
+                        breakPoints: [
+                            { id: 'bp-c1', distanceM: -18, heightM: 8 }
+                        ]
+                    }
+                ]
+            };
+            setHillSpineProfile(detectedProfile);
+            setActivePointId('ai-pt-B');
+            safeStorage.setItem('agrimap_sandbox_hill_spine_profile', JSON.stringify(detectedProfile));
+            setActiveSpineProfilesCache([detectedProfile]);
             setTerrainCounter(c => c + 1);
+            window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
             toast.success(isKa 
-                ? '🤖 AI ოპტიკური ანალიზი: ქედის ხაზი და ფერდობის კონტური ავტომატურად განისაზღვრა (+25მ პიკი, Cosine Falloff)' 
-                : '🤖 AI Vision: Ridgeline crest & slope contours detected (+25m peak elevation, Cosine falloff)');
-        }, 800);
+                ? '🤖 AI ოპტიკური ანალიზი: ქედის ხაზი და ფერდობის კონტური ავტომატურად განისაზღვრა (+32მ პიკი, ასიმეტრიული ფერდობები)' 
+                : '🤖 AI Vision: Ridgeline crest & slope contours detected (+32m apex, asymmetric slopes & break points applied!)');
+        }, 600);
     };
 
     // Camera raycasting viewshed & opposing slope blind zone calculation
@@ -1210,11 +2188,14 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
             uniqueId = `pt-${letter}-${counter}`;
             counter++;
         }
+        const cLat = currentCenter[0] || baseLat;
+        const cLng = currentCenter[1] || baseLng;
+        const isFar = !lastPt || Math.abs(lastPt.lat - cLat) > 0.015 || Math.abs(lastPt.lng - cLng) > 0.015;
         const newPt: SpineControlPoint = {
             id: uniqueId,
             name: `Connection point ${letter}${counter > 1 ? ` (${counter})` : ''}`,
-            lat: lastPt ? lastPt.lat - 0.0004 : baseLat,
-            lng: lastPt ? lastPt.lng + 0.0004 : baseLng,
+            lat: isFar ? cLat : lastPt.lat - 0.0004,
+            lng: isFar ? cLng : lastPt.lng + 0.0004,
             widthM: lastPt?.widthM || 45,
             startOffsetM: lastPt?.startOffsetM || 0,
             endDistanceM: lastPt?.endDistanceM || 60,
@@ -1276,14 +2257,34 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
     const handleDeleteSpinePoint = (id: string) => {
         const targetPt = hillSpineProfile.points.find(p => p.id === id);
         const filtered = hillSpineProfile.points.filter(p => p.id !== id);
-        const next = { ...hillSpineProfile, points: sanitizeSpinePoints(filtered) };
+        const sanitized = sanitizeSpinePoints(filtered);
+        const next = { 
+            ...hillSpineProfile, 
+            enabled: sanitized.length >= 2, 
+            points: sanitized 
+        };
         setHillSpineProfile(next);
         safeStorage.setItem('agrimap_sandbox_hill_spine_profile', JSON.stringify(next));
-        setActiveSpineProfilesCache([next]);
-        const nextActive = next.points[next.points.length - 1]?.id || '';
+
+        // Sync to hillProfiles list
+        setHillProfiles(prev => {
+            const targetHillId = selectedLayerId.startsWith('hill') ? selectedLayerId : (prev[0]?.id || 'hill_1');
+            const updated = prev.map(h => h.id === targetHillId ? { ...h, enabled: sanitized.length >= 2, points: sanitized } : h);
+            safeStorage.setItem('agrimap_sandbox_hill_profiles', JSON.stringify(updated));
+            return updated;
+        });
+
+        if (sanitized.length >= 2) {
+            setActiveSpineProfilesCache([next]);
+        } else {
+            setActiveSpineProfilesCache([]);
+        }
+
+        const nextActive = sanitized[sanitized.length - 1]?.id || '';
         setActivePointId(nextActive);
         setLastEditedPointId(nextActive || null);
         setTerrainCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
         toast.info(isKa ? `წერტილი წაიშალა: ${targetPt?.name || id}` : `Slope point deleted: ${targetPt?.name || id}`);
     };
 
@@ -1479,7 +2480,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
 
     // Active Selected Object for Details View Panel
     const [selectedObject, setSelectedObject] = useState<{
-        type: 'camera' | 'drone' | 'soil' | 'water' | 'worker' | 'seedling' | 'trench' | 'weather';
+        type: 'camera' | 'drone' | 'soil' | 'water' | 'worker' | 'seedling' | 'trench' | 'weather' | 'slope_point';
         data: any;
     } | null>(null);
 
@@ -1783,20 +2784,42 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
     // Clear Custom Hand-Drawn Perimeter Boundary
     const handleClearPerimeter = () => {
         setCustomSlopePerimeter([]);
+        setPerimeterVertices([]);
         safeStorage.removeItem('agrimap_sandbox_custom_perimeter');
+        safeStorage.removeItem('agrimap_sandbox_perimeter_vertices');
+        const targetSlopeId = selectedLayerId.startsWith('slope') ? selectedLayerId : 'slope_1';
+        setSlopeObjects(prev => {
+            const updated = prev.map(s => s.id === targetSlopeId ? { ...s, vertices: [] } : s);
+            safeStorage.setItem('agrimap_sandbox_slope_objects', JSON.stringify(updated));
+            return updated;
+        });
+        setTerrainCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
         toast.info(isKa ? 'პერიმეტრი გასუფთავდა' : 'Perimeter cleared');
     };
 
     // Delete Last Edited / Added Point (via UI Back button, Backspace key, or mouse Back button)
     const handleDeleteLastEditedPoint = () => {
-        // Priority 1: If user is actively in draw_perimeter mode or there are perimeter points and no active slope spine
-        if (activeTool === 'draw_perimeter' || (customSlopePerimeter.length > 0 && activeTool !== 'draw_slope' && hillSpineProfile.points.length === 0)) {
+        // Priority 1: If user is actively in draw_perimeter/draw_slope mode or there are perimeter points and no active slope spine
+        if (activeTool === 'draw_perimeter' || activeTool === 'draw_slope' || (customSlopePerimeter.length > 0 && hillSpineProfile.points.length === 0)) {
             if (customSlopePerimeter.length > 0) {
-                setCustomSlopePerimeter(prev => {
-                    const next = prev.slice(0, -1);
-                    safeStorage.setItem('agrimap_sandbox_custom_perimeter', JSON.stringify(next));
-                    return next;
+                const nextCoords = customSlopePerimeter.slice(0, -1);
+                setCustomSlopePerimeter(nextCoords);
+                safeStorage.setItem('agrimap_sandbox_custom_perimeter', JSON.stringify(nextCoords));
+                
+                const nextVerts = perimeterVertices.slice(0, -1);
+                setPerimeterVertices(nextVerts);
+                safeStorage.setItem('agrimap_sandbox_perimeter_vertices', JSON.stringify(nextVerts));
+
+                const targetSlopeId = selectedLayerId.startsWith('slope') ? selectedLayerId : 'slope_1';
+                setSlopeObjects(prev => {
+                    const updated = prev.map(s => s.id === targetSlopeId ? { ...s, vertices: (s.vertices || []).slice(0, -1) } : s);
+                    safeStorage.setItem('agrimap_sandbox_slope_objects', JSON.stringify(updated));
+                    return updated;
                 });
+
+                setTerrainCounter(c => c + 1);
+                window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
                 toast.info(isKa ? 'ბოლო პერიმეტრის წერტილი წაიშალა' : 'Deleted last perimeter vertex');
                 return;
             }
@@ -1809,11 +2832,23 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
             while (pointHistoryRef.current.length > 0) {
                 const candidate = pointHistoryRef.current.pop();
                 if (candidate === 'perimeter-last' && customSlopePerimeter.length > 0) {
-                    setCustomSlopePerimeter(prev => {
-                        const next = prev.slice(0, -1);
-                        safeStorage.setItem('agrimap_sandbox_custom_perimeter', JSON.stringify(next));
-                        return next;
+                    const nextCoords = customSlopePerimeter.slice(0, -1);
+                    setCustomSlopePerimeter(nextCoords);
+                    safeStorage.setItem('agrimap_sandbox_custom_perimeter', JSON.stringify(nextCoords));
+
+                    const nextVerts = perimeterVertices.slice(0, -1);
+                    setPerimeterVertices(nextVerts);
+                    safeStorage.setItem('agrimap_sandbox_perimeter_vertices', JSON.stringify(nextVerts));
+
+                    const targetSlopeId = selectedLayerId.startsWith('slope') ? selectedLayerId : 'slope_1';
+                    setSlopeObjects(prev => {
+                        const updated = prev.map(s => s.id === targetSlopeId ? { ...s, vertices: (s.vertices || []).slice(0, -1) } : s);
+                        safeStorage.setItem('agrimap_sandbox_slope_objects', JSON.stringify(updated));
+                        return updated;
                     });
+
+                    setTerrainCounter(c => c + 1);
+                    window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
                     toast.info(isKa ? 'ბოლო პერიმეტრის წერტილი წაიშალა' : 'Deleted last perimeter vertex');
                     return;
                 }
@@ -1849,11 +2884,23 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
 
         // Priority 3: Fallback to perimeter points if slope was empty
         if (customSlopePerimeter.length > 0) {
-            setCustomSlopePerimeter(prev => {
-                const next = prev.slice(0, -1);
-                safeStorage.setItem('agrimap_sandbox_custom_perimeter', JSON.stringify(next));
-                return next;
+            const nextCoords = customSlopePerimeter.slice(0, -1);
+            setCustomSlopePerimeter(nextCoords);
+            safeStorage.setItem('agrimap_sandbox_custom_perimeter', JSON.stringify(nextCoords));
+
+            const nextVerts = perimeterVertices.slice(0, -1);
+            setPerimeterVertices(nextVerts);
+            safeStorage.setItem('agrimap_sandbox_perimeter_vertices', JSON.stringify(nextVerts));
+
+            const targetSlopeId = selectedLayerId.startsWith('slope') ? selectedLayerId : 'slope_1';
+            setSlopeObjects(prev => {
+                const updated = prev.map(s => s.id === targetSlopeId ? { ...s, vertices: (s.vertices || []).slice(0, -1) } : s);
+                safeStorage.setItem('agrimap_sandbox_slope_objects', JSON.stringify(updated));
+                return updated;
             });
+
+            setTerrainCounter(c => c + 1);
+            window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
             toast.info(isKa ? 'ბოლო პერიმეტრის წერტილი წაიშალა' : 'Deleted last perimeter vertex');
             return;
         }
@@ -1864,23 +2911,197 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
 
     // Delete Whole Slope (Spine profile points & custom perimeter)
     const handleDeleteWholeSlope = () => {
+        const targetHillId = selectedLayerId.startsWith('hill') ? selectedLayerId : 'hill_1';
         const clearedProfile: HillSpineProfile = {
-            id: `spine-${Date.now()}`,
-            name: 'Custom Ridge Slope',
+            id: targetHillId,
+            name: 'Cleared Slope',
             enabled: false,
             points: []
         };
         setHillSpineProfile(clearedProfile);
         safeStorage.removeItem('agrimap_sandbox_hill_spine_profile');
         setActiveSpineProfilesCache([]);
+
+        // Clear from hillProfiles
+        setHillProfiles(prev => {
+            const updated = prev.filter(h => h.id !== targetHillId && !h.id.startsWith('spine-'));
+            safeStorage.setItem('agrimap_sandbox_hill_profiles', JSON.stringify(updated));
+            return updated;
+        });
+
         setCustomSlopePerimeter([]);
+        setPerimeterVertices([]);
         safeStorage.removeItem('agrimap_sandbox_custom_perimeter');
+        safeStorage.removeItem('agrimap_sandbox_perimeter_vertices');
+        setSlopeObjects(prev => {
+            const targetSlopeId = selectedLayerId.startsWith('slope') ? selectedLayerId : 'slope_1';
+            const updated = prev.filter(s => s.id !== targetSlopeId);
+            safeStorage.setItem('agrimap_sandbox_slope_objects', JSON.stringify(updated));
+            return updated;
+        });
         pointHistoryRef.current = [];
         setActivePointId('');
         setLastEditedPointId(null);
+        setSelectedLayerId('base_grid');
         setIsSlopeSculptorOpen(false);
         setTerrainCounter(c => c + 1);
-        toast.success(isKa ? 'მთელი რელიეფი და ქედი წაიშალა' : 'Whole slope & perimeter deleted');
+        window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
+        toast.success(isKa ? 'ბორცვი/ფერდობი მთლიანად წაიშალა 2D და 3D-დან' : 'Hill/Slope deleted completely from 2D & 3D');
+    };
+
+    // =========================================================================
+    // IMPORT FROM MAP PLANNER TO LABS (Registered Company Polygon & Components)
+    // =========================================================================
+    const handleImportBoundaryOnly = (coords: [number, number][], name: string, areaHa: number) => {
+        if (!coords || coords.length < 3) {
+            toast.error(isKa ? 'საზღვრის პოლიგონს მინიმუმ 3 წერტილი სჭირდება' : 'Boundary polygon must have at least 3 points');
+            return;
+        }
+
+        // 1. Set custom slope perimeter coordinates
+        setCustomSlopePerimeter(coords);
+        safeStorage.setItem('agrimap_sandbox_custom_perimeter', JSON.stringify(coords));
+
+        // 2. Build 3D perimeter vertices
+        const vertices: PerimeterSlopeVertex[] = coords.map((c, i) => ({
+            id: `boundary-v-${i + 1}`,
+            lat: c[0],
+            lng: c[1],
+            elevationOffsetM: 0
+        }));
+        setPerimeterVertices(vertices);
+        safeStorage.setItem('agrimap_sandbox_perimeter_vertices', JSON.stringify(vertices));
+
+        // 3. Register as active slope layer
+        const boundarySlope: PerimeterSlopeObject = {
+            id: 'slope_boundary',
+            name: `${name} (Boundary)`,
+            enabled: true,
+            locked: false,
+            hasRoadZeroLevel: true,
+            vertices
+        };
+        setSlopeObjects(prev => {
+            const filtered = prev.filter(s => s.id !== 'slope_boundary');
+            const next = [boundarySlope, ...filtered];
+            safeStorage.setItem('agrimap_sandbox_slope_objects', JSON.stringify(next));
+            return next;
+        });
+        setSelectedLayerId('slope_boundary');
+
+        // 4. Center map on imported boundary polygon
+        const latSum = coords.reduce((acc, c) => acc + c[0], 0);
+        const lngSum = coords.reduce((acc, c) => acc + c[1], 0);
+        const cLat = latSum / coords.length;
+        const cLng = lngSum / coords.length;
+        setFlyTarget({ lat: cLat, lng: cLng, zoom: 17, timestamp: Date.now() });
+
+        setTerrainCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
+        toast.success(isKa 
+            ? `იმპორტირებულია საზღვრის პოლიგონი: ${name} (${areaHa} ჰა)` 
+            : `Imported company boundary polygon: ${name} (${areaHa} ha)`);
+    };
+
+    const handleImportSelectedComponents = (selected: {
+        importBoundary: boolean;
+        boundaryCoords?: [number, number][];
+        boundaryName?: string;
+        boundaryAreaHa?: number;
+        sectors: AreaPlantationFeature[];
+        trenches: LinePlantationFeature[];
+        cameras: CameraPlantationFeature[];
+        includeSeedlings: boolean;
+    }) => {
+        let importedCount = 0;
+
+        // 1. Boundary Polygon
+        if (selected.importBoundary && selected.boundaryCoords && selected.boundaryCoords.length >= 3) {
+            handleImportBoundaryOnly(
+                selected.boundaryCoords, 
+                selected.boundaryName || 'Company Boundary', 
+                selected.boundaryAreaHa || 0
+            );
+            importedCount++;
+        }
+
+        // 2. Sectors (imported as distinct 3D Slope Layers in Layer Tree)
+        if (selected.sectors && selected.sectors.length > 0) {
+            const newSlopeLayers: PerimeterSlopeObject[] = selected.sectors.map((sec, idx) => ({
+                id: `slope_sec_${sec.id || idx}`,
+                name: sec.name || `Sector ${idx + 1}`,
+                enabled: true,
+                locked: false,
+                hasRoadZeroLevel: true,
+                vertices: (sec.geometry || []).map((c: any, vIdx: number) => ({
+                    id: `sec-${sec.id}-v-${vIdx + 1}`,
+                    lat: Array.isArray(c) ? c[0] : c.lat,
+                    lng: Array.isArray(c) ? c[1] : c.lng,
+                    elevationOffsetM: 0
+                }))
+            }));
+            setSlopeObjects(prev => {
+                const combined = [...prev, ...newSlopeLayers];
+                safeStorage.setItem('agrimap_sandbox_slope_objects', JSON.stringify(combined));
+                return combined;
+            });
+            importedCount += selected.sectors.length;
+        }
+
+        // 3. Cameras
+        if (selected.cameras && selected.cameras.length > 0) {
+            const newCams: PlantationCamera[] = selected.cameras.map((c: any, idx: number) => ({
+                id: `cam-imported-${c.id || Date.now()}-${idx}`,
+                name: c.name || `Camera ${idx + 1}`,
+                channel: (testCameras.length + idx + 1),
+                model: 'Tiandy SuperStarlight 4K',
+                ipAddress: `192.168.1.${140 + idx}`,
+                rtspPort: 554,
+                locationName: c.name || 'Imported Camera',
+                lat: Array.isArray(c.geometry) ? c.geometry[0] : (c.lat || baseLat),
+                lng: Array.isArray(c.geometry) ? c.geometry[1] : (c.lng || baseLng),
+                mountHeightM: 6,
+                azimuthDeg: c.properties?.azimuth || c.azimuthDeg || 0,
+                fovAngleDeg: c.properties?.fov || c.fovAngleDeg || 85,
+                rangeM: c.properties?.rangeM || c.rangeM || 70,
+                tiltAngleDeg: 5,
+                isPtz: false,
+                isNightVision: true,
+                status: 'ONLINE' as const
+            }));
+            setTestCameras(prev => {
+                const combined = [...prev, ...newCams];
+                safeStorage.setItem('agrimap_sandbox_test_cameras', JSON.stringify(combined));
+                return combined;
+            });
+            importedCount += selected.cameras.length;
+        }
+
+        // 4. Trenches (converted into drone survey mission waypoints)
+        if (selected.trenches && selected.trenches.length > 0) {
+            const allTrenchPoints = selected.trenches.flatMap((t, tIdx) => 
+                (t.geometry || []).map((pt: any, ptIdx: number) => ({
+                    id: `wp-trench-${tIdx}-${ptIdx}`,
+                    lat: Array.isArray(pt) ? pt[0] : pt.lat,
+                    lng: Array.isArray(pt) ? pt[1] : pt.lng,
+                    altM: 35,
+                    leg: (tIdx % 2 === 0 ? 'outbound' : 'return') as 'outbound' | 'return'
+                }))
+            );
+            if (allTrenchPoints.length >= 2) {
+                setTestDroneMission(prev => ({
+                    ...prev,
+                    waypoints: allTrenchPoints
+                }));
+            }
+            importedCount += selected.trenches.length;
+        }
+
+        setTerrainCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
+        toast.success(isKa 
+            ? `წარმატებით იმპორტირდა ${importedCount} ელემენტი დამგეგმავიდან!` 
+            : `Successfully imported ${importedCount} items from Map Planner!`);
     };
 
     // Clear Map Fully (Remove all cameras, drone waypoints, sensors, workers, and slopes)
@@ -1892,7 +3113,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
 
         // 2. Clear slope & perimeter
         const clearedProfile: HillSpineProfile = {
-            id: `spine-${Date.now()}`,
+            id: 'hill_1',
             name: 'Cleared Slope',
             enabled: false,
             points: []
@@ -1901,7 +3122,13 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
         safeStorage.removeItem('agrimap_sandbox_hill_spine_profile');
         setActiveSpineProfilesCache([]);
         setCustomSlopePerimeter([]);
+        setPerimeterVertices([]);
         safeStorage.removeItem('agrimap_sandbox_custom_perimeter');
+        safeStorage.removeItem('agrimap_sandbox_perimeter_vertices');
+        setSlopeObjects([]);
+        safeStorage.removeItem('agrimap_sandbox_slope_objects');
+        setHillProfiles([]);
+        safeStorage.removeItem('agrimap_sandbox_hill_profiles');
         pointHistoryRef.current = [];
         setActivePointId('');
         setLastEditedPointId(null);
@@ -1927,16 +3154,19 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
         setTestWeatherStations([]);
         safeStorage.removeItem('agrimap_sandbox_test_weather_stations');
 
-        // 5. Clear selections and popups
+        // 6. Clear selections and popups
         setSelectedObject(null);
         setIsSlopeSculptorOpen(false);
         setIsEditingDetails(false);
         setContextMenu(null);
         setIsClearMapConfirmOpen(false);
+        setSelectedLayerId('base_grid');
         setTerrainCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
 
         toast.success(isKa ? 'რუკა სრულად გასუფთავდა (ყველა მოწყობილობა და რელიეფი წაიშალა)' : 'Map fully cleared: all devices, slopes & waypoints removed');
     };
+
 
     // Add Spine Point directly at Coordinates (from 2D or 3D clicks)
     const handleAddSpinePointAtCoords = (coords: { lat: number; lng: number; peakHeightM?: number; widthM?: number }) => {
@@ -1982,21 +3212,94 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
             return;
         }
 
-        if (activeTool === 'draw_perimeter') {
-            setCustomSlopePerimeter(prev => {
-                const next: [number, number][] = [...prev, [lat, lng]];
-                safeStorage.setItem('agrimap_sandbox_custom_perimeter', JSON.stringify(next));
-                return next;
+        if (activeTool === 'pick_plantation' || isPickingPlantation) {
+            const picked: [number, number] = [
+                Math.round(lat * 1e6) / 1e6,
+                Math.round(lng * 1e6) / 1e6
+            ];
+            setLabsPlantationCenter(picked);
+            safeStorage.setItem('agrimap_labs_saved_plantation_center', JSON.stringify(picked));
+            setCurrentCenter(picked);
+            setIsPickingPlantation(false);
+            setActiveTool('select');
+            toast.success(isKa 
+                ? `✓ "აგრობარი" პლანტაციის ადგილი წარმატებით შეინახა: [${picked[0].toFixed(5)}, ${picked[1].toFixed(5)}]` 
+                : `✓ Agrobari plantation location saved: [${picked[0].toFixed(5)}, ${picked[1].toFixed(5)}]`);
+            return;
+        }
+
+        if (activeTool === 'draw_slope' || activeTool === 'draw_perimeter') {
+            const newVertex: PerimeterSlopeVertex = {
+                id: `pv-${Date.now()}-${customSlopePerimeter.length + 1}`,
+                lat,
+                lng,
+                elevationOffsetM: drawingPointHeight
+            };
+            const nextCoords: [number, number][] = [...customSlopePerimeter, [lat, lng]];
+            setCustomSlopePerimeter(nextCoords);
+            safeStorage.setItem('agrimap_sandbox_custom_perimeter', JSON.stringify(nextCoords));
+
+            const nextVertices: PerimeterSlopeVertex[] = nextCoords.map((c, i) => {
+                if (i < perimeterVertices.length && perimeterVertices[i]) {
+                    return { ...perimeterVertices[i], lat: c[0], lng: c[1] };
+                }
+                return i === nextCoords.length - 1 ? newVertex : {
+                    id: `pv-${Date.now()}-${i + 1}`,
+                    lat: c[0],
+                    lng: c[1],
+                    elevationOffsetM: drawingPointHeight
+                };
             });
+            setPerimeterVertices(nextVertices);
+            safeStorage.setItem('agrimap_sandbox_perimeter_vertices', JSON.stringify(nextVertices));
+            
+            // Sync with active slope layer in slopeObjects
+            const targetSlopeId = selectedLayerId.startsWith('slope') ? selectedLayerId : 'slope_1';
+            setSlopeObjects(prev => {
+                const exists = prev.some(s => s.id === targetSlopeId);
+                const updated = exists
+                    ? prev.map(s => s.id === targetSlopeId ? { ...s, vertices: nextVertices, enabled: true } : s)
+                    : [...prev.filter(s => s.id !== targetSlopeId), {
+                        id: targetSlopeId,
+                        name: 'Slope 1 (Uneven Terrain)',
+                        enabled: true,
+                        locked: false,
+                        hasRoadZeroLevel: true,
+                        vertices: nextVertices
+                    }];
+                safeStorage.setItem('agrimap_sandbox_slope_objects', JSON.stringify(updated));
+                return updated;
+            });
+            setSelectedLayerId(targetSlopeId);
+
             pointHistoryRef.current.push('perimeter-last');
             if (typeof window !== 'undefined' && window.history) {
                 try { window.history.pushState({ sandboxPointEdit: true, timestamp: Date.now() }, ''); } catch (e) {}
             }
-            toast.info(isKa ? `პერიმეტრის წერტილი #${customSlopePerimeter.length + 1} დაემატა` : `Perimeter point #${customSlopePerimeter.length + 1} placed`);
+            setTerrainCounter(c => c + 1);
+            window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
+
+            const prevV = perimeterVertices[perimeterVertices.length - 1];
+            let segDetail = '';
+            if (prevV) {
+                const seg = calculatePointToPointSegment(
+                    perimeterVertices.length - 1, 
+                    perimeterVertices.length,
+                    { lat: prevV.lat, lng: prevV.lng, z: prevV.elevationOffsetM, label: `V${perimeterVertices.length}` },
+                    { lat: newVertex.lat, lng: newVertex.lng, z: newVertex.elevationOffsetM, label: `V${nextVertices.length}` }
+                );
+                const arrow = seg.type === 'incline' ? '↗' : seg.type === 'decline' ? '↘' : '→';
+                const sign = seg.elevationDeltaM > 0 ? '+' : '';
+                segDetail = ` • 📏 ${seg.distanceM}m • ${arrow} ${sign}${seg.inclinePct}% (${seg.angleDeg}°)`;
+            }
+
+            toast.info(isKa 
+                ? `ფერდობის წერტილი #${nextVertices.length} დაემატა (Z: +${newVertex.elevationOffsetM}მ)${segDetail}` 
+                : `Slope vertex #${nextVertices.length} placed (Z: +${newVertex.elevationOffsetM}m)${segDetail}`);
             return;
         }
 
-        if (activeTool === 'draw_slope' || activeTool === 'add_spine_point') {
+        if (activeTool === 'draw_hill' || activeTool === 'add_spine_point') {
             const count = hillSpineProfile.points.length;
             const letter = String.fromCharCode(65 + count);
             const lastPt = hillSpineProfile.points[count - 1] || hillSpineProfile.points[0];
@@ -2014,13 +3317,30 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                 widthM: lastPt?.widthM || 45,
                 startOffsetM: 0,
                 endDistanceM: Math.round((lastPt?.widthM || 45) * 1.25),
-                peakHeightM: 25,
+                peakHeightM: drawingPointHeight,
                 slopeFalloff: 'cosine'
             };
-            const next = { ...hillSpineProfile, enabled: true, points: sanitizeSpinePoints([...hillSpineProfile.points, newPt]) };
+            const targetHillId = selectedLayerId.startsWith('hill') ? selectedLayerId : 'hill_1';
+            const hillName = (hillSpineProfile.name && !hillSpineProfile.name.toLowerCase().includes('cleared'))
+                ? hillSpineProfile.name
+                : `Hill ${targetHillId.replace('hill_', '') || '1'}`;
+            const next: HillSpineProfile = {
+                ...hillSpineProfile,
+                id: targetHillId,
+                name: hillName,
+                enabled: true,
+                points: sanitizeSpinePoints([...hillSpineProfile.points, newPt])
+            };
             setHillSpineProfile(next);
             safeStorage.setItem('agrimap_sandbox_hill_spine_profile', JSON.stringify(next));
             setActiveSpineProfilesCache([next]);
+            
+            // Sync with hillProfiles
+            setHillProfiles(prev => {
+                const cleaned = prev.filter(h => h.id !== targetHillId && h.id !== hillSpineProfile.id);
+                return [...cleaned, next];
+            });
+
             setActivePointId(newPt.id);
             setLastEditedPointId(newPt.id);
             pointHistoryRef.current.push(newPt.id);
@@ -2032,7 +3352,24 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
             if (activeTool === 'add_spine_point') {
                 setActiveTool('select');
             }
-            toast.success(isKa ? `ქედის წერტილი ${newPt.name} დაემატა (${count + 1} წერტილი)` : `Ridge point ${newPt.name} placed (#${count + 1})`);
+            window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
+
+            let segDetail = '';
+            if (lastPt && count > 0) {
+                const seg = calculatePointToPointSegment(
+                    count - 1,
+                    count,
+                    { lat: lastPt.lat, lng: lastPt.lng, z: lastPt.peakHeightM, label: lastPt.name },
+                    { lat: newPt.lat, lng: newPt.lng, z: newPt.peakHeightM, label: newPt.name }
+                );
+                const arrow = seg.type === 'incline' ? '↗' : seg.type === 'decline' ? '↘' : '→';
+                const sign = seg.elevationDeltaM > 0 ? '+' : '';
+                segDetail = ` • 📏 ${seg.distanceM}m • ${arrow} ${sign}${seg.inclinePct}% (${seg.angleDeg}°)`;
+            }
+
+            toast.success(isKa 
+                ? `ბორცვის წერტილი ${newPt.name} დაემატა (+${newPt.peakHeightM}მ)${segDetail}` 
+                : `Hill point ${newPt.name} placed (+${newPt.peakHeightM}m)${segDetail}`);
             return;
         }
 
@@ -2571,44 +3908,34 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
     };
 
     // Clean, modern, compact circular Leaflet divIcons with Direction Arrow & Tilt
+    // Clean, modern, compact circular Leaflet divIcons with Direction Arrow & Tilt (no cluttering text annotation)
     const createCleanCameraIcon = (c: PlantationCamera, isSelected: boolean, isHidden: boolean = false) => {
         const color = isHidden ? '#64748b' : isSelected ? '#10b981' : '#2563eb';
-        const border = isHidden ? '#475569' : isSelected ? '#059669' : '#1d4ed8';
         const heading = c.azimuthDeg || 0;
         const opacity = isHidden ? '0.45' : '1';
 
         return L.divIcon({
             className: 'clean-cam-icon',
             html: `
-                <div style="position: relative; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -50%); cursor: grab; opacity: ${opacity};">
+                <div style="position: relative; display: flex; align-items: center; justify-content: center; cursor: grab; opacity: ${opacity};">
                     <div style="
-                        width: 30px; height: 30px; border-radius: 50%;
+                        width: 32px; height: 32px; border-radius: 50%;
                         background: ${color}; border: 2.5px solid #ffffff;
-                        box-shadow: 0 4px 12px rgba(0,0,0,0.55);
+                        box-shadow: 0 4px 14px rgba(0,0,0,0.65);
                         display: flex; align-items: center; justify-content: center;
                         color: white; position: relative;
                         transition: transform 0.2s;
                         transform: scale(${isSelected ? 1.25 : 1});
                     ">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate(${heading}deg); transition: transform 0.2s;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate(${heading}deg); transition: transform 0.2s;">
                             <polygon points="12 2 19 21 12 17 5 21 12 2" fill="white" />
                         </svg>
-                        ${isHidden ? '<div style="position: absolute; top:-3px; right:-3px; background:#ef4444; width:10px; height:10px; border-radius:50%; border:1.5px solid white;"></div>' : ''}
-                    </div>
-                    <div style="
-                        margin-top: 2px; background: rgba(15, 23, 42, 0.92);
-                        color: #ffffff; font-size: 8px; font-weight: 800; font-family: monospace;
-                        padding: 1.5px 5px; border-radius: 5px; border: 1px solid ${border};
-                        white-space: nowrap; pointer-events: none;
-                        display: flex; align-items: center; gap: 3px;
-                    ">
-                        <span>CH0${c.channel}</span>
-                        <span style="color:#f59e0b; font-size:7.5px;">${c.tiltAngleDeg || 4}°</span>
+                        ${isHidden ? '<div style="position: absolute; top:-2px; right:-2px; background:#ef4444; width:10px; height:10px; border-radius:50%; border:1.5px solid white;"></div>' : ''}
                     </div>
                 </div>
             `,
-            iconSize: [32, 44],
-            iconAnchor: [16, 22]
+            iconSize: [32, 32],
+            iconAnchor: [16, 16]
         });
     };
 
@@ -2699,7 +4026,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
     const createCleanWeatherIcon = (station: SandboxWeatherStation, isSelected: boolean) => L.divIcon({
         className: 'clean-weather-icon',
         html: `
-            <div style="position: relative; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -50%); cursor: pointer;">
+            <div style="position: relative; display: flex; align-items: center; justify-content: center; transform: translate(-50%, -50%); cursor: pointer;">
                 <div style="
                     width: 32px; height: 32px; border-radius: 12px;
                     background: linear-gradient(135deg, #f97316, #ea580c);
@@ -2710,46 +4037,38 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                     transform: scale(${isSelected ? 1.25 : 1});
                     transition: transform 0.2s;
                 ">🌦️</div>
-                <div style="
-                    margin-top: 2px; background: rgba(15, 23, 42, 0.94);
-                    color: #fed7aa; font-size: 8px; font-weight: 800; font-family: monospace;
-                    padding: 1px 5px; border-radius: 5px; border: 1px solid rgba(249, 115, 22, 0.6);
-                    white-space: nowrap; pointer-events: none;
-                ">
-                    ${station.tempC}°C • ${station.humidityPct}%
-                </div>
             </div>
         `,
-        iconSize: [36, 44],
-        iconAnchor: [18, 22]
+        iconSize: [32, 32],
+        iconAnchor: [16, 16]
     });
 
     return (
         <div className="relative w-full h-full min-h-[calc(100vh-64px)] flex-1 overflow-hidden select-none bg-slate-950 font-sans">
-            {/* Interactive Tool Placement Alert Banner */}
+            {/* Non-intrusive tool status chip (does not obstruct map buttons or drawing area) */}
             {activeTool !== 'select' && (
-                <div className="absolute top-16 inset-x-4 sm:inset-x-20 z-[1150] p-2.5 bg-slate-900/95 border border-cyan-500/80 rounded-2xl shadow-2xl backdrop-blur-xl flex items-center justify-between text-xs text-white animate-in slide-in-from-top-2 duration-150">
-                    <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
-                        <span className="font-bold">
-                            {activeTool === 'add_camera' && (isKa ? '📹 დააწკაპუნეთ რუკაზე ახალი კამერის დასამატებლად' : '📹 Click anywhere on the map to add a surveillance camera')}
-                            {activeTool === 'drone_waypoint' && (isKa ? '🛸 დააწკაპუნეთ რუკაზე დრონის ფრენის წერტილის დასამატებლად' : '🛸 Click anywhere on the map to place a drone flight waypoint')}
-                            {activeTool === 'add_worker' && (isKa ? '👷 დააწკაპუნეთ რუკაზე მუშის GPS ტრეკერის დასამატებლად' : '👷 Click anywhere on the map to place a worker GPS beacon')}
-                            {activeTool === 'add_soil' && (isKa ? '🌱 დააწკაპუნეთ რუკაზე ნიადაგის NPK სენსორის დასამატებლად' : '🌱 Click anywhere on the map to place a Soil NPK sensor')}
-                            {activeTool === 'add_water' && (isKa ? '💧 დააწკაპუნეთ რუკაზე წყლის ხარჯის სადგურის დასამატებლად' : '💧 Click anywhere on the map to place a water flow station')}
-                            {activeTool === 'add_weather' && (isKa ? '🌦️ დააწკაპუნეთ რუკაზე მეტეო სადგურის დასამატებლად' : '🌦️ Click anywhere on the map to place an Agro-Weather station')}
-                            {activeTool === 'live_stream' && (isKa ? '📹 დააწკაპუნეთ ნებისმიერ კამერაზე პირდაპირი ეთერის სანახავად' : '📹 Click on any camera marker on the map to view its live RTSP/WebRTC video stream')}
-                            {activeTool === 'move_camera' && (isKa ? `📍 დააწკაპუნეთ რუკაზე "${activeCamera.name}"-ის ახალ პოზიციაზე გადასაყვანად` : `📍 Click on map to relocate "${activeCamera.name}" or drag its marker`)}
-                            {activeTool === 'add_spine_point' && (isKa ? '🏔️ დააწკაპუნეთ რუკაზე ახალი განივი ჭრილის/წერტილის დასამატებლად' : '🏔️ Click on map to add cross-section point along slope')}
-                        </span>
-                    </div>
+                <div className="absolute top-16 left-4 z-[1150] px-3 py-1.5 bg-slate-900/90 border border-cyan-500/50 rounded-full shadow-lg backdrop-blur-md flex items-center gap-2 text-xs text-white animate-in fade-in duration-100">
+                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shrink-0" />
+                    <span className="text-[11px] font-semibold text-slate-200 truncate max-w-[280px] sm:max-w-md">
+                        {activeTool === 'add_camera' && (isKa ? '📹 დააწკაპუნეთ რუკაზე კამერის დასასმელად' : '📹 Click to place camera')}
+                        {activeTool === 'drone_waypoint' && (isKa ? '🛸 დააწკაპუნეთ დრონის წერტილის დასამატებლად' : '🛸 Click to add drone waypoint')}
+                        {activeTool === 'add_worker' && (isKa ? '👷 დააწკაპუნეთ მუშის დასასმელად' : '👷 Click to place worker GPS')}
+                        {activeTool === 'add_soil' && (isKa ? '🌱 დააწკაპუნეთ ნიადაგის სენსორის დასასმელად' : '🌱 Click to place soil sensor')}
+                        {activeTool === 'add_water' && (isKa ? '💧 დააწკაპუნეთ წყლის სადგურის დასასმელად' : '💧 Click to place water station')}
+                        {activeTool === 'add_weather' && (isKa ? '🌦️ დააწკაპუნეთ მეტეო სადგურის დასასმელად' : '🌦️ Click to place weather station')}
+                        {activeTool === 'live_stream' && (isKa ? '📹 აირჩიეთ კამერა სტრიმისთვის' : '📹 Select camera for stream')}
+                        {activeTool === 'move_camera' && (isKa ? `📍 აირჩიეთ ახალი პოზიცია` : `📍 Select new position`)}
+                        {activeTool === 'add_spine_point' && (isKa ? '🏔️ დააწკაპუნეთ ახალი განივი ჭრილის დასამატებლად' : '🏔️ Click to add cross-section point')}
+                        {activeTool === 'draw_slope' && (isKa ? '📐 დააწკაპუნეთ რუკაზე ფერდობის პერიმეტრის წერტილების დასასმელად (P1, P2...)' : '📐 Click to place slope perimeter vertices (P1, P2, P3...)')}
+                        {activeTool === 'draw_perimeter' && (isKa ? '📐 დააწკაპუნეთ პერიმეტრის წერტილების დასასმელად' : '📐 Click to place perimeter points')}
+                    </span>
                     <button
                         type="button"
                         onClick={() => setActiveTool('select')}
-                        className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold flex items-center gap-1 cursor-pointer"
+                        className="p-0.5 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 cursor-pointer"
+                        title={isKa ? 'დასრულება' : 'Close'}
                     >
-                        <X size={13} />
-                        <span>Cancel</span>
+                        <X size={12} />
                     </button>
                 </div>
             )}
@@ -2816,9 +4135,13 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                         attributionControl={false}
                     >
                         <MapResizeController is3dMainView={is3dMainView} isPiPHidden={isPiPHidden} />
-                        <MapRecenterController center={currentCenter} />
+                        <MapRecenterController center={currentCenter} trigger={recenterTrigger} />
                         <MapFlyController flyTarget={flyTarget} />
-                        <SandboxMapEvents activeTool={activeTool} onMapClick={handleMapClick} />
+                        <SandboxMapEvents 
+                            activeTool={activeTool} 
+                            onMapClick={handleMapClick} 
+                            onMapMove={(lat, lng) => setCurrentCenter([lat, lng])}
+                        />
 
                 {tileMode === 'satellite' ? (
                     <TileLayer
@@ -2833,7 +4156,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                 )}
 
                 {/* Planting Mound Perimeter Outline Draped on Imagery (Purple line matching user sketch) */}
-                {visibility.showMoundSlope !== false && moundPerimeterPolygon.length > 2 && (
+                {layerVisibility.hill1 !== false && visibility.showMoundSlope !== false && hillSpineProfile.enabled !== false && moundPerimeterPolygon.length > 2 && (
                     <Polygon
                         positions={moundPerimeterPolygon}
                         pathOptions={{
@@ -2851,7 +4174,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                 )}
 
                 {/* Custom Hand-Drawn Perimeter Boundary Polygon & Draggable Vertices (Matching user sketch) */}
-                {customSlopePerimeter.length >= 3 && (
+                {layerVisibility.slope1 !== false && customSlopePerimeter.length >= 3 && (
                     <Polygon
                         positions={customSlopePerimeter}
                         pathOptions={{
@@ -2868,7 +4191,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                     </Polygon>
                 )}
 
-                {customSlopePerimeter.length > 0 && (
+                {layerVisibility.slope1 !== false && customSlopePerimeter.length > 0 && (
                     <Polyline
                         positions={customSlopePerimeter}
                         pathOptions={{
@@ -2879,12 +4202,58 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                     />
                 )}
 
+                {/* POINT-TO-POINT DISTANCE & INCLINE/DECLINE BADGES ALONG PERIMETER SLOPE */}
+                {layerVisibility.slope1 !== false && visibility.showMoundSlope !== false && (selectedLayerId === 'slope_1' || selectedLayerId.startsWith('slope') || activeTool === 'draw_slope' || activeTool === 'draw_perimeter' || isSlopeSculptorOpen) && slopeSegments.map((seg, idx) => {
+                    const p1 = perimeterVertices[seg.fromIndex];
+                    const p2 = perimeterVertices[seg.toIndex];
+                    if (!p1 || !p2) return null;
+                    const midLat = (p1.lat + p2.lat) / 2;
+                    const midLng = (p1.lng + p2.lng) / 2;
+                    const arrow = seg.type === 'incline' ? '↗' : seg.type === 'decline' ? '↘' : '→';
+                    const sign = seg.elevationDeltaM > 0 ? '+' : '';
+                    const color = seg.type === 'incline' ? '#10b981' : seg.type === 'decline' ? '#f43f5e' : '#ec4899';
+                    return (
+                        <Marker
+                            key={`slope-seg-badge-${idx}`}
+                            position={[midLat, midLng]}
+                            interactive={false}
+                            icon={L.divIcon({
+                                className: 'slope-segment-badge',
+                                html: `
+                                    <div style="
+                                        background: rgba(15, 23, 42, 0.94);
+                                        border: 1.5px solid ${color};
+                                        border-radius: 9999px;
+                                        padding: 2px 7px;
+                                        font-family: ui-monospace, monospace;
+                                        font-size: 10px;
+                                        font-weight: 800;
+                                        color: #ffffff;
+                                        box-shadow: 0 4px 12px rgba(0,0,0,0.65);
+                                        display: flex;
+                                        align-items: center;
+                                        gap: 4px;
+                                        white-space: nowrap;
+                                        pointer-events: none;
+                                        transform: translate(-50%, -50%);
+                                    ">
+                                        <span style="color: #f472b6;">${seg.distanceM}m</span>
+                                        <span style="color: ${color}; font-weight: 900;">${arrow} ${sign}${seg.inclinePct}%</span>
+                                        <span style="color: #94a3b8; font-size: 8px;">(${sign}${seg.elevationDeltaM}m)</span>
+                                    </div>
+                                `,
+                                iconSize: [0, 0]
+                            })}
+                        />
+                    );
+                })}
+
                 {/* Draggable Markers for Every Vertex of the Perimeter (Reshape perimeter freely with mouse) */}
-                {customSlopePerimeter.map((pt, idx) => (
+                {layerVisibility.slope1 !== false && customSlopePerimeter.map((pt, idx) => (
                     <Marker
                         key={`custom-perim-pt-${idx}`}
                         position={pt}
-                        draggable={true}
+                        draggable={!layerLocks.slope1}
                         icon={L.divIcon({
                             className: `custom-perim-marker-${idx}`,
                             html: `
@@ -2908,13 +4277,45 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                                 setCustomSlopePerimeter(prev => {
                                     const copy = [...prev];
                                     copy[idx] = [pos.lat, pos.lng];
+                                    safeStorage.setItem('agrimap_sandbox_custom_perimeter', JSON.stringify(copy));
                                     return copy;
                                 });
+                                setPerimeterVertices(prev => {
+                                    const copy = [...prev];
+                                    if (copy[idx]) {
+                                        copy[idx] = { ...copy[idx], lat: pos.lat, lng: pos.lng };
+                                    }
+                                    safeStorage.setItem('agrimap_sandbox_perimeter_vertices', JSON.stringify(copy));
+                                    return copy;
+                                });
+                                const targetSlopeId = selectedLayerId.startsWith('slope') ? selectedLayerId : 'slope_1';
+                                setSlopeObjects(prev => {
+                                    const updated = prev.map(s => {
+                                        if (s.id === targetSlopeId && s.vertices?.[idx]) {
+                                            const copyV = [...s.vertices];
+                                            copyV[idx] = { ...copyV[idx], lat: pos.lat, lng: pos.lng };
+                                            return { ...s, vertices: copyV };
+                                        }
+                                        return s;
+                                    });
+                                    safeStorage.setItem('agrimap_sandbox_slope_objects', JSON.stringify(updated));
+                                    return updated;
+                                });
+                                setTerrainCounter(c => c + 1);
+                                window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
                             },
                             contextmenu: (e) => {
                                 (e as any).originalEvent?.preventDefault();
-                                setCustomSlopePerimeter(prev => prev.filter((_, i) => i !== idx));
-                                toast.info(`Perimeter Point P${idx + 1} removed`);
+                                const targetV = perimeterVertices[idx];
+                                if (targetV) {
+                                    handleDeletePerimeterVertex(targetV.id);
+                                } else {
+                                    setCustomSlopePerimeter(prev => prev.filter((_, i) => i !== idx));
+                                    setPerimeterVertices(prev => prev.filter((_, i) => i !== idx));
+                                    setTerrainCounter(c => c + 1);
+                                    window.dispatchEvent(new CustomEvent('agrimap:terrain_mesh_sync'));
+                                    toast.info(`Perimeter Point P${idx + 1} removed`);
+                                }
                             }
                         }}
                     >
@@ -2924,74 +4325,126 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                     </Marker>
                 ))}
 
-                {/* RIDGE SPINE LINE (LENGTH OF THIS LINE VISIBLE DIRECTLY ON MAP) */}
-                {visibility.showMoundSlope !== false && hillSpineProfile.points.length >= 2 && (
+                {/* PHOTO PINS ON 2D MAP (EXIF GPS & COMPASS AZIMUTH ARROW) */}
+                {layerVisibility.photoPins !== false && photoPins.map((pin) => (
+                    <Marker
+                        key={`map-photo-pin-${pin.id}`}
+                        position={[pin.lat, pin.lng]}
+                        icon={L.divIcon({
+                            className: `map-photo-pin-${pin.id}`,
+                            html: `
+                                <div style="position: relative; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                                    <div style="
+                                        position: absolute; width: 42px; height: 42px; border-radius: 50%;
+                                        border: 2px dashed #06b6d4; transform: rotate(${pin.azimuthDeg}deg);
+                                        display: flex; align-items: flex-start; justify-content: center; pointer-events: none;
+                                    ">
+                                        <div style="width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 8px solid #06b6d4; margin-top: -6px;"></div>
+                                    </div>
+                                    <div style="
+                                        width: 28px; height: 28px; border-radius: 10px; background: #082f49;
+                                        border: 2px solid #38bdf8; color: #ffffff; display: flex; align-items: center; justify-content: center;
+                                        font-size: 13px; box-shadow: 0 4px 12px rgba(0,0,0,0.8);
+                                    ">
+                                        📷
+                                    </div>
+                                </div>
+                            `,
+                            iconSize: [36, 36],
+                            iconAnchor: [18, 18]
+                        })}
+                        eventHandlers={{
+                            click: () => {
+                                setSelectedPhotoPin(pin);
+                                setIsPhotoModalOpen(true);
+                            }
+                        }}
+                    >
+                        <Tooltip direction="top">
+                            <div className="font-mono text-xs">
+                                📷 <strong>{pin.name}</strong> • {pin.azimuthDeg}° heading • {pin.altitudeM}m ASL
+                                <br />
+                                <span className="text-[10px] text-cyan-400">{isKa ? 'დააწკაპუნეთ ფოტოს სანახავად' : 'Click to inspect photo'}</span>
+                            </div>
+                        </Tooltip>
+                    </Marker>
+                ))}
+
+                {/* RIDGE SPINE LINE (CLEAN, NO INTRUSIVE PERMANENT ANNOTATION BADGE) */}
+                {layerVisibility.hill1 !== false && visibility.showMoundSlope !== false && hillSpineProfile.enabled !== false && hillSpineProfile.points.length >= 2 && (
                     <Polyline
                         positions={hillSpineProfile.points.map(p => [p.lat, p.lng])}
                         pathOptions={{
-                            color: isSlopeSculptorOpen ? '#f59e0b' : '#fbbf24',
-                            weight: isSlopeSculptorOpen ? 5 : 3.5,
+                            color: isSlopeSculptorOpen && (selectedLayerId === 'hill_1' || selectedLayerId.startsWith('hill')) ? '#f59e0b' : '#fbbf24',
+                            weight: isSlopeSculptorOpen && (selectedLayerId === 'hill_1' || selectedLayerId.startsWith('hill')) ? 5 : 3.5,
                             dashArray: '6, 6'
                         }}
                         eventHandlers={{
-                            click: () => setIsSlopeSculptorOpen(true)
+                            click: () => {
+                                setSelectedLayerId('hill_1');
+                                setIsSlopeSculptorOpen(true);
+                            }
                         }}
                     >
-                        <Tooltip permanent={true} direction="top">
-                            <span className="bg-amber-950/95 text-amber-300 font-mono font-black text-xs px-2.5 py-1 rounded-xl border border-amber-500/70 shadow-2xl backdrop-blur-md flex items-center gap-1.5 pointer-events-none">
+                        <Tooltip direction="top">
+                            <span className="font-mono font-bold text-xs">
                                 📏 {isKa ? 'ქედის სიგრძე:' : 'Slope Length:'} {measuredHillLengthM} m
                             </span>
                         </Tooltip>
                     </Polyline>
                 )}
 
-                {/* Interactive Slope Height Handle at Apex (Drag Up/Down to raise/lower peak height via mouse!) */}
-                {visibility.showMoundSlope !== false && slopeApexPoint && (
-                    <Marker
-                        position={[slopeApexPoint.lat, slopeApexPoint.lng]}
-                        draggable={true}
-                        icon={L.divIcon({
-                            className: 'slope-apex-height-handle',
-                            html: `
-                                <div style="
-                                    transform: translateY(-24px);
-                                    background: #f59e0b; color: #020617;
-                                    font-family: monospace; font-weight: 900; font-size: 11px;
-                                    padding: 4px 8px; border-radius: 12px;
-                                    border: 2px solid #ffffff; box-shadow: 0 4px 14px rgba(0,0,0,0.6);
-                                    display: flex; align-items: center; gap: 4px;
-                                    cursor: ns-resize; white-space: nowrap;
-                                ">
-                                    <span>↕️ Height:</span>
-                                    <span style="font-size: 12px; color: #78350f;">+${slopeApexPoint.peakHeightM}m</span>
-                                </div>
-                            `,
-                            iconSize: [120, 32],
-                            iconAnchor: [60, 16]
-                        })}
-                        eventHandlers={{
-                            drag: (e) => {
-                                const pos = e.target.getLatLng();
-                                const deltaM = (pos.lat - slopeApexPoint.lat) * 111111;
-                                const newH = Math.max(2, Math.min(90, Math.round(slopeApexPoint.peakHeightM + deltaM * 0.4)));
-                                updatePointById(slopeApexPoint.id, { peakHeightM: newH });
-                            },
-                            dragend: () => {
-                                toast.success(`Slope Apex Height: +${slopeApexPoint.peakHeightM}m`);
-                            }
-                        }}
-                    >
-                        <Tooltip direction="top">
-                            ↕️ {isKa ? 'სიმაღლის შეცვლა თაგვით (აწევა/დაწევა)' : 'Drag Up/Down with mouse to raise or lower slope height (+m)'}
-                        </Tooltip>
-                    </Marker>
-                )}
+                {/* POINT-TO-POINT DISTANCE & INCLINE/DECLINE BADGES ALONG HILL SPINE */}
+                {layerVisibility.hill1 !== false && visibility.showMoundSlope !== false && hillSpineProfile.enabled !== false && (selectedLayerId === 'hill_1' || selectedLayerId.startsWith('hill') || activeTool === 'draw_hill' || isSlopeSculptorOpen) && hillSegments.map((seg, idx) => {
+                    const p1 = hillSpineProfile.points[seg.fromIndex];
+                    const p2 = hillSpineProfile.points[seg.toIndex];
+                    if (!p1 || !p2) return null;
+                    const midLat = (p1.lat + p2.lat) / 2;
+                    const midLng = (p1.lng + p2.lng) / 2;
+                    const arrow = seg.type === 'incline' ? '↗' : seg.type === 'decline' ? '↘' : '→';
+                    const sign = seg.elevationDeltaM > 0 ? '+' : '';
+                    const color = seg.type === 'incline' ? '#10b981' : seg.type === 'decline' ? '#f43f5e' : '#fbbf24';
+                    return (
+                        <Marker
+                            key={`hill-seg-badge-${idx}`}
+                            position={[midLat, midLng]}
+                            interactive={false}
+                            icon={L.divIcon({
+                                className: 'hill-segment-badge',
+                                html: `
+                                    <div style="
+                                        background: rgba(15, 23, 42, 0.94);
+                                        border: 1.5px solid ${color};
+                                        border-radius: 9999px;
+                                        padding: 2px 7px;
+                                        font-family: ui-monospace, monospace;
+                                        font-size: 10px;
+                                        font-weight: 800;
+                                        color: #ffffff;
+                                        box-shadow: 0 4px 12px rgba(0,0,0,0.65);
+                                        display: flex;
+                                        align-items: center;
+                                        gap: 4px;
+                                        white-space: nowrap;
+                                        pointer-events: none;
+                                        transform: translate(-50%, -50%);
+                                    ">
+                                        <span style="color: #fbbf24;">${seg.distanceM}m</span>
+                                        <span style="color: ${color}; font-weight: 900;">${arrow} ${sign}${seg.inclinePct}%</span>
+                                        <span style="color: #94a3b8; font-size: 8px;">(${sign}${seg.elevationDeltaM}m)</span>
+                                    </div>
+                                `,
+                                iconSize: [0, 0]
+                            })}
+                        />
+                    );
+                })}
 
-                {/* Move Entire Slope Gizmo (Centroid Grab Handle to move the entire slope anywhere on map) */}
-                {visibility.showMoundSlope !== false && hillSpineProfile.points.length >= 2 && (
+                {/* Move Entire Slope Gizmo - ONLY SHOW WHEN HILL 1 IS VISIBLE AND HILL LAYER IS ACTIVE (NEVER WHEN SLOPE LAYER IS ACTIVE) */}
+                {layerVisibility.hill1 !== false && visibility.showMoundSlope !== false && hillSpineProfile.enabled !== false && !selectedLayerId?.startsWith('slope') && selectedLayerId !== 'slope_1' && activeTool !== 'draw_slope' && activeTool !== 'draw_perimeter' && (selectedLayerId === 'hill_1' || selectedLayerId.startsWith('hill') || activeTool === 'draw_hill') && hillSpineProfile.points.length >= 2 && (
                     <Marker
                         position={slopeCentroid}
-                        draggable={true}
+                        draggable={!layerLocks.hill1}
                         icon={L.divIcon({
                             className: 'slope-centroid-move-handle',
                             html: `
@@ -3026,8 +4479,8 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                     </Marker>
                 )}
 
-                {/* CROSS-SECTION WIDTH LINES & DRAGGABLE ENDPOINT HANDLES (RESIZE WIDTH VIA MOUSE) */}
-                {visibility.showMoundSlope !== false && crossSectionBars.map((bar, idx) => {
+                {/* CROSS-SECTION WIDTH LINES & INDEPENDENT ASYMMETRIC HANDLES - ONLY SHOW WHEN HILL 1 IS VISIBLE AND HILL LAYER IS ACTIVE (NEVER WHEN SLOPE LAYER IS ACTIVE) */}
+                {layerVisibility.hill1 !== false && visibility.showMoundSlope !== false && hillSpineProfile.enabled !== false && !selectedLayerId?.startsWith('slope') && selectedLayerId !== 'slope_1' && activeTool !== 'draw_slope' && activeTool !== 'draw_perimeter' && (selectedLayerId === 'hill_1' || selectedLayerId.startsWith('hill') || activeTool === 'draw_hill') && crossSectionBars.map((bar, idx) => {
                     const isBarSelected = bar.pointId === activePointId;
                     return (
                         <React.Fragment key={`bar-group-${bar.id}-${idx}`}>
@@ -3045,72 +4498,100 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                                     }
                                 }}
                             >
-                                <Tooltip permanent={true} direction="bottom">
-                                    <span className="bg-cyan-950/95 text-cyan-300 font-mono font-bold text-[10px] px-2 py-0.5 rounded-lg border border-cyan-500/60 shadow-lg pointer-events-none">
-                                        ↔ Width: {bar.widthM}m
+                                <Tooltip direction="bottom">
+                                    <span className="font-mono text-xs">
+                                        ↔ Left: {bar.leftWidthM}m | Right: {bar.rightWidthM}m (Total: {bar.widthM}m)
                                     </span>
                                 </Tooltip>
                             </Polyline>
 
-                            {/* Left Draggable Width Handle (Drag outwards to widen, inwards to narrow) */}
+                            {/* Left Draggable Width Handle */}
                             <Marker
                                 position={bar.leftEnd}
-                                draggable={true}
+                                draggable={!layerLocks.hill1}
                                 icon={L.divIcon({
                                     className: `wh-l-${bar.id}`,
-                                    html: `<div style="width: 20px; height: 20px; border-radius: 50%; background: ${isBarSelected ? '#06b6d4' : '#0284c7'}; border: 2.5px solid #ffffff; box-shadow: 0 2px 8px rgba(0,0,0,0.7); cursor: ew-resize; display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: 900;">↔</div>`,
-                                    iconSize: [20, 20],
-                                    iconAnchor: [10, 10]
+                                    html: `
+                                        <div style="
+                                            min-width: 26px; height: 26px; padding: 0 4px;
+                                            border-radius: 13px; 
+                                            background: ${isBarSelected ? '#06b6d4' : '#0284c7'}; 
+                                            border: 2px solid #ffffff; 
+                                            box-shadow: 0 3px 10px rgba(0,0,0,0.6); 
+                                            cursor: grab; 
+                                            display: flex; align-items: center; justify-content: center; gap: 2px;
+                                            color: white; font-family: monospace; font-size: 11px; font-weight: 900;
+                                            user-select: none;
+                                        " title="Left Width Handle (L)">
+                                            <span>L</span>
+                                            <span style="font-size: 9px; opacity: 0.9;">${bar.leftWidthM}m</span>
+                                        </div>
+                                    `,
+                                    iconSize: [44, 26],
+                                    iconAnchor: [22, 13]
                                 })}
                                 eventHandlers={{
                                     drag: (e) => {
                                         const pos = e.target.getLatLng();
-                                        handleResizeWidthFromMap(bar.pointId, [pos.lat, pos.lng], bar.center);
+                                        handleResizeLeftHandle(bar.pointId, [pos.lat, pos.lng], bar.center, false);
                                     },
                                     dragend: (e) => {
                                         const pos = e.target.getLatLng();
-                                        handleResizeWidthFromMap(bar.pointId, [pos.lat, pos.lng], bar.center);
-                                        toast.success(`${bar.name}: ${bar.widthM}m`);
+                                        handleResizeLeftHandle(bar.pointId, [pos.lat, pos.lng], bar.center, true);
                                     }
                                 }}
                             >
                                 <Tooltip direction="left" className="font-mono text-xs">
-                                    ↔ {isKa ? 'სიგანის შეცვლა თაგვით' : 'Drag to resize width'} ({bar.widthM}m)
+                                    <b>Left Side (L)</b>: {bar.leftWidthM}m ({isKa ? 'დამოუკიდებელი მარცხენა სიგანე' : 'Independent Left Width'})
                                 </Tooltip>
                             </Marker>
 
                             {/* Right Draggable Width Handle */}
                             <Marker
                                 position={bar.rightEnd}
-                                draggable={true}
+                                draggable={!layerLocks.hill1}
                                 icon={L.divIcon({
                                     className: `wh-r-${bar.id}`,
-                                    html: `<div style="width: 20px; height: 20px; border-radius: 50%; background: ${isBarSelected ? '#06b6d4' : '#0284c7'}; border: 2.5px solid #ffffff; box-shadow: 0 2px 8px rgba(0,0,0,0.7); cursor: ew-resize; display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: 900;">↔</div>`,
-                                    iconSize: [20, 20],
-                                    iconAnchor: [10, 10]
+                                    html: `
+                                        <div style="
+                                            min-width: 26px; height: 26px; padding: 0 4px;
+                                            border-radius: 13px; 
+                                            background: ${isBarSelected ? '#06b6d4' : '#0d9488'}; 
+                                            border: 2px solid #ffffff; 
+                                            box-shadow: 0 3px 10px rgba(0,0,0,0.6); 
+                                            cursor: grab; 
+                                            display: flex; align-items: center; justify-content: center; gap: 2px;
+                                            color: white; font-family: monospace; font-size: 11px; font-weight: 900;
+                                            user-select: none;
+                                        " title="Right Width Handle (R)">
+                                            <span>R</span>
+                                            <span style="font-size: 9px; opacity: 0.9;">${bar.rightWidthM}m</span>
+                                        </div>
+                                    `,
+                                    iconSize: [44, 26],
+                                    iconAnchor: [22, 13]
                                 })}
                                 eventHandlers={{
                                     drag: (e) => {
                                         const pos = e.target.getLatLng();
-                                        handleResizeWidthFromMap(bar.pointId, [pos.lat, pos.lng], bar.center);
+                                        handleResizeRightHandle(bar.pointId, [pos.lat, pos.lng], bar.center, false);
                                     },
                                     dragend: (e) => {
                                         const pos = e.target.getLatLng();
-                                        handleResizeWidthFromMap(bar.pointId, [pos.lat, pos.lng], bar.center);
-                                        toast.success(`${bar.name}: ${bar.widthM}m`);
+                                        handleResizeRightHandle(bar.pointId, [pos.lat, pos.lng], bar.center, true);
                                     }
                                 }}
                             >
                                 <Tooltip direction="right" className="font-mono text-xs">
-                                    ↔ {isKa ? 'სიგანის შეცვლა თაგვით' : 'Drag to resize width'} ({bar.widthM}m)
+                                    <b>Right Side (R)</b>: {bar.rightWidthM}m ({isKa ? 'დამოუკიდებელი მარჯვენა სიგანე' : 'Independent Right Width'})
                                 </Tooltip>
                             </Marker>
                         </React.Fragment>
                     );
                 })}
 
-                {/* DRAGGABLE CONNECTION POINT MARKERS (POINTS A, B, C...) WITH LIVE DRAGGING & HEIGHT */}
-                {visibility.showMoundSlope !== false && hillSpineProfile.points.map((pt, idx) => {
+                {/* DRAGGABLE CONNECTION POINT MARKERS (POINTS A, B, C...) - ONLY SHOW WHEN HILL 1 IS VISIBLE AND HILL LAYER IS ACTIVE (NEVER WHEN SLOPE LAYER IS ACTIVE) */}
+                {layerVisibility.hill1 !== false && visibility.showMoundSlope !== false && hillSpineProfile.enabled !== false && !selectedLayerId?.startsWith('slope') && selectedLayerId !== 'slope_1' && activeTool !== 'draw_slope' && activeTool !== 'draw_perimeter' && (selectedLayerId === 'hill_1' || selectedLayerId.startsWith('hill') || activeTool === 'draw_hill') && hillSpineProfile.points.map((pt, idx) => {
                     const isSelected = pt.id === activePointId;
                     const isMidpoint = idx === Math.floor(hillSpineProfile.points.length / 2);
                     const letter = String.fromCharCode(65 + idx);
@@ -3118,41 +4599,46 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                         <Marker
                             key={`pt-marker-${pt.id}-${idx}`}
                             position={[pt.lat, pt.lng]}
-                            draggable={true}
+                            draggable={!layerLocks.hill1}
                             icon={L.divIcon({
                                 className: `pt-marker-${pt.id}-${idx}`,
                                 html: `
                                     <div style="
-                                        width: ${isMidpoint ? '38px' : '32px'}; 
-                                        height: ${isMidpoint ? '38px' : '32px'}; 
-                                        border-radius: 50%;
+                                        min-width: ${isMidpoint ? '40px' : '34px'}; 
+                                        height: ${isMidpoint ? '40px' : '34px'}; 
+                                        padding: 0 4px;
+                                        border-radius: 20px;
                                         background: ${isSelected ? '#f59e0b' : isMidpoint ? '#d97706' : '#0284c7'};
-                                        border: ${isMidpoint ? '3.5px solid #fef08a' : '3px solid #ffffff'};
+                                        border: ${isMidpoint ? '3px solid #fef08a' : '2.5px solid #ffffff'};
                                         box-shadow: 0 4px 14px rgba(0,0,0,0.7);
-                                        display: flex; align-items: center; justify-content: center;
-                                        color: #ffffff; font-weight: 900; font-family: monospace; font-size: ${isMidpoint ? '15px' : '13px'};
-                                        cursor: grab; transform: scale(${isSelected ? 1.25 : 1});
-                                        transition: transform 0.15s;
+                                        display: flex; flex-direction: column; align-items: center; justify-content: center;
+                                        color: #ffffff; font-weight: 900; font-family: monospace;
+                                        cursor: grab; transform: scale(${isSelected ? 1.15 : 1});
+                                        transition: transform 0.15s; line-height: 1;
                                     ">
-                                        ${letter}
+                                        <span style="font-size: ${isMidpoint ? '13px' : '11px'};">${letter}</span>
+                                        <span style="font-size: 8px; opacity: 0.95; font-family: sans-serif; font-weight: 800;">${pt.peakHeightM >= 0 ? `+${pt.peakHeightM}m` : `${pt.peakHeightM}m`}</span>
                                     </div>
                                 `,
-                                iconSize: [isMidpoint ? 38 : 32, isMidpoint ? 38 : 32],
-                                iconAnchor: [isMidpoint ? 19 : 16, isMidpoint ? 19 : 16]
+                                iconSize: [isMidpoint ? 40 : 34, isMidpoint ? 40 : 34],
+                                iconAnchor: [isMidpoint ? 20 : 17, isMidpoint ? 20 : 17]
                             })}
                             eventHandlers={{
                                 click: () => {
                                     setActivePointId(pt.id);
-                                    setFlyTarget({ lat: pt.lat, lng: pt.lng, zoom: 19, timestamp: Date.now() });
+                                    setSelectedObject({
+                                        type: 'slope_point',
+                                        data: pt
+                                    });
                                 },
                                 drag: (e) => {
                                     const pos = e.target.getLatLng();
-                                    updatePointById(pt.id, { lat: pos.lat, lng: pos.lng });
+                                    handleMoveSpinePoint(pt.id, pos.lat, pos.lng, false);
                                 },
                                 dragend: (e) => {
                                     const marker = e.target;
                                     const pos = marker.getLatLng();
-                                    updatePointById(pt.id, { lat: pos.lat, lng: pos.lng });
+                                    handleMoveSpinePoint(pt.id, pos.lat, pos.lng, true);
                                     toast.success(isKa ? `საკვანძო წერტილი ${pt.name} განახლდა` : `${pt.name} relocated`);
                                 },
                                 contextmenu: (e) => {
@@ -3168,11 +4654,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                                     }
                                 }
                             }}
-                        >
-                            <Tooltip direction="top" className="font-mono text-xs">
-                                🏔️ Point {letter} ({pt.name}) • Elevation: +{pt.peakHeightM}m • Width: {pt.widthM}m
-                            </Tooltip>
-                        </Marker>
+                        />
                     );
                 })}
 
@@ -3225,10 +4707,13 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                                 eventHandlers={{
                                     click: () => {
                                         setActiveCameraId(cam.id);
+                                        setSelectedObject({
+                                            type: 'camera',
+                                            data: cam
+                                        });
                                         if (activeTool === 'live_stream') {
                                             setLiveStreamCamera(cam);
                                         }
-                                        setFlyTarget({ lat: cam.lat, lng: cam.lng, zoom: 19, timestamp: Date.now() });
                                     },
                                     contextmenu: (e) => {
                                         L.DomEvent.stopPropagation(e as any);
@@ -3249,49 +4734,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                                         toast.success(isKa ? `კამერა "${cam.name}" გადატანილია` : `Camera "${cam.name}" relocated`);
                                     }
                                 }}
-                            >
-                                <Tooltip direction="top" className="font-mono text-xs">
-                                    📹 [CH0{cam.channel}] {cam.name}
-                                </Tooltip>
-                                <Popup className="clean-cam-popup">
-                                    <div className="p-2 min-w-[220px] max-w-[260px] text-slate-900 space-y-2">
-                                        <div className="flex items-center justify-between border-b pb-1.5">
-                                            <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 text-[10px] font-bold font-mono">
-                                                CH0{cam.channel} • LIVE
-                                            </span>
-                                            <span className="text-[10px] font-mono text-emerald-600 font-bold">
-                                                {cam.status}
-                                            </span>
-                                        </div>
-                                        <div>
-                                            <h4 className="font-black text-xs text-slate-900 leading-tight">
-                                                {cam.name}
-                                            </h4>
-                                            <p className="text-[10px] text-slate-500 font-mono mt-0.5">
-                                                {cam.ipAddress}:{cam.rtspPort} • Tilt {cam.tiltAngleDeg || 4}° • {cam.fovAngleDeg || 102}° FOV
-                                            </p>
-                                        </div>
-                                        <div className="flex items-center gap-1.5 pt-1">
-                                            <button
-                                                type="button"
-                                                onClick={() => setLiveStreamCamera(cam)}
-                                                className="flex-1 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-[11px] font-black uppercase flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
-                                            >
-                                                <Video size={13} className="text-white animate-pulse" />
-                                                <span>{isKa ? 'ლაივ სტრიმი' : 'Live Stream'}</span>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setIsAllCamerasWideOpen(true)}
-                                                className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-[10px] font-bold flex items-center justify-center cursor-pointer"
-                                                title="All Cameras Matrix"
-                                            >
-                                                📺
-                                            </button>
-                                        </div>
-                                    </div>
-                                </Popup>
-                            </Marker>
+                            />
                         </React.Fragment>
                     );
                 })}
@@ -3311,46 +4754,6 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                     />
                 ))}
 
-                {/* Optional Reference Trenches */}
-                {visibility.showTrenches && testTrenches.map((tr, trIdx) => {
-                    const isSelected = (Array.isArray(testDroneMission?.selectedTrenches) ? testDroneMission.selectedTrenches : [3, 4, 5]).includes(tr.id);
-                    return (
-                        <Polyline
-                            key={`ref-trench-${tr.id}-${trIdx}`}
-                            positions={tr.coords}
-                            pathOptions={{
-                                color: isSelected ? '#f59e0b' : '#64748b',
-                                weight: isSelected ? 3.5 : 2,
-                                dashArray: isSelected ? undefined : '4, 4'
-                            }}
-                            eventHandlers={{
-                                click: () => {
-                                    handleToggleTrench(tr.id);
-                                }
-                            }}
-                        >
-                            <Tooltip direction="top">{tr.name}</Tooltip>
-                        </Polyline>
-                    );
-                })}
-
-                {/* Optional Reference Seedling Target */}
-                {visibility.showSeedlings && (
-                    <Marker
-                        position={[testSeedlingTarget.lat, testSeedlingTarget.lng]}
-                        icon={createCleanSeedlingIcon(selectedObject?.data?.id === 'seed-44')}
-                        eventHandlers={{
-                            click: () => {
-                                setFlyTarget({ lat: testSeedlingTarget.lat, lng: testSeedlingTarget.lng, zoom: 19, timestamp: Date.now() });
-                            }
-                        }}
-                    >
-                        <Tooltip direction="top" className="font-mono text-xs">
-                            🌱 {isKa ? 'ნერგი #44' : 'Seedling #44'}
-                        </Tooltip>
-                    </Marker>
-                )}
-
                 {/* Soil Sensors */}
                 {visibility.showSoilSensors && testSoilSensors.map((soil, sIdx) => (
                     <Marker
@@ -3359,7 +4762,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                         icon={createCleanSoilIcon(soil, selectedObject?.data?.id === soil.id)}
                         eventHandlers={{
                             click: () => {
-                                setFlyTarget({ lat: soil.lat, lng: soil.lng, zoom: 19, timestamp: Date.now() });
+                                setSelectedObject({ type: 'soil', data: soil });
                             },
                             contextmenu: (e) => {
                                 L.DomEvent.stopPropagation(e as any);
@@ -3374,11 +4777,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                                 }
                             }
                         }}
-                    >
-                        <Tooltip direction="top" className="font-mono text-xs">
-                            🌱 {soil.name}
-                        </Tooltip>
-                    </Marker>
+                    />
                 ))}
 
                 {/* Water Sensors */}
@@ -3389,7 +4788,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                         icon={createCleanWaterIcon(w, selectedObject?.data?.id === w.id)}
                         eventHandlers={{
                             click: () => {
-                                setFlyTarget({ lat: w.lat, lng: w.lng, zoom: 19, timestamp: Date.now() });
+                                setSelectedObject({ type: 'water', data: w });
                             },
                             contextmenu: (e) => {
                                 L.DomEvent.stopPropagation(e as any);
@@ -3404,11 +4803,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                                 }
                             }
                         }}
-                    >
-                        <Tooltip direction="top" className="font-mono text-xs">
-                            💧 {w.name}
-                        </Tooltip>
-                    </Marker>
+                    />
                 ))}
 
                 {/* Worker GPS Trackers */}
@@ -3420,7 +4815,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                         draggable={true}
                         eventHandlers={{
                             click: () => {
-                                setFlyTarget({ lat: wrk.lat, lng: wrk.lng, zoom: 19, timestamp: Date.now() });
+                                setSelectedObject({ type: 'worker', data: wrk });
                             },
                             contextmenu: (e) => {
                                 L.DomEvent.stopPropagation(e as any);
@@ -3440,11 +4835,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                                 toast.success(`${wrk.workerName} coordinates updated`);
                             }
                         }}
-                    >
-                        <Tooltip direction="top" className="font-mono text-xs">
-                            👷 {wrk.workerName}
-                        </Tooltip>
-                    </Marker>
+                    />
                 ))}
 
                 {/* Agro-Meteorological Weather Stations */}
@@ -3457,7 +4848,6 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                         eventHandlers={{
                             click: () => {
                                 setSelectedObject({ type: 'weather', data: station });
-                                setFlyTarget({ lat: station.lat, lng: station.lng, zoom: 19, timestamp: Date.now() });
                             },
                             contextmenu: (e) => {
                                 L.DomEvent.stopPropagation(e as any);
@@ -3478,9 +4868,6 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                             }
                         }}
                     >
-                        <Tooltip direction="top" className="font-mono text-xs">
-                            🌦️ {station.name} ({station.tempC}°C • {station.humidityPct}%)
-                        </Tooltip>
                         <Popup className="clean-weather-popup">
                             <div className="p-2 min-w-[220px] max-w-[260px] text-slate-900 space-y-2">
                                 <div className="flex items-center justify-between border-b pb-1.5">
@@ -3552,6 +4939,128 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                 )}
                     </MapContainer>
 
+                    {/* 2D MAP COMPASS ROSE WIDGET (North Indicator) */}
+                    <div className="absolute top-4 right-4 z-[1000] flex flex-col items-center pointer-events-auto select-none">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const target = labsPlantationCenter || currentCenter;
+                                setFlyTarget({ lat: target[0], lng: target[1], zoom: 17, timestamp: Date.now() });
+                                toast.info(isKa ? 'რუკა გასწორდა ჩრდილოეთზე' : '2D Map Re-centered to North (0° N)');
+                            }}
+                            className="w-12 h-12 rounded-full bg-slate-950/90 hover:bg-slate-900 border-2 border-cyan-500/70 shadow-2xl flex items-center justify-center backdrop-blur-md relative group hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                            title={isKa ? '2D კომპასი: ჩრდილოეთი (N)' : '2D Map Compass: True North (N)'}
+                        >
+                            <div className="w-full h-full rounded-full flex items-center justify-center relative">
+                                <div className="absolute top-1.5 flex flex-col items-center">
+                                    <span className="text-[10px] font-black text-rose-500 font-mono leading-none">N</span>
+                                    <div className="w-0 h-0 border-l-[3.5px] border-l-transparent border-r-[3.5px] border-r-transparent border-b-[8px] border-b-rose-500 mt-0.5" />
+                                </div>
+                                <div className="absolute bottom-1.5 flex flex-col items-center">
+                                    <div className="w-0 h-0 border-l-[3.5px] border-l-transparent border-r-[3.5px] border-r-transparent border-t-[8px] border-t-slate-400 mb-0.5" />
+                                    <span className="text-[9px] font-bold text-slate-400 font-mono leading-none">S</span>
+                                </div>
+                                <span className="absolute right-1 text-[8px] font-bold text-slate-500 font-mono">E</span>
+                                <span className="absolute left-1 text-[8px] font-bold text-slate-500 font-mono">W</span>
+                                <div className="w-2 h-2 rounded-full bg-cyan-400 border border-slate-900" />
+                            </div>
+                        </button>
+                        <div className="mt-1 px-1.5 py-0.5 rounded bg-slate-950/85 border border-slate-800 text-[9px] font-mono font-bold text-cyan-300 shadow">
+                            0° N
+                        </div>
+                    </div>
+
+                    {/* PLANTATION LOCATION PICKER BANNER */}
+                    {isPickingPlantation && (
+                        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[1060] bg-slate-950/95 border-2 border-emerald-400 rounded-2xl p-3 shadow-2xl backdrop-blur-xl flex items-center gap-3 animate-in fade-in slide-in-from-top duration-200">
+                            <div className="w-3 h-3 rounded-full bg-emerald-400 animate-ping" />
+                            <span className="text-xs font-bold text-emerald-200">
+                                📍 {isKa ? 'დააწკაპუნეთ რუკაზე "აგრობარი" პლანტაციის ზუსტი ადგილის ასარჩევად' : 'Click anywhere on map to reposition Agrobari plantation'}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsPickingPlantation(false);
+                                    if (activeTool === 'pick_plantation') setActiveTool('select');
+                                }}
+                                className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold cursor-pointer"
+                            >
+                                {isKa ? 'გაუქმება' : 'Cancel'}
+                            </button>
+                        </div>
+                    )}
+
+                    {/* PERIMETER ACTION & GENERATION BAR */}
+                    {(customSlopePerimeter.length >= 3 || activeTool === 'draw_perimeter' || activeTool === 'draw_slope') && (
+                        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[1050] bg-slate-950/95 border-2 border-fuchsia-500/80 rounded-2xl p-2.5 shadow-2xl backdrop-blur-xl flex flex-wrap items-center justify-center gap-2 max-w-[92vw] animate-in fade-in slide-in-from-top duration-200">
+                            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-fuchsia-950/70 rounded-xl text-fuchsia-300 font-mono text-xs border border-fuchsia-700/60">
+                                <Hexagon size={14} className="text-fuchsia-400 animate-pulse" />
+                                <span className="font-bold">{customSlopePerimeter.length} Points</span>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={handleGenerateHillInsidePerimeter}
+                                className="px-3 py-1.5 rounded-xl font-bold bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white text-xs flex items-center gap-1.5 shadow active:scale-95 transition-all cursor-pointer"
+                                title="Fit and generate 3D Hill / Ridge inside this perimeter"
+                            >
+                                <Mountain size={13} className="text-amber-200" />
+                                <span>+ {isKa ? 'ბორცვის ჩასმა შიგნით' : 'Add Mound Inside'}</span>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={handleGenerateSlopeFromPerimeter}
+                                className="px-3 py-1.5 rounded-xl font-bold bg-gradient-to-r from-fuchsia-600 to-pink-600 hover:from-fuchsia-500 hover:to-pink-500 text-white text-xs flex items-center gap-1.5 shadow active:scale-95 transition-all cursor-pointer"
+                                title="Triangulate perimeter into 3D Uneven Slope Mesh layer"
+                            >
+                                <Sparkles size={13} className="text-fuchsia-200" />
+                                <span>+ {isKa ? '3D ფერდობის გენერირება' : 'Generate 3D Slope'}</span>
+                            </button>
+
+                            <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-xl px-2 py-1 text-xs text-slate-300">
+                                <span className="text-[10px] text-slate-400">Offset:</span>
+                                <button
+                                    type="button"
+                                    onClick={() => handleElevatePerimeter(-2)}
+                                    className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-mono font-bold cursor-pointer"
+                                    title="Lower elevation offset -2m"
+                                >
+                                    -2m
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleElevatePerimeter(+2)}
+                                    className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-mono font-bold cursor-pointer"
+                                    title="Raise elevation offset +2m"
+                                >
+                                    +2m
+                                </button>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setActiveTool('select');
+                                    toast.info(isKa ? 'პერიმეტრის რედაქტირება დასრულდა' : 'Finished drawing perimeter');
+                                }}
+                                className="px-2.5 py-1.5 rounded-xl font-bold bg-cyan-950/60 hover:bg-cyan-900 text-cyan-300 border border-cyan-700 text-xs flex items-center gap-1 cursor-pointer transition-colors"
+                            >
+                                <Check size={13} />
+                                <span>{isKa ? 'მზადაა' : 'Done'}</span>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={handleClearPerimeter}
+                                className="p-1.5 rounded-xl bg-slate-900 hover:bg-red-950/60 text-slate-400 hover:text-red-300 border border-slate-800 hover:border-red-800 cursor-pointer transition-colors"
+                                title="Clear perimeter"
+                            >
+                                <Trash2 size={13} />
+                            </button>
+                        </div>
+                    )}
+
                     {/* FLOATING LIVE STREAM QUICK BAR & CAMERA SWITCHER DIRECTLY ON MAP */}
                     {testCameras.length > 0 && (
                         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[1050] max-w-[94vw] bg-slate-950/95 border border-slate-700/80 rounded-2xl shadow-2xl backdrop-blur-xl px-3 py-2 flex flex-wrap items-center justify-between gap-2.5 text-xs text-white animate-in slide-in-from-bottom-2 duration-150">
@@ -3607,6 +5116,46 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                                     <span>{isKa ? 'ლაივ ეთერი' : 'Watch Live'}</span>
                                 </button>
 
+                                {/* Active Profile Plantation Quick Switcher & Fly Button */}
+                                <div className="flex items-center gap-1 bg-emerald-950/90 border border-emerald-600/60 rounded-xl px-2 py-0.5 shadow-sm">
+                                    <Navigation size={11} className="text-emerald-400 shrink-0" />
+                                    <select
+                                        value={selectedPlantationId}
+                                        onChange={(e) => handleSelectPlantation(e.target.value)}
+                                        className="bg-transparent text-emerald-300 font-bold text-[10px] font-mono outline-none cursor-pointer max-w-[150px] truncate"
+                                        title={isKa ? 'პლანტაციის არჩევა & გადაფრენა' : 'Select Plantation & Fly Map'}
+                                    >
+                                        {REGISTERED_PLANTATIONS.map((p, pIdx) => (
+                                            <option key={`bottom-plant-${p.id}-${pIdx}`} value={p.id} className="bg-slate-950 text-slate-200">
+                                                {p.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSelectPlantation(selectedPlantationId)}
+                                        className="p-1 hover:bg-emerald-800 text-emerald-300 rounded cursor-pointer transition-colors"
+                                        title={isKa ? 'გადაფრენა' : 'Fly'}
+                                    >
+                                        <span className="text-[9px] font-black uppercase">FLY</span>
+                                    </button>
+                                </div>
+
+                                {/* Device Control & Move Panel Quick Button */}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setActiveContextMode('camera');
+                                        setIsModalPopUp(true);
+                                        setIsPopUpMinimized(false);
+                                    }}
+                                    className="px-2.5 py-1 bg-blue-900/80 hover:bg-blue-800 text-blue-200 border border-blue-500/60 rounded-xl font-bold text-[10px] flex items-center gap-1 cursor-pointer transition-all shadow-sm"
+                                    title={isKa ? 'მოწყობილობის მართვის პანელი & გადაადგილება' : 'Device Control Panel & Move Active Camera'}
+                                >
+                                    <Move size={11} className="text-cyan-400" />
+                                    <span>{isKa ? 'მართვა & გადატანა' : 'Device Control'}</span>
+                                </button>
+
                                 <button
                                     type="button"
                                     onClick={() => setIsAllCamerasWideOpen(true)}
@@ -3632,8 +5181,22 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                 </div>
             </div>
 
+            {/* FLOATING ONLINE WEATHER & AGRO MICROCLIMATE BADGE (Movable) */}
+            <div className="absolute top-20 left-4 z-[2500]">
+                <FloatingOnlineWeatherBadge
+                    plantationFeatures={plantationFeatures}
+                    activeOrgId={null}
+                    isKa={isKa}
+                    storageKey="agrimap_sandbox_weather_pos"
+                    onFlyToCoords={(coords, name) => {
+                        setFlyTarget({ lat: coords[0], lng: coords[1], zoom: 17, timestamp: Date.now() });
+                        toast.success(isKa ? `რუკა გადაფრინდა: ${name}` : `Flying map to: ${name}`);
+                    }}
+                />
+            </div>
+
             {/* FLOATING PERIMETER CONTROL CARD (When drawing or after drawing boundary) */}
-            {(activeTool === 'draw_perimeter' || customSlopePerimeter.length > 0) && (
+            {(activeTool === 'draw_perimeter' || activeTool === 'draw_slope' || (customSlopePerimeter.length > 0 && selectedLayerId.startsWith('slope'))) && (
                 <div className="absolute top-24 left-4 z-[1140] p-3 bg-slate-900/95 border border-fuchsia-500/80 rounded-2xl shadow-2xl backdrop-blur-xl flex flex-col gap-2 text-xs text-white max-w-xs animate-in slide-in-from-left-2 duration-150">
                     <div className="flex items-center justify-between">
                         <span className="font-black text-fuchsia-300 flex items-center gap-1.5 uppercase text-[11px]">
@@ -3693,12 +5256,12 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                 </div>
             )}
 
-            {/* FLOATING DRAW SLOPE HELPER CARD */}
-            {activeTool === 'draw_slope' && (
+            {/* FLOATING DRAW HILL RIDGE HELPER CARD */}
+            {activeTool === 'draw_hill' && (
                 <div className="absolute top-24 left-4 z-[1140] p-3 bg-slate-900/95 border border-amber-500/80 rounded-2xl shadow-2xl backdrop-blur-xl flex flex-col gap-2 text-xs text-white max-w-xs animate-in slide-in-from-left-2 duration-150">
                     <div className="flex items-center justify-between">
                         <span className="font-black text-amber-300 flex items-center gap-1.5 uppercase text-[11px]">
-                            ✏️ {isKa ? 'ქედის დახატვა' : 'Drawing Slope Ridge'}
+                            🏔️ {isKa ? 'ბორცვის ქედის დახატვა' : 'Drawing Hill Ridge Spine'}
                         </span>
                         <span className="px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 font-mono text-[10px] font-bold border border-amber-700/60">
                             {hillSpineProfile.points.length} pts
@@ -3715,6 +5278,45 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                             <span>Apex: <b>+{activePoint.peakHeightM}m</b></span>
                         </div>
                     )}
+
+                    {/* Pre-set Height for Next Point */}
+                    <div className="p-2 rounded-xl bg-slate-950/80 border border-amber-500/50 space-y-1.5 font-mono text-[11px]">
+                        <div className="flex items-center justify-between">
+                            <span className="text-amber-300 font-bold flex items-center gap-1">
+                                <Mountain size={12} /> {isKa ? 'წერტილის სიმაღლე (Z):' : 'Point Height (Z):'}
+                            </span>
+                            <span className="text-white font-black text-xs">
+                                +{drawingPointHeight}m
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                            <input
+                                type="range"
+                                min="-10"
+                                max="60"
+                                value={drawingPointHeight}
+                                onChange={(e) => setDrawingPointHeight(Number(e.target.value))}
+                                className="flex-1 accent-amber-400 cursor-pointer"
+                            />
+                            <div className="flex items-center gap-1">
+                                {[10, 20, 30, 45].map((h) => (
+                                    <button
+                                        key={`quick-h-${h}`}
+                                        type="button"
+                                        onClick={() => setDrawingPointHeight(h)}
+                                        className={`px-1.5 py-0.5 rounded text-[9px] font-bold cursor-pointer transition-colors ${
+                                            drawingPointHeight === h 
+                                                ? 'bg-amber-500 text-slate-950' 
+                                                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                                        }`}
+                                    >
+                                        +{h}m
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
                     <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-800">
                         <button
                             type="button"
@@ -3746,12 +5348,16 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
 
             {/* FLOATING TOP TOOLBAR */}
             <SandboxFloatingTopToolbar
+                onOpenPlannerImport={() => setIsPlannerImportOpen(true)}
                 activeTool={activeTool}
                 onSelectTool={setActiveTool}
                 isSlopeSculptorOpen={isSlopeSculptorOpen}
                 onToggleSlopeSculptor={() => setIsSlopeSculptorOpen(!isSlopeSculptorOpen)}
                 is3dWindowOpen={is3dWindowOpen}
                 onToggle3dWindow={() => setIs3dWindowOpen(!is3dWindowOpen)}
+                isLayerTreeOpen={isLayerTreeOpen}
+                onToggleLayerTree={() => setIsLayerTreeOpen(!isLayerTreeOpen)}
+                onUploadPhotoClick={() => photoInputRef.current?.click()}
                 isVisibilityMenuOpen={isVisibilityMenuOpen}
                 onToggleVisibilityMenu={() => setIsVisibilityMenuOpen(!isVisibilityMenuOpen)}
                 hasSelectedObject={selectedObject !== null}
@@ -3766,10 +5372,13 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                 onToggleTileMode={() => setTileMode(tileMode === 'satellite' ? 'streets' : 'satellite')}
                 onOpenExportModal={() => setIsExportModalOpen(true)}
                 onOpenHardwareList={onSwitchTab ? () => onSwitchTab('bluetooth') : undefined}
-                onFlyToPlantation={() => {
-                    setFlyTarget({ lat: plantationCenter[0], lng: plantationCenter[1], zoom: 17, timestamp: Date.now() });
-                    toast.info(isKa ? 'რუკა დაბრუნდა პლანტაციის ცენტრზე' : 'Centered on plantation location');
-                }}
+                onFlyToPlantation={handleFlyToPlantation}
+                onSaveCurrentAsPlantation={handleSaveCurrentAsPlantation}
+                onSyncPlantationFromPlanner={handleSyncPlantationFromPlanner}
+                onPickPlantationOnMap={handleStartPickPlantationLocation}
+                isPickingPlantation={isPickingPlantation}
+                savedPlantationCoords={labsPlantationCenter}
+                savedPlantationName={mainPlantation.name}
                 onSwap2d3d={() => setIs3dMainView(!is3dMainView)}
                 onDeleteLastPoint={handleDeleteLastEditedPoint}
                 canDeleteLastPoint={hillSpineProfile.points.length > 0 || customSlopePerimeter.length > 0}
@@ -3831,8 +5440,8 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                         showWaterSensors: true,
                         showWorkersGps: true,
                         showWeatherStations: true,
-                        showTrenches: true,
-                        showSeedlings: true,
+                        showTrenches: false,
+                        showSeedlings: false,
                         showBlindZones: true,
                         showDirections: true,
                         showMoundSlope: true,
@@ -3889,32 +5498,132 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                 isKa={isKa}
             />
 
-            {/* FLOATING RIGHT PANEL: 3D MOUND & SLOPE SCULPTOR */}
-            <SandboxFloatingRightPanel
-                isOpen={isSlopeSculptorOpen}
-                onClose={() => setIsSlopeSculptorOpen(false)}
+            {/* Hidden Input for Field Photo (EXIF GPS & Compass Orientation) */}
+            <input
+                type="file"
+                ref={photoInputRef}
+                accept="image/*"
+                onChange={handlePhotoFileUpload}
+                className="hidden"
+            />
+
+            {/* WORKSPACE & LAYER TREE PANEL (Base Grid, Hill 1, Slope 1, Photo Pins) */}
+            <SandboxLayerTreePanel
+                isOpen={isLayerTreeOpen}
+                onClose={() => setIsLayerTreeOpen(false)}
+                selectedLayerId={selectedLayerId}
+                onSelectLayer={(layerId) => {
+                    setSelectedLayerId(layerId);
+                    if (layerId.startsWith('hill') || layerId === 'hill_1') {
+                        const found = hillProfiles.find(h => h.id === layerId);
+                        if (found) setHillSpineProfile(found);
+                        setIsSlopeSculptorOpen(true);
+                    } else if (layerId.startsWith('slope') || layerId === 'slope_1') {
+                        const found = slopeObjects.find(s => s.id === layerId) || (layerId === 'slope_1' ? slopeObjects[0] : undefined);
+                        if (found && Array.isArray(found.vertices) && found.vertices.length > 0) {
+                            setPerimeterVertices(found.vertices);
+                            setCustomSlopePerimeter(found.vertices.map(v => [v.lat, v.lng]));
+                        } else if (perimeterVertices.length > 0) {
+                            setSlopeObjects(prev => prev.map(s => s.id === layerId ? { ...s, vertices: perimeterVertices } : s));
+                        }
+                        setIsSlopeSculptorOpen(true);
+                    } else if (layerId === 'photo_pins' && photoPins.length > 0) {
+                        setSelectedPhotoPin(photoPins[0]);
+                        setIsPhotoModalOpen(true);
+                    }
+                }}
+                hillProfiles={hillProfiles}
+                slopeObjects={slopeObjects}
+                photoPins={photoPins}
+                baseGridVisible={layerVisibility.baseGrid}
+                onToggleBaseGridVisibility={() => handleToggleLayerVisibility('baseGrid')}
+                baseGridLocked={layerLocks.baseGrid}
+                onToggleBaseGridLock={() => handleToggleLayerLock('baseGrid')}
+                onAddHillLayer={handleAddHillLayer}
+                onAddSlopeLayer={handleAddSlopeLayer}
+                onDeleteHillLayer={handleDeleteHillLayer}
+                onDeleteSlopeLayer={handleDeleteSlopeLayer}
+                onToggleHillVisibility={handleToggleHillVisibility}
+                onToggleSlopeVisibility={handleToggleSlopeVisibility}
+                onToggleHillLock={handleToggleHillLock}
+                onToggleSlopeLock={handleToggleSlopeLock}
+                layerVisibility={layerVisibility}
+                onToggleLayerVisibility={handleToggleLayerVisibility}
+                layerLocks={layerLocks}
+                onToggleLayerLock={handleToggleLayerLock}
                 hillSpineProfile={hillSpineProfile}
-                activePoint={activePoint}
-                activePointId={activePointId}
-                onSelectPointId={setActivePointId}
-                onUpdateActivePoint={updateActivePoint}
-                onAddSpinePoint={handleAddSpinePoint}
-                onInsertSpinePointAtMidpoint={handleInsertSpinePointAtMidpoint}
-                onDeleteSpinePoint={handleDeleteSpinePoint}
-                onDeleteLastPoint={handleDeleteLastEditedPoint}
-                canDeleteLastPoint={hillSpineProfile.points.length > 0 || customSlopePerimeter.length > 0}
-                onClearSlope={handleDeleteWholeSlope}
-                onDeleteWholeSlope={handleDeleteWholeSlope}
-                onStartDrawSlope={handleStartNewSlope}
-                onFitSlopeToOrchard={handleFitSlopeToOrchard}
+                perimeterVertices={perimeterVertices}
+                onUploadPhotoClick={() => photoInputRef.current?.click()}
+                onSelectPhotoPin={(pin) => {
+                    setSelectedPhotoPin(pin);
+                    setIsPhotoModalOpen(true);
+                }}
+                onDeletePhotoPin={handleDeletePhotoPin}
                 measuredHillLengthM={measuredHillLengthM}
-                moundMetrics={moundMetrics}
-                isAiSlopeScanning={isAiSlopeScanning}
-                onAiAutoDetectSlope={handleAiAutoDetectSlope}
-                onLoadSatelliteDem={handleLoadSatelliteDem}
-                baseElevationM={480}
                 isKa={isKa}
             />
+
+            {/* PHOTO INSPECTION MODAL (EXIF GPS & COMPASS HEADING VIEWER) */}
+            {isPhotoModalOpen && selectedPhotoPin && (
+                <PhotoInspectionModal
+                    photo={selectedPhotoPin}
+                    onClose={() => {
+                        setIsPhotoModalOpen(false);
+                        setSelectedPhotoPin(null);
+                    }}
+                    onDelete={(id) => {
+                        handleDeletePhotoPin(id);
+                    }}
+                    onUpdateAzimuth={(id, azimuth) => {
+                        const nextPins = photoPins.map(p => p.id === id ? { ...p, azimuthDeg: azimuth } : p);
+                        setPhotoPins(nextPins);
+                        savePhotoPins(nextPins);
+                        setSelectedPhotoPin(prev => prev && prev.id === id ? { ...prev, azimuthDeg: azimuth } : prev);
+                        setTerrainCounter(c => c + 1);
+                    }}
+                    isKa={isKa}
+                />
+            )}
+
+            {/* FLOATING RIGHT PANEL: 3D MOUND & SLOPE SCULPTOR */}
+            {isSlopeSculptorOpen && (
+                <SandboxFloatingRightPanel
+                    isOpen={isSlopeSculptorOpen}
+                    onClose={() => setIsSlopeSculptorOpen(false)}
+                    selectedLayerId={selectedLayerId}
+                    onSelectLayer={(id) => setSelectedLayerId(id)}
+                    hillSpineProfile={hillSpineProfile}
+                    activePoint={activePoint}
+                    activePointId={activePointId}
+                    onSelectPointId={setActivePointId}
+                    onUpdateActivePoint={updateActivePoint}
+                    onUpdateHillSpineProfile={handleUpdateHillSpineProfile}
+                    onAddSpinePoint={handleAddSpinePoint}
+                    onInsertSpinePointAtMidpoint={handleInsertSpinePointAtMidpoint}
+                    onDeleteSpinePoint={handleDeleteSpinePoint}
+                    onDeleteLastPoint={handleDeleteLastEditedPoint}
+                    canDeleteLastPoint={hillSpineProfile.points.length > 0 || customSlopePerimeter.length > 0}
+                    onClearSlope={handleDeleteWholeSlope}
+                    onDeleteWholeSlope={handleDeleteWholeSlope}
+                    onStartDrawSlope={handleStartNewSlope}
+                    onFitSlopeToOrchard={handleFitSlopeToOrchard}
+                    measuredHillLengthM={measuredHillLengthM}
+                    moundMetrics={moundMetrics}
+                    isAiSlopeScanning={isAiSlopeScanning}
+                    onAiAutoDetectSlope={handleAiAutoDetectSlope}
+                    onLoadSatelliteDem={handleLoadSatelliteDem}
+                    baseElevationM={480}
+                    perimeterVertices={perimeterVertices}
+                    onUpdatePerimeterVertex={handleUpdatePerimeterVertex}
+                    onAddPerimeterVertex={handleAddPerimeterVertex}
+                    onDeletePerimeterVertex={handleDeletePerimeterVertex}
+                    onStartDrawPerimeter={() => {
+                        setActiveTool('draw_perimeter');
+                        toast.info(isKa ? 'დააწკაპუნეთ რუკაზე პერიმეტრის წერტილების დასასმელად' : 'Click on map to place perimeter boundary points');
+                    }}
+                    isKa={isKa}
+                />
+            )}
 
             {/* 3D FULL VIEW MODE (WHEN 3D IS SWAPPED TO MAIN VIEWPORT) */}
             {is3dMainView && (
@@ -3932,10 +5641,24 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                         baseLat={baseLat}
                         baseLng={baseLng}
                         hillSpineProfile={hillSpineProfile}
+                        hillProfiles={hillProfiles}
+                        slopeObjects={slopeObjects}
                         onAddSpinePoint={handleAddSpinePointAtCoords}
                         onUpdateSpinePoint={updatePointById}
+                        onUpdatePerimeterVertex={handleUpdatePerimeterVertex}
                         onDeleteLastPoint={handleDeleteLastEditedPoint}
                         onDeleteSlope={handleDeleteWholeSlope}
+                        onDeleteSpinePoint={handleDeleteSpinePoint}
+                        showBaseGrid={layerVisibility.baseGrid}
+                        showHill1={layerVisibility.hill1}
+                        showSlope1={layerVisibility.slope1}
+                        showPhotoPins={layerVisibility.photoPins}
+                        perimeterVertices={perimeterVertices}
+                        photoPins={photoPins}
+                        onSelectPhotoPin={(pin) => {
+                            setSelectedPhotoPin(pin);
+                            setIsPhotoModalOpen(true);
+                        }}
                         viewMode={sandbox3dMode}
                         hiddenCameraIds={hiddenCameraIds}
                         isSatelliteDemLoaded={isSatelliteDemLoaded}
@@ -4095,10 +5818,24 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                                     baseLat={baseLat}
                                     baseLng={baseLng}
                                     hillSpineProfile={hillSpineProfile}
+                                    hillProfiles={hillProfiles}
+                                    slopeObjects={slopeObjects}
                                     onAddSpinePoint={handleAddSpinePointAtCoords}
                                     onUpdateSpinePoint={updatePointById}
+                                    onUpdatePerimeterVertex={handleUpdatePerimeterVertex}
                                     onDeleteLastPoint={handleDeleteLastEditedPoint}
                                     onDeleteSlope={handleDeleteWholeSlope}
+                                    onDeleteSpinePoint={handleDeleteSpinePoint}
+                                    showBaseGrid={layerVisibility.baseGrid}
+                                    showHill1={layerVisibility.hill1}
+                                    showSlope1={layerVisibility.slope1}
+                                    showPhotoPins={layerVisibility.photoPins}
+                                    perimeterVertices={perimeterVertices}
+                                    photoPins={photoPins}
+                                    onSelectPhotoPin={(pin) => {
+                                        setSelectedPhotoPin(pin);
+                                        setIsPhotoModalOpen(true);
+                                    }}
                                     viewMode={sandbox3dMode}
                                     hiddenCameraIds={hiddenCameraIds}
                                     isSatelliteDemLoaded={isSatelliteDemLoaded}
@@ -4134,6 +5871,50 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                     </div>
                 </div>
             )}
+
+            {/* BOTTOM DEVICE INSPECTOR PANEL (Appears when clicking device next to Ridge or on map) */}
+            <SandboxBottomDevicePanel
+                selectedObject={selectedObject}
+                onClose={() => setSelectedObject(null)}
+                onOpenLiveStream={(cam) => setLiveStreamCamera(cam)}
+                onMoveDeviceOnMap={(type) => {
+                    if (type === 'camera') {
+                        setActiveTool(activeTool === 'move_camera' ? 'select' : 'move_camera');
+                        toast.info(isKa ? 'დააწკაპუნეთ რუკაზე ახალი პოზიციის ასარჩევად' : 'Click on map to set new position');
+                    }
+                }}
+                onDeleteDevice={(type, id) => {
+                    if (type === 'camera') {
+                        setTestCameras(prev => prev.filter(c => c.id !== id));
+                        setSelectedObject(null);
+                        toast.success(isKa ? 'კამერა წაშლილია' : 'Camera deleted');
+                    } else if (type === 'soil') {
+                        setTestSoilSensors(prev => prev.filter(s => s.id !== id));
+                        setSelectedObject(null);
+                        toast.success(isKa ? 'სენსორი წაშლილია' : 'Soil sensor removed');
+                    } else if (type === 'water') {
+                        setTestWaterSensors(prev => prev.filter(w => w.id !== id));
+                        setSelectedObject(null);
+                        toast.success(isKa ? 'სადგური წაშლილია' : 'Water station removed');
+                    } else if (type === 'weather') {
+                        setTestWeatherStations(prev => prev.filter(w => w.id !== id));
+                        setSelectedObject(null);
+                        toast.success(isKa ? 'მეტეო სადგური წაშლილია' : 'Weather station removed');
+                    } else if (type === 'slope_point') {
+                        handleDeleteSpinePoint(id);
+                        setSelectedObject(null);
+                    } else if (type === 'worker') {
+                        setTestWorkersGps(prev => prev.filter(w => w.id !== id));
+                        setSelectedObject(null);
+                        toast.success(isKa ? 'მუშაკი წაშლილია' : 'Worker removed');
+                    }
+                }}
+                onToggleHideCamera={handleToggleHideCamera}
+                isHiddenCamera={selectedObject?.type === 'camera' ? hiddenCameraIds.includes(selectedObject.data?.id) : false}
+                onUpdateCamera={updateActiveCamera}
+                ridgeElevationBaseM={480}
+                isKa={isKa}
+            />
 
             {/* FLOATING DRONE LIVE CAMERA STREAM WINDOW */}
             {isDroneLiveCameraOpen && (
@@ -4637,6 +6418,18 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* PLANNER IMPORT MODAL */}
+            {isPlannerImportOpen && (
+                <SandboxPlannerImportModal
+                    isOpen={isPlannerImportOpen}
+                    onClose={() => setIsPlannerImportOpen(false)}
+                    plantationFeatures={plantationFeatures}
+                    onImportBoundaryOnly={handleImportBoundaryOnly}
+                    onImportSelectedComponents={handleImportSelectedComponents}
+                    isKa={isKa}
+                />
             )}
         </div>
     );

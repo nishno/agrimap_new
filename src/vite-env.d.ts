@@ -11,3 +11,11 @@ declare module 'virtual:pwa-register' {
 
   export function registerSW(options?: RegisterSWOptions): (reloadPage?: boolean) => Promise<void>
 }
+
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      'video-stream': any;
+    }
+  }
+}

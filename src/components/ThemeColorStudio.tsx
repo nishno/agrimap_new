@@ -8,7 +8,10 @@ import {
     QUICK_LETTER_SWATCHES,
     AllLettersColorMode,
     TextHaloMode,
-    LetterWeight
+    LetterWeight,
+    MASTER_STYLES,
+    MasterStyleId,
+    WindowModuleTarget
 } from '../contexts/ThemeContext';
 import { 
     Palette, 
@@ -118,6 +121,11 @@ export const ThemeColorStudio: React.FC = () => {
         updateCustomTheme, 
         resetToDefault, 
         resolvedUnderglowColor,
+        activeMasterStyle,
+        applyMasterStyle,
+        moduleStyles,
+        updateModuleStyle,
+        unifyAllToModuleStyle,
         setAllLettersColor,
         setMenubarLetterColor,
         setOptionsLetterColor,
@@ -127,7 +135,8 @@ export const ThemeColorStudio: React.FC = () => {
         setForceAllLettersOverride,
         resetAllLetterColors
     } = useAppTheme();
-    const [activeStudioTab, setActiveStudioTab] = useState<'presets' | 'customizer' | 'letters' | 'lighting' | 'export'>('letters');
+    const [activeStudioTab, setActiveStudioTab] = useState<'master_styles' | 'window_overrides' | 'presets' | 'customizer' | 'letters' | 'lighting' | 'export'>('master_styles');
+    const [selectedWindowTarget, setSelectedWindowTarget] = useState<WindowModuleTarget>('labs');
     const [testClickCount, setTestClickCount] = useState(0);
     const [previewBgMode, setPreviewBgMode] = useState<'theme' | 'white' | 'dark' | 'light_gray'>('theme');
     const [isSimulatedMenuOpen, setIsSimulatedMenuOpen] = useState(true);
@@ -221,63 +230,74 @@ export const ThemeColorStudio: React.FC = () => {
                 <div className="flex flex-wrap items-center gap-2">
                     <div className="flex flex-wrap items-center gap-1.5 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
                         <button
-                            onClick={() => setActiveStudioTab('presets')}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 standing-light standing-beam ${
-                                activeStudioTab === 'presets' 
-                                    ? 'bg-emerald-600 text-white shadow-md underglow-box-active active' 
-                                    : 'text-slate-400 hover:text-slate-200'
+                            onClick={() => setActiveStudioTab('master_styles')}
+                            className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                                activeStudioTab === 'master_styles' 
+                                    ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-900/40 ring-1 ring-cyan-400' 
+                                    : 'text-cyan-400 hover:text-cyan-300 bg-cyan-950/40 border border-cyan-800/40'
                             }`}
                         >
                             <Sparkles className="w-3.5 h-3.5" />
-                            Presets
+                            <span>🌟 3 Master Styles (1-Click)</span>
                         </button>
                         <button
-                            onClick={() => setActiveStudioTab('customizer')}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 standing-light standing-beam ${
-                                activeStudioTab === 'customizer' 
-                                    ? 'bg-emerald-600 text-white shadow-md underglow-box-active active' 
-                                    : 'text-slate-400 hover:text-slate-200'
+                            onClick={() => setActiveStudioTab('window_overrides')}
+                            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                                activeStudioTab === 'window_overrides' 
+                                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40 ring-1 ring-indigo-400' 
+                                    : 'text-indigo-300 hover:text-white bg-indigo-950/40 border border-indigo-800/40'
                             }`}
                         >
-                            <Sliders className="w-3.5 h-3.5" />
-                            Color Customizer
+                            <Layers className="w-3.5 h-3.5" />
+                            <span>🪟 Window & Pop-up Styles</span>
                         </button>
                         <button
                             onClick={() => setActiveStudioTab('letters')}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 standing-light standing-beam ${
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                                 activeStudioTab === 'letters' 
-                                    ? 'bg-amber-500 text-slate-950 font-black shadow-md underglow-box-active active' 
+                                    ? 'bg-amber-500 text-slate-950 font-black shadow-md' 
                                     : 'text-amber-400 hover:text-amber-300 bg-amber-500/10 border border-amber-500/20'
                             }`}
                             title="Change color for all letters in application, menubars, and options"
                         >
                             <Type className="w-3.5 h-3.5" />
-                            Letter & Menubar Colors
+                            <span>🔤 Letters & Contrast</span>
                             {currentTheme.forceAllLettersOverride && (
                                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                             )}
                         </button>
                         <button
+                            onClick={() => setActiveStudioTab('presets')}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                                activeStudioTab === 'presets' 
+                                    ? 'bg-emerald-600 text-white shadow-md' 
+                                    : 'text-slate-400 hover:text-slate-200'
+                            }`}
+                        >
+                            <Palette className="w-3.5 h-3.5" />
+                            <span>Palettes</span>
+                        </button>
+                        <button
                             onClick={() => setActiveStudioTab('lighting')}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 standing-light standing-beam ${
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                                 activeStudioTab === 'lighting' 
-                                    ? 'bg-emerald-600 text-white shadow-md underglow-box-active active' 
+                                    ? 'bg-emerald-600 text-white shadow-md' 
                                     : 'text-emerald-400 hover:text-emerald-300'
                             }`}
                         >
                             <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
-                            Lighting & Underglow
+                            <span>Lighting</span>
                         </button>
                         <button
                             onClick={() => setActiveStudioTab('export')}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 standing-light standing-beam ${
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                                 activeStudioTab === 'export' 
-                                    ? 'bg-emerald-600 text-white shadow-md underglow-box-active active' 
+                                    ? 'bg-slate-700 text-white shadow-md' 
                                     : 'text-slate-400 hover:text-slate-200'
                             }`}
                         >
                             <Download className="w-3.5 h-3.5" />
-                            Export / Import
+                            <span>Export</span>
                         </button>
                     </div>
 
@@ -515,6 +535,331 @@ export const ThemeColorStudio: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {/* TAB 0: 3 MASTER UNIFIED APPLICATION STYLES (1-CLICK GLOBAL CHANGE) */}
+            {activeStudioTab === 'master_styles' && (
+                <div className="space-y-6">
+                    <div className="bg-gradient-to-r from-cyan-950/40 via-slate-950 to-blue-950/40 p-5 rounded-2xl border border-cyan-500/40 shadow-xl">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 inline-flex items-center gap-1.5 mb-2">
+                                    <Sparkles size={12} />
+                                    1-Click Unified Design System
+                                </span>
+                                <h3 className="text-base sm:text-lg font-black text-white">
+                                    3 Curated Master Application Styles
+                                </h3>
+                                <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
+                                    Instead of manually tweaking dozens of separate buttons and colors, select one of the 3 unified styles below. With <strong>one click</strong>, the entire application—all windows, pop-ups, menus, sidebars, toolbars, fonts, and buttons—updates naturally into a cohesive, beautiful aesthetic.
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                                <span className="text-[11px] text-slate-400 font-mono">Active Style:</span>
+                                <span className="px-3 py-1 rounded-xl text-xs font-black uppercase tracking-wider bg-slate-900 text-cyan-300 border border-cyan-500/50">
+                                    {MASTER_STYLES.find(m => m.id === activeMasterStyle)?.name || 'Precision Modern Agro'}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 3 Master Style Cards Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                        {MASTER_STYLES.map((style) => {
+                            const isCurrent = activeMasterStyle === style.id;
+                            return (
+                                <div
+                                    key={style.id}
+                                    className={`p-5 rounded-3xl border transition-all flex flex-col justify-between relative overflow-hidden ${
+                                        isCurrent
+                                            ? 'border-cyan-400 bg-slate-950 shadow-2xl shadow-cyan-950/60 ring-2 ring-cyan-500/40'
+                                            : 'border-slate-800 bg-slate-950/70 hover:border-slate-700 hover:bg-slate-950'
+                                    }`}
+                                >
+                                    {/* Top decorative accent bar */}
+                                    <div 
+                                        className="absolute top-0 left-0 right-0 h-1.5"
+                                        style={{ backgroundColor: style.accentColor }}
+                                    />
+
+                                    <div>
+                                        <div className="flex items-center justify-between mb-2 pt-1">
+                                            <span 
+                                                className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${style.badgeStyle}`}
+                                            >
+                                                {style.subtitle}
+                                            </span>
+                                            {isCurrent && (
+                                                <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded-lg border border-cyan-800/60">
+                                                    <Check size={12} className="stroke-[3]" /> Active
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <h4 className="text-base font-black text-white mt-1">
+                                            {style.name}
+                                        </h4>
+                                        <p className="text-xs text-slate-300 mt-2 leading-relaxed">
+                                            {style.desc}
+                                        </p>
+
+                                        {/* Visual Element Samples */}
+                                        <div className="mt-4 p-3 rounded-2xl bg-slate-900/80 border border-slate-800/80 space-y-2.5">
+                                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                                                <span>Preview Elements:</span>
+                                                <span className="font-mono text-cyan-400">{style.buttonRadius}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    style={{ backgroundColor: style.accentColor }}
+                                                    className={`px-3 py-1.5 text-xs font-bold text-slate-950 flex items-center gap-1 shadow-md pointer-events-none ${style.buttonRadius}`}
+                                                >
+                                                    <Zap size={11} /> Button
+                                                </button>
+                                                <span 
+                                                    className={`px-2.5 py-1 text-[11px] font-bold border pointer-events-none text-white ${style.buttonRadius}`}
+                                                    style={{ borderColor: style.accentColor, backgroundColor: `${style.accentColor}15` }}
+                                                >
+                                                    High-Contrast
+                                                </span>
+                                            </div>
+                                            <div className="text-[10px] text-slate-400 font-mono flex items-center justify-between pt-1 border-t border-slate-800">
+                                                <span>Font:</span>
+                                                <span className="text-slate-200">{style.fontFamily.split(',')[0]}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Action Button */}
+                                    <div className="mt-5 pt-3 border-t border-slate-800/80">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                applyMasterStyle(style.id);
+                                                toast.success(`Applied "${style.name}" to whole application! All windows & tools updated.`);
+                                            }}
+                                            className={`w-full py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg active:scale-95 ${
+                                                isCurrent
+                                                    ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-cyan-500/25'
+                                                    : 'bg-slate-800 hover:bg-slate-700 text-white hover:text-cyan-300'
+                                            }`}
+                                        >
+                                            <Sparkles size={13} />
+                                            <span>{isCurrent ? 'Current Global Style (Click to Reapply)' : 'Apply to Whole Application'}</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* TAB 0.5: WINDOW & POP-UP CUSTOM STYLE OVERRIDES */}
+            {activeStudioTab === 'window_overrides' && (
+                <div className="space-y-6">
+                    <div className="bg-gradient-to-r from-indigo-950/40 via-slate-950 to-purple-950/40 p-5 rounded-2xl border border-indigo-500/40 shadow-xl">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 inline-flex items-center gap-1.5 mb-2">
+                            <Layers size={12} />
+                            Per-Window Customization & 1-Click Sync
+                        </span>
+                        <h3 className="text-base sm:text-lg font-black text-white">
+                            Window & Pop-up Specific Style Overrides
+                        </h3>
+                        <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
+                            Fine-tune the typography, font size, or button geometry for a specific window or pop-up. If you configure a window look you love (e.g. in LABS or Sidebar), click <strong>"Apply This Style to Whole Application"</strong> to unify all windows instantly!
+                        </p>
+                    </div>
+
+                    {/* Window Module Selector */}
+                    <div className="flex flex-wrap gap-2">
+                        {[
+                            { id: 'labs', label: '🔬 LABS Window (Hardware & Map)', desc: 'Hardware testing sandbox, devices, and camera planner' },
+                            { id: 'sidebar', label: '📑 Sidebar Navigation', desc: 'Main left sidebar module listing' },
+                            { id: 'modals', label: '🪟 Modals & Pop-up Windows', desc: 'Floating tool windows, scanners, and camera viewers' },
+                            { id: 'map_planner', label: '🗺️ Map Planner & GIS Tools', desc: 'Field mapping toolbars and properties panel' },
+                            { id: 'dashboard', label: '📊 Dashboard Widgets', desc: 'Top dashboard cards, charts, and metrics' },
+                            { id: 'all', label: '🏢 All Windows (Global Default)', desc: 'Base baseline for entire application' }
+                        ].map((m) => (
+                            <button
+                                key={m.id}
+                                type="button"
+                                onClick={() => setSelectedWindowTarget(m.id as WindowModuleTarget)}
+                                className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                                    selectedWindowTarget === m.id
+                                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50 ring-2 ring-indigo-400'
+                                        : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                                }`}
+                            >
+                                <span>{m.label}</span>
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Editor Card for Selected Window Target */}
+                    <div className="p-6 rounded-3xl bg-slate-950 border border-indigo-500/30 shadow-2xl space-y-6">
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                            <div>
+                                <h4 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                                    <span>Configuring Target:</span>
+                                    <span className="text-indigo-400 font-mono">{selectedWindowTarget.toUpperCase()}</span>
+                                </h4>
+                                <p className="text-[11px] text-slate-400 mt-0.5">
+                                    Adjust visual style, font size, and buttons specifically for this window.
+                                </p>
+                            </div>
+                            <span className="px-2.5 py-1 rounded-lg bg-indigo-500/10 text-indigo-300 border border-indigo-500/30 font-mono text-[11px]">
+                                Active Style: {moduleStyles[selectedWindowTarget]?.masterStyleId || 'precision_agro'}
+                            </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Option 1: Base Visual Style */}
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-slate-200">
+                                    Visual Design Style:
+                                </label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {MASTER_STYLES.map(ms => {
+                                        const isSelected = (moduleStyles[selectedWindowTarget]?.masterStyleId || 'precision_agro') === ms.id;
+                                        return (
+                                            <button
+                                                key={ms.id}
+                                                type="button"
+                                                onClick={() => updateModuleStyle(selectedWindowTarget, { masterStyleId: ms.id })}
+                                                className={`p-2.5 rounded-xl text-center border transition-all cursor-pointer ${
+                                                    isSelected
+                                                        ? 'bg-indigo-950 border-indigo-400 text-white ring-1 ring-indigo-400'
+                                                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                                                }`}
+                                            >
+                                                <div className="w-2.5 h-2.5 rounded-full mx-auto mb-1.5" style={{ backgroundColor: ms.accentColor }} />
+                                                <div className="text-[11px] font-bold truncate">{ms.name.split(' ')[0]}</div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Option 2: Font Size Scaling */}
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-slate-200">
+                                    Font Size Scale for {selectedWindowTarget.toUpperCase()}:
+                                </label>
+                                <div className="grid grid-cols-4 gap-2">
+                                    {[
+                                        { id: 'compact', label: 'Compact (80%)' },
+                                        { id: 'normal', label: 'Standard (100%)' },
+                                        { id: 'relaxed', label: 'Relaxed (110%)' },
+                                        { id: 'large', label: 'Large (120%)' }
+                                    ].map(fs => {
+                                        const isSelected = (moduleStyles[selectedWindowTarget]?.fontSizeScale || 'normal') === fs.id;
+                                        return (
+                                            <button
+                                                key={fs.id}
+                                                type="button"
+                                                onClick={() => updateModuleStyle(selectedWindowTarget, { fontSizeScale: fs.id as any })}
+                                                className={`py-2 px-1 text-center rounded-xl text-[10px] font-bold border transition-all cursor-pointer ${
+                                                    isSelected
+                                                        ? 'bg-cyan-950 border-cyan-400 text-white ring-1 ring-cyan-400'
+                                                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                                                }`}
+                                            >
+                                                {fs.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Option 3: Button Geometry */}
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-slate-200">
+                                    Button Geometry & Corners:
+                                </label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {[
+                                        { id: 'rounded-xl', label: 'Sleek (Rounded-XL)' },
+                                        { id: 'rounded-2xl', label: 'Organic (Rounded-2XL)' },
+                                        { id: 'rounded-full', label: 'Pill (Rounded-Full)' }
+                                    ].map(bg => {
+                                        const isSelected = (moduleStyles[selectedWindowTarget]?.buttonRadius || 'rounded-xl') === bg.id;
+                                        return (
+                                            <button
+                                                key={bg.id}
+                                                type="button"
+                                                onClick={() => updateModuleStyle(selectedWindowTarget, { buttonRadius: bg.id as any })}
+                                                className={`py-2 px-2 text-center rounded-xl text-[10px] font-bold border transition-all cursor-pointer ${
+                                                    isSelected
+                                                        ? 'bg-emerald-950 border-emerald-400 text-white ring-1 ring-emerald-400'
+                                                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                                                }`}
+                                            >
+                                                {bg.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Option 4: Font Family */}
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-slate-200">
+                                    Font Family:
+                                </label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {[
+                                        { id: 'inter', label: 'Inter Sans (Modern)' },
+                                        { id: 'sans', label: 'System Sans' },
+                                        { id: 'mono', label: 'Tech Monospace' }
+                                    ].map(ff => {
+                                        const isSelected = (moduleStyles[selectedWindowTarget]?.customFontFamily || 'inter') === ff.id;
+                                        return (
+                                            <button
+                                                key={ff.id}
+                                                type="button"
+                                                onClick={() => updateModuleStyle(selectedWindowTarget, { customFontFamily: ff.id as any })}
+                                                className={`py-2 px-2 text-center rounded-xl text-[10px] font-bold border transition-all cursor-pointer ${
+                                                    isSelected
+                                                        ? 'bg-purple-950 border-purple-400 text-white ring-1 ring-purple-400'
+                                                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                                                }`}
+                                            >
+                                                {ff.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Unified Action Buttons */}
+                        <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    toast.success(`Custom styles updated for ${selectedWindowTarget.toUpperCase()} window!`);
+                                }}
+                                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs cursor-pointer"
+                            >
+                                ✓ Save For {selectedWindowTarget.toUpperCase()} Only
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    unifyAllToModuleStyle(selectedWindowTarget);
+                                    toast.success(`✨ Entire application unified to ${selectedWindowTarget.toUpperCase()} style! All windows, pop-ups, and menus synchronized.`);
+                                }}
+                                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 active:scale-95 cursor-pointer"
+                            >
+                                <Sparkles size={14} />
+                                <span>Apply This Style to Whole Application (Unify All Windows)</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* TAB 1: PRESETS */}
             {activeStudioTab === 'presets' && (

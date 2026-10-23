@@ -134,6 +134,110 @@ app.post('/api/sync', (req, res) => {
     }
 });
 
+// 3. Local Server AI Proxy & Status Gateway
+app.get('/api/gemini/status', (req, res) => {
+    const hasKey = !!(process.env.GEMINI_API_KEY || process.env.API_KEY || process.env.VITE_GEMINI_API_KEY);
+    res.json({
+        ok: true,
+        hasServerKey: hasKey,
+        service: 'AgriMap Local Server Node AI Gateway',
+        nodeTime: new Date().toISOString()
+    });
+});
+
+app.post('/api/gemini/test', async (req, res) => {
+    const customKey = (req.headers['x-gemini-api-key']) || req.body?.customApiKey;
+    const key = (customKey || process.env.GEMINI_API_KEY || process.env.API_KEY || '').trim();
+    if (!key) {
+        return res.json({
+            success: false,
+            ok: false,
+            message: 'No Gemini API key found on local server or request.'
+        });
+    }
+    try {
+        const fetchUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=" + encodeURIComponent(key);
+        const testRes = await fetch(fetchUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: "Respond with the word 'OK' to verify connection." }] }]
+            })
+        });
+        const data = await testRes.json();
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        return res.json({
+            success: testRes.ok,
+            ok: testRes.ok,
+            message: testRes.ok ? "Connection successful! Model responded: " + (text.trim() || 'OK') : (data.error?.message || 'Gemini test failed')
+        });
+    } catch (e) {
+        return res.json({ success: false, ok: false, message: e.message });
+    }
+});
+
+app.post('/api/gemini/call', async (req, res) => {
+    const { contents, config, model } = req.body || {};
+    const customKey = (req.headers['x-gemini-api-key']) || req.body?.customApiKey;
+    const key = (customKey || process.env.GEMINI_API_KEY || process.env.API_KEY || '').trim();
+
+    if (!key) {
+        return res.status(401).json({
+            success: false,
+            error: 'LOCAL_SERVER_GEMINI_KEY_MISSING',
+            message: 'Local server does not have GEMINI_API_KEY and no key was provided in request header.'
+        });
+    }
+
+    const targetModel = model || 'gemini-3.8-flash';
+
+    try {
+        let payloadContents = contents;
+        if (typeof contents === 'string') {
+            payloadContents = [{ role: 'user', parts: [{ text: contents }] }];
+        } else if (Array.isArray(contents)) {
+            payloadContents = contents;
+        } else if (contents && !contents.parts && !Array.isArray(contents)) {
+            payloadContents = [{ role: 'user', parts: [{ text: JSON.stringify(contents) }] }];
+        }
+
+        const fetchUrl = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(targetModel) + ":generateContent?key=" + encodeURIComponent(key);
+        const gRes = await fetch(fetchUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: payloadContents,
+                generationConfig: config
+            })
+        });
+
+        const data = await gRes.json();
+        if (!gRes.ok) {
+            return res.status(gRes.status).json({
+                success: false,
+                error: data.error?.message || 'Gemini upstream API returned error',
+                details: data
+            });
+        }
+
+        const candidate = data.candidates?.[0];
+        const textPart = candidate?.content?.parts?.find(p => p.text)?.text || candidate?.content?.parts?.[0]?.text || '';
+
+        return res.json({
+            success: true,
+            text: textPart,
+            candidates: data.candidates,
+            modelUsed: targetModel
+        });
+    } catch (err) {
+        console.error('Local node Gemini proxy error:', err.message);
+        return res.status(500).json({
+            success: false,
+            error: err.message
+        });
+    }
+});
+
 // Global Error Handler
 app.use((err, req, res, next) => {
     console.error('Unhandled Server Error:', err);

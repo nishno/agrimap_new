@@ -5,10 +5,11 @@ import {
     Save, Plus, GripHorizontal, Cpu, RotateCcw,
     RefreshCw, MapPin, Minimize2, Maximize2, ChevronUp, ChevronDown,
     Edit3, PenTool, Hexagon, Move, MousePointer, Trash2, Undo2,
-    Video, Wifi, CloudRain, Radio
+    Video, Wifi, CloudRain, Radio, Download
 } from 'lucide-react';
 
 interface SandboxFloatingTopToolbarProps {
+    onOpenPlannerImport?: () => void;
     activeTool: string;
     onSelectTool: (tool: any) => void;
     isSlopeSculptorOpen: boolean;
@@ -20,8 +21,8 @@ interface SandboxFloatingTopToolbarProps {
     hasSelectedObject: boolean;
     onToggleDevicePanel: () => void;
     tileMode: 'satellite' | 'streets' | '3d';
-    onToggleTileMode: () => void;
-    onOpenExportModal: () => void;
+    onToggleTileMode?: () => void;
+    onOpenExportModal?: () => void;
     onOpenHardwareList?: () => void;
     onFlyToPlantation?: () => void;
     onSwap2d3d?: () => void;
@@ -36,10 +37,21 @@ interface SandboxFloatingTopToolbarProps {
     is3dMainView?: boolean;
     searchBar?: React.ReactNode;
     hiddenItemsCount: number;
+    isLayerTreeOpen?: boolean;
+    onToggleLayerTree?: () => void;
+    onUploadPhotoClick?: () => void;
+    // LABS Plantation Location controls
+    onSaveCurrentAsPlantation?: () => void;
+    onSyncPlantationFromPlanner?: () => void;
+    onPickPlantationOnMap?: () => void;
+    isPickingPlantation?: boolean;
+    savedPlantationCoords?: [number, number];
+    savedPlantationName?: string;
     isKa?: boolean;
 }
 
 export const SandboxFloatingTopToolbar: React.FC<SandboxFloatingTopToolbarProps> = ({
+    onOpenPlannerImport,
     activeTool,
     onSelectTool,
     isSlopeSculptorOpen,
@@ -55,6 +67,12 @@ export const SandboxFloatingTopToolbar: React.FC<SandboxFloatingTopToolbarProps>
     onOpenExportModal,
     onOpenHardwareList,
     onFlyToPlantation,
+    onSaveCurrentAsPlantation,
+    onSyncPlantationFromPlanner,
+    onPickPlantationOnMap,
+    isPickingPlantation = false,
+    savedPlantationCoords,
+    savedPlantationName,
     onSwap2d3d,
     onDeleteLastPoint,
     canDeleteLastPoint = false,
@@ -67,11 +85,15 @@ export const SandboxFloatingTopToolbar: React.FC<SandboxFloatingTopToolbarProps>
     is3dMainView = false,
     searchBar,
     hiddenItemsCount,
+    isLayerTreeOpen = false,
+    onToggleLayerTree,
+    onUploadPhotoClick,
     isKa = false
 }) => {
     // Movable / Draggable Position State
     const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
     const [isMinimized, setIsMinimized] = useState<boolean>(false);
+    const [isPlantationMenuOpen, setIsPlantationMenuOpen] = useState<boolean>(false);
     const containerRef = useRef<HTMLDivElement | null>(null);
     const dragRef = useRef<{ startX: number; startY: number; startLeft: number; startTop: number } | null>(null);
 
@@ -181,160 +203,96 @@ export const SandboxFloatingTopToolbar: React.FC<SandboxFloatingTopToolbarProps>
                 </div>
             )}
 
-            {/* Device Placement Buttons */}
+            {/* Core Modeling Tools: Select, Draw Ridge, Draw Perimeter */}
             <div className="flex items-center gap-1">
+                {/* Select / Move Tool */}
                 <button
                     type="button"
-                    onClick={() => onSelectTool(activeTool === 'add_camera' ? 'select' : 'add_camera')}
+                    onClick={() => onSelectTool('select')}
                     className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                        activeTool === 'add_camera'
-                            ? 'bg-blue-600 text-white shadow ring-2 ring-blue-300'
-                            : 'bg-blue-950/40 text-blue-300 border border-blue-800/50 hover:bg-blue-900/50'
+                        activeTool === 'select'
+                            ? 'bg-slate-700 text-cyan-300 shadow ring-2 ring-cyan-400'
+                            : 'bg-slate-900/60 text-slate-300 hover:bg-slate-800'
                     }`}
-                    title={isKa ? 'დააწკაპუნეთ რუკაზე ახალი კამერის დასამატებლად' : 'Click on map to add surveillance camera'}
+                    title={isKa ? 'წერტილების და ხაზების გადაადგილება / არჩევა' : 'Select & Move points, lines, devices freely'}
                 >
-                    <Camera size={13} />
-                    <span>+ {isKa ? 'კამერა' : 'Camera'}</span>
+                    <Move size={13} />
+                    <span>{isKa ? 'გადაადგილება' : 'Move'}</span>
                 </button>
 
+                {/* Draw Slope Tool (Uneven Terrain & 3D Slope Polygon Mesh) */}
                 <button
                     type="button"
-                    onClick={() => onSelectTool(activeTool === 'drone_waypoint' ? 'select' : 'drone_waypoint')}
+                    onClick={() => onSelectTool(activeTool === 'draw_slope' ? 'select' : 'draw_slope')}
                     className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                        activeTool === 'drone_waypoint'
-                            ? 'bg-cyan-600 text-white shadow ring-2 ring-cyan-300'
-                            : 'bg-cyan-950/40 text-cyan-300 border border-cyan-800/50 hover:bg-cyan-900/50'
+                        activeTool === 'draw_slope'
+                            ? 'bg-gradient-to-r from-fuchsia-600 to-pink-600 text-white font-black shadow-lg ring-2 ring-fuchsia-300'
+                            : 'bg-fuchsia-950/40 text-fuchsia-300 border border-fuchsia-600/50 hover:bg-fuchsia-900/50'
                     }`}
-                    title={isKa ? 'დააწკაპუნეთ რუკაზე დრონის მარშრუტის დასამატებლად' : 'Click on map to add drone flight waypoint'}
+                    title={isKa ? 'ფერდობის დახატვა: დააწკაპუნეთ რუკაზე წერტილების დასასმელად (3D ბადე სინქრონიზდება მყისიერად)' : 'Draw Slope: Click on map to place 3D uneven slope vertices (syncs live to 3D map)'}
                 >
-                    <Navigation size={13} />
-                    <span>+ {isKa ? 'დრონი' : 'Drone'}</span>
+                    <Hexagon size={13} className="stroke-[2.5]" />
+                    <span>📐 {isKa ? 'ფერდობის დახატვა' : 'Draw Slope'}</span>
                 </button>
 
+                {/* Draw Hill Tool (Mound / Ridge Spine Points with Cross-Sections) */}
                 <button
                     type="button"
-                    onClick={() => onSelectTool(activeTool === 'add_worker' ? 'select' : 'add_worker')}
+                    onClick={() => onSelectTool(activeTool === 'draw_hill' ? 'select' : 'draw_hill')}
                     className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                        activeTool === 'add_worker'
-                            ? 'bg-purple-600 text-white shadow ring-2 ring-purple-300'
-                            : 'bg-purple-950/40 text-purple-300 border border-purple-800/50 hover:bg-purple-900/50'
+                        activeTool === 'draw_hill'
+                            ? 'bg-amber-500 text-slate-950 font-black shadow ring-2 ring-amber-300'
+                            : 'bg-amber-950/40 text-amber-300 border border-amber-600/50 hover:bg-amber-900/50'
                     }`}
-                    title={isKa ? 'დააწკაპუნეთ რუკაზე მუშის GPS ტრეკერის დასამატებლად' : 'Click on map to place worker GPS beacon'}
+                    title={isKa ? 'ბორცვის დახატვა: დააწკაპუნეთ რუკაზე ქედის წერტილების (Point A, B, C...) დასასმელად' : 'Draw Hill: Click on map to place ridge spine points (Point A, B, C...) with cross-sections'}
                 >
-                    <User size={13} />
-                    <span>+ {isKa ? 'მუშა GPS' : 'Worker'}</span>
+                    <Mountain size={13} className="stroke-[2.5]" />
+                    <span>🏔️ {isKa ? 'ბორცვის დახატვა' : 'Draw Hill'}</span>
                 </button>
 
-                <button
-                    type="button"
-                    onClick={() => onSelectTool(activeTool === 'add_soil' ? 'select' : 'add_soil')}
-                    className={`px-2.5 py-1.5 rounded-xl font-bold hidden sm:flex items-center gap-1 transition-all cursor-pointer ${
-                        activeTool === 'add_soil'
-                            ? 'bg-emerald-600 text-white shadow ring-2 ring-emerald-300'
-                            : 'bg-emerald-950/40 text-emerald-300 border border-emerald-800/50 hover:bg-emerald-900/50'
-                    }`}
-                    title={isKa ? 'დააწკაპუნეთ რუკაზე ნიადაგის NPK სენსორის დასამატებლად' : 'Click on map to place soil sensor'}
-                >
-                    <Droplets size={12} />
-                    <span>+ {isKa ? 'ნიადაგი' : 'Soil'}</span>
-                </button>
-
-                <button
-                    type="button"
-                    onClick={() => onSelectTool(activeTool === 'add_weather' ? 'select' : 'add_weather')}
-                    className={`px-2.5 py-1.5 rounded-xl font-bold hidden md:flex items-center gap-1 transition-all cursor-pointer ${
-                        activeTool === 'add_weather'
-                            ? 'bg-orange-600 text-white shadow ring-2 ring-orange-300'
-                            : 'bg-orange-950/40 text-orange-300 border border-orange-800/50 hover:bg-orange-900/50'
-                    }`}
-                    title={isKa ? 'დააწკაპუნეთ რუკაზე მეტეო სადგურის დასასმელად' : 'Click on map to place weather station'}
-                >
-                    <CloudRain size={12} />
-                    <span>+ {isKa ? 'მეტეო' : 'Weather'}</span>
-                </button>
+                {/* Back / Undo Last Point */}
+                {canDeleteLastPoint && onDeleteLastPoint && (
+                    <button
+                        type="button"
+                        onClick={onDeleteLastPoint}
+                        className="px-2.5 py-1.5 rounded-xl font-bold bg-rose-950/70 hover:bg-rose-900 text-rose-200 border border-rose-600/60 shadow-sm flex items-center gap-1 cursor-pointer transition-all active:scale-95"
+                        title={isKa ? 'ბოლო წერტილის წაშლა (⌫)' : 'Delete last point (Backspace)'}
+                    >
+                        <Undo2 size={12} className="text-rose-400 stroke-[2.5]" />
+                        <span>{isKa ? 'უკან' : 'Back'}</span>
+                    </button>
+                )}
             </div>
+
+            {/* Import Boundary Polygon & Components from Map Planner */}
+            {onOpenPlannerImport && (
+                <button
+                    type="button"
+                    onClick={onOpenPlannerImport}
+                    className="px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all cursor-pointer bg-gradient-to-r from-cyan-950/80 to-blue-950/80 text-cyan-300 border border-cyan-500/60 hover:from-cyan-900/80 hover:to-blue-900/80 hover:text-white shadow active:scale-95"
+                    title={isKa ? 'დამგეგმავიდან პოლიგონის (საზღვრის) და კომპონენტების იმპორტი' : 'Migrate & Import Boundary Polygon and components from Map Planner'}
+                >
+                    <Download size={13} className="text-cyan-400 stroke-[2.5]" />
+                    <span>📥 {isKa ? 'დამგეგმავი' : 'Import Planner'}</span>
+                </button>
+            )}
 
             <div className="w-[1px] h-6 bg-slate-800 mx-0.5" />
 
-            {/* Select / Move Tool */}
-            <button
-                type="button"
-                onClick={() => onSelectTool('select')}
-                className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    activeTool === 'select'
-                        ? 'bg-slate-700 text-cyan-300 shadow ring-2 ring-cyan-400'
-                        : 'bg-slate-900/60 text-slate-300 hover:bg-slate-800'
-                }`}
-                title={isKa ? 'წერტილების და ხაზების გადაადგილება / არჩევა' : 'Select & Move points, lines, devices freely'}
-            >
-                <Move size={13} />
-                <span>{isKa ? 'გადაადგილება' : 'Move / Select'}</span>
-            </button>
-
-            {/* Direct Live Stream Tool */}
-            <button
-                type="button"
-                onClick={() => {
-                    onSelectTool(activeTool === 'live_stream' ? 'select' : 'live_stream');
-                    if (onOpenLiveStreamTool) onOpenLiveStreamTool();
-                }}
-                className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    activeTool === 'live_stream'
-                        ? 'bg-rose-600 text-white font-black shadow-lg ring-2 ring-rose-300 animate-pulse'
-                        : 'bg-rose-950/40 text-rose-300 border border-rose-600/50 hover:bg-rose-900/50'
-                }`}
-                title={isKa ? 'პირდაპირი ვიდეო ნაკადის ნახვა (RTSP/WebRTC) რუკიდან' : 'Live Stream View (RTSP/WebRTC) directly from map'}
-            >
-                <Video size={13} className="stroke-[2.5]" />
-                <span>📹 {isKa ? 'ლაივ სტრიმი' : 'Live Stream'}</span>
-            </button>
-
-            {/* Direct Click-to-Draw Slope Ridge Tool */}
-            <button
-                type="button"
-                onClick={() => onSelectTool(activeTool === 'draw_slope' ? 'select' : 'draw_slope')}
-                className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    activeTool === 'draw_slope'
-                        ? 'bg-amber-500 text-slate-950 font-black shadow ring-2 ring-amber-300 animate-pulse'
-                        : 'bg-amber-950/40 text-amber-300 border border-amber-600/50 hover:bg-amber-900/50'
-                }`}
-                title={isKa ? 'დააწკაპუნეთ რუკაზე ქედის წერტილების (A, B, C...) თანმიმდევრობით დასასმელად' : 'Click on map to place ridge points (A, B, C, D...)'}
-            >
-                <Edit3 size={13} className="stroke-[2.5]" />
-                <span>✏️ {isKa ? 'ქედის დახატვა' : 'Draw Slope'}</span>
-            </button>
-
-            {/* Draw Custom Organic Perimeter Boundary Polygon */}
-            <button
-                type="button"
-                onClick={() => onSelectTool(activeTool === 'draw_perimeter' ? 'select' : 'draw_perimeter')}
-                className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    activeTool === 'draw_perimeter'
-                        ? 'bg-fuchsia-600 text-white font-black shadow ring-2 ring-fuchsia-300 animate-pulse'
-                        : 'bg-fuchsia-950/40 text-fuchsia-300 border border-fuchsia-600/50 hover:bg-fuchsia-900/50'
-                }`}
-                title={isKa ? 'პერიმეტრის დახატვა წერტილ-წერტილ და 3D რელიეფად გარდაქმნა' : 'Draw perimeter boundary with draggable point lines & loft to 3D'}
-            >
-                <Hexagon size={13} className="stroke-[2.5]" />
-                <span>📐 {isKa ? 'პერიმეტრი' : 'Draw Perimeter'}</span>
-            </button>
-
-            {/* Back Button (Delete Last Edited Point via Back Button or Backspace) */}
-            {onDeleteLastPoint && (
+            {/* Layer Tree Toggle Button */}
+            {onToggleLayerTree && (
                 <button
                     type="button"
-                    onClick={onDeleteLastPoint}
-                    disabled={!canDeleteLastPoint}
+                    onClick={onToggleLayerTree}
                     className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                        canDeleteLastPoint
-                            ? 'bg-rose-950/70 hover:bg-rose-900 text-rose-200 border border-rose-600/60 shadow-sm active:scale-95'
-                            : 'opacity-40 bg-slate-900/40 text-slate-500 border border-slate-800 cursor-not-allowed'
+                        isLayerTreeOpen
+                            ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-black shadow-lg ring-2 ring-cyan-300'
+                            : 'bg-cyan-950/40 text-cyan-300 border border-cyan-700/50 hover:bg-cyan-900/50'
                     }`}
-                    title={isKa ? 'ბოლო რედაქტირებული წერტილის წაშლა (Backspace / ⌫ ან Back ღილაკი)' : 'Delete last edited point (Backspace / ⌫ or Back button)'}
+                    title={isKa ? 'შრეების ხე (Layer Tree: Base Grid, Hill layers, Slope layers, Photo Pins)' : 'Workspace & Layer Tree (Base Grid, Hills, Slopes, Photo Pins)'}
                 >
-                    <Undo2 size={13} className="text-rose-400 stroke-[2.5]" />
-                    <span>{isKa ? 'უკან წაშლა' : 'Back'}</span>
-                    <span className="text-[10px] px-1 py-0.2 rounded bg-rose-900/80 text-rose-200 font-mono font-bold border border-rose-700/50">⌫</span>
+                    <Layers size={13} className="stroke-[2.5]" />
+                    <span>🗂️ {isKa ? 'შრეები' : 'Layers Tree'}</span>
                 </button>
             )}
 
@@ -347,29 +305,13 @@ export const SandboxFloatingTopToolbar: React.FC<SandboxFloatingTopToolbarProps>
                         ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-lg ring-2 ring-amber-300'
                         : 'bg-amber-950/50 text-amber-300 border border-amber-500/40 hover:bg-amber-900/50'
                 }`}
-                title={isKa ? '3D რელიეფის, ქედის და განივი ხაზების პანელი (მარჯვნიდან)' : '3D Mound & Slope sculptor tool (floats from right)'}
+                title={isKa ? '3D რელიეფის, ქედის და განივი ხაზების პანელი (სიგრძე / სიგანე)' : '3D Mound & Slope sculptor panel (Length & Width controls)'}
             >
                 <Mountain size={13} className="stroke-[2.5]" />
-                <span>🏔️ {isKa ? '3D რელიეფი & ქედი' : '3D Mound / Slope'}</span>
+                <span>🏔️ {isKa ? '3D რელიეფი' : '3D Sculptor'}</span>
             </button>
 
-            {/* Delete Whole Slope Button */}
-            {onDeleteSlope && (
-                <button
-                    type="button"
-                    onClick={onDeleteSlope}
-                    disabled={!hasSlope}
-                    className={`px-2.5 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                        hasSlope
-                            ? 'bg-red-950/60 hover:bg-red-900 text-red-300 border border-red-700/60 active:scale-95 shadow-sm'
-                            : 'opacity-40 bg-slate-900/40 text-slate-500 border border-slate-800 cursor-not-allowed'
-                    }`}
-                    title={isKa ? 'მთელი 3D რელიეფის და ქედის წაშლა' : 'Delete whole slope & ridge profile'}
-                >
-                    <Trash2 size={13} className="text-red-400" />
-                    <span>{isKa ? 'რელიეფის წაშლა' : 'Delete Slope'}</span>
-                </button>
-            )}
+            <div className="w-[1px] h-6 bg-slate-800 mx-0.5" />
 
             {/* 3D View Window Toggle */}
             <button
@@ -403,16 +345,157 @@ export const SandboxFloatingTopToolbar: React.FC<SandboxFloatingTopToolbarProps>
                 </button>
             )}
 
-            {/* Fly to Plantation Location */}
-            {onFlyToPlantation && (
+            {/* Enhanced Plantation Button with Location Picker & Save for LABS module */}
+            <div className="relative">
+                <div className="flex items-center rounded-xl bg-emerald-950/60 border border-emerald-700/60 overflow-hidden shadow-sm">
+                    <button
+                        type="button"
+                        onClick={onFlyToPlantation}
+                        className="px-2.5 py-1.5 font-bold flex items-center gap-1.5 text-emerald-300 hover:bg-emerald-900/60 transition-all cursor-pointer"
+                        title={isKa ? 'დააწკაპუნეთ შენახულ პლანტაციაზე გადასაფრენად' : 'Fly to saved LABS plantation location'}
+                    >
+                        <MapPin size={13} className="text-emerald-400" />
+                        <span>{isKa ? 'პლანტაცია' : 'Plantation'}</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setIsPlantationMenuOpen(!isPlantationMenuOpen)}
+                        className="px-1.5 py-1.5 text-emerald-400 hover:bg-emerald-800/70 border-l border-emerald-800/60 transition-colors cursor-pointer"
+                        title={isKa ? 'პლანტაციის ლოკაციის შენახვა / არჩევა LABS მოდულისთვის' : 'Save / Choose Plantation Location for LABS module'}
+                    >
+                        <ChevronDown size={11} />
+                    </button>
+                </div>
+
+                {/* Plantation Settings Dropdown Menu */}
+                {isPlantationMenuOpen && (
+                    <div className="absolute right-0 top-full mt-1.5 z-50 w-72 bg-slate-950 border border-emerald-500/60 rounded-2xl shadow-2xl p-3 space-y-2 animate-in fade-in duration-150">
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span className="font-black text-xs text-emerald-300 flex items-center gap-1">
+                                <MapPin size={13} className="text-emerald-400" />
+                                <span>{isKa ? 'LABS პლანტაციის ადგილი' : 'LABS Plantation Place'}</span>
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setIsPlantationMenuOpen(false)}
+                                className="text-slate-400 hover:text-white p-0.5"
+                            >
+                                <ChevronUp size={12} />
+                            </button>
+                        </div>
+
+                        {savedPlantationCoords && (
+                            <div className="p-2 rounded-xl bg-slate-900/90 border border-slate-800 text-[10px] font-mono space-y-0.5">
+                                <div className="text-slate-400">{isKa ? 'შენახული კოორდინატები:' : 'Saved Coordinates:'}</div>
+                                <div className="text-emerald-300 font-bold">
+                                    {savedPlantationCoords[0].toFixed(5)}, {savedPlantationCoords[1].toFixed(5)}
+                                </div>
+                                {savedPlantationName && (
+                                    <div className="text-slate-300 text-[9px] truncate">
+                                        🏷️ {savedPlantationName}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="space-y-1.5">
+                            {onPickPlantationOnMap && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsPlantationMenuOpen(false);
+                                        onPickPlantationOnMap();
+                                    }}
+                                    className={`w-full text-left px-2.5 py-2 rounded-xl text-xs font-black flex items-center gap-2 cursor-pointer shadow-md transition-all active:scale-95 ${
+                                        isPickingPlantation
+                                            ? 'bg-amber-500 text-slate-950 ring-2 ring-amber-300 animate-pulse'
+                                            : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white'
+                                    }`}
+                                >
+                                    <MapPin size={13} className="text-white shrink-0" />
+                                    <div>
+                                        <div>{isKa ? '📍 რუკაზე დაწკაპუნებით არჩევა' : '📍 Click Map to Pick Location'}</div>
+                                        <div className="text-[9px] font-normal opacity-90">{isKa ? 'დააწკაპუნეთ რუკაზე ზუსტი ადგილის დასანიშნად' : 'Click on map to set plantation coordinates'}</div>
+                                    </div>
+                                </button>
+                            )}
+
+                            {onFlyToPlantation && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsPlantationMenuOpen(false);
+                                        onFlyToPlantation();
+                                    }}
+                                    className="w-full text-left px-2.5 py-1.5 rounded-xl bg-emerald-900/40 hover:bg-emerald-900/80 text-emerald-200 text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors"
+                                >
+                                    <Navigation size={12} className="text-emerald-400" />
+                                    <span>{isKa ? 'გადაფრენა პლანტაციაზე' : 'Fly Map to Plantation'}</span>
+                                </button>
+                            )}
+
+                            {onSaveCurrentAsPlantation && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsPlantationMenuOpen(false);
+                                        onSaveCurrentAsPlantation();
+                                    }}
+                                    className="w-full text-left px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-cyan-300 text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors border border-slate-800"
+                                >
+                                    <Save size={12} className="text-cyan-400" />
+                                    <span>{isKa ? 'მიმდინარე ხედის შენახვა LABS-ისთვის' : 'Save Current View for LABS'}</span>
+                                </button>
+                            )}
+
+                            {onSyncPlantationFromPlanner && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsPlantationMenuOpen(false);
+                                        onSyncPlantationFromPlanner();
+                                    }}
+                                    className="w-full text-left px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 text-xs font-medium flex items-center gap-2 cursor-pointer transition-colors border border-slate-800"
+                                >
+                                    <RefreshCw size={12} className="text-amber-400" />
+                                    <span>{isKa ? 'Map Planner-იდან სინქრონიზაცია' : 'Sync from Map Planner'}</span>
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Upload Photo Button */}
+            {onUploadPhotoClick && (
                 <button
                     type="button"
-                    onClick={onFlyToPlantation}
-                    className="px-2.5 py-1.5 rounded-xl font-bold flex items-center gap-1.5 bg-emerald-950/60 text-emerald-300 border border-emerald-700/60 hover:bg-emerald-900/60 transition-all cursor-pointer"
-                    title={isKa ? 'პლანტაციის ლოკაციაზე გადაფრენა' : 'Always open / fly to plantation location'}
+                    onClick={onUploadPhotoClick}
+                    className="px-2.5 py-1.5 rounded-xl font-bold bg-slate-900 text-cyan-300 border border-cyan-800/60 hover:bg-cyan-950/60 flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+                    title={isKa ? 'ფოტოს ატვირთვა (EXIF GPS & კომპასის ხედვის კუთხე)' : 'Upload Field Photo (EXIF GPS & Compass Heading)'}
                 >
-                    <MapPin size={13} className="text-emerald-400" />
-                    <span>{isKa ? 'პლანტაცია' : 'Plantation'}</span>
+                    <Camera size={13} className="text-cyan-400" />
+                    <span>📷 {isKa ? '+ფოტო' : '+Photo'}</span>
+                </button>
+            )}
+
+            {/* Direct Live Stream Tool */}
+            {onOpenLiveStreamTool && (
+                <button
+                    type="button"
+                    onClick={() => {
+                        onSelectTool(activeTool === 'live_stream' ? 'select' : 'live_stream');
+                        onOpenLiveStreamTool();
+                    }}
+                    className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                        activeTool === 'live_stream'
+                            ? 'bg-rose-600 text-white font-black shadow-lg ring-2 ring-rose-300'
+                            : 'bg-rose-950/40 text-rose-300 border border-rose-600/50 hover:bg-rose-900/50'
+                    }`}
+                    title={isKa ? 'პირდაპირი ვიდეო ნაკადის ნახვა (RTSP/WebRTC) რუკიდან' : 'Live Stream View (RTSP/WebRTC) directly from map'}
+                >
+                    <Video size={13} className="stroke-[2.5]" />
+                    <span>📹 {isKa ? 'ლაივი' : 'Live Stream'}</span>
                 </button>
             )}
 
@@ -493,25 +576,29 @@ export const SandboxFloatingTopToolbar: React.FC<SandboxFloatingTopToolbarProps>
             )}
 
             {/* Tile Layer Mode Switcher */}
-            <button
-                type="button"
-                onClick={onToggleTileMode}
-                className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 rounded-xl font-bold text-[11px] cursor-pointer"
-                title="Toggle Satellite / Streets Map"
-            >
-                {tileMode === 'satellite' ? '🛰️ Sat' : '🗺️ Street'}
-            </button>
+            {onToggleTileMode && (
+                <button
+                    type="button"
+                    onClick={onToggleTileMode}
+                    className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 rounded-xl font-bold text-[11px] cursor-pointer"
+                    title="Toggle Satellite / Streets Map"
+                >
+                    {tileMode === 'satellite' ? '🛰️ Sat' : '🗺️ Street'}
+                </button>
+            )}
 
             {/* Export as Layer to Map Planner */}
-            <button
-                type="button"
-                onClick={onOpenExportModal}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black uppercase text-[10px] tracking-wider flex items-center gap-1 shadow cursor-pointer active:scale-95 transition-all"
-                title={isKa ? 'მთავარ რუკაზე ექსპორტი ახალ ფენად' : 'Export tested hardware to Map Planner'}
-            >
-                <Save size={12} />
-                <span>{isKa ? 'ექსპორტი' : 'Export'}</span>
-            </button>
+            {onOpenExportModal && (
+                <button
+                    type="button"
+                    onClick={onOpenExportModal}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black uppercase text-[10px] tracking-wider flex items-center gap-1 shadow cursor-pointer active:scale-95 transition-all"
+                    title={isKa ? 'მთავარ რუკაზე ექსპორტი ახალ ფენად' : 'Export tested hardware to Map Planner'}
+                >
+                    <Save size={12} />
+                    <span>{isKa ? 'ექსპორტი' : 'Export'}</span>
+                </button>
+            )}
 
             {/* Clear Map Fully Button */}
             {onClearMapFully && (

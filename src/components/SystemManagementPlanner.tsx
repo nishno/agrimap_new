@@ -41,16 +41,18 @@ export interface SystemManagementPlannerProps {
 
 const SystemManagementPlanner: React.FC<SystemManagementPlannerProps> = (props) => {
     // Filter sectors for WorkManager
-    const sectors = (props.plantationFeatures || []).filter(f => f.type === 'area') as AreaPlantationFeature[];
+    const sectors = (props.plantationFeatures || []).filter(f => f && f.type === 'area') as AreaPlantationFeature[];
 
     return (
         <div className="flex flex-col h-full bg-white">
             <WorkManager 
                 {...props} 
+                workAssignments={props.workAssignments || []}
+                employees={props.employees || []}
                 machinery={props.machinery || []}
                 sectors={sectors} 
-                notes={props.notes} 
-                checkpoints={props.checkpoints} 
+                notes={props.notes || []} 
+                checkpoints={props.checkpoints || []} 
             />
         </div>
     );

@@ -288,6 +288,79 @@ export const THEME_PRESETS: AppThemeConfig[] = [
 
 const STORAGE_KEY = 'agrimap_theme_config';
 
+export type MasterStyleId = 'precision_agro' | 'emerald_botanical' | 'command_ops';
+export type WindowModuleTarget = 'all' | 'labs' | 'sidebar' | 'header' | 'map_planner' | 'modals' | 'dashboard';
+
+export interface ModuleStyleConfig {
+    masterStyleId: MasterStyleId;
+    fontSizeScale: 'compact' | 'normal' | 'relaxed' | 'large';
+    buttonRadius: 'rounded-md' | 'rounded-xl' | 'rounded-2xl' | 'rounded-full';
+    customFontFamily: 'inter' | 'sans' | 'mono';
+    highContrastLetters: boolean;
+}
+
+export interface MasterStyleDefinition {
+    id: MasterStyleId;
+    name: string;
+    subtitle: string;
+    desc: string;
+    presetId: string;
+    accentColor: string;
+    fontFamily: string;
+    buttonRadius: 'rounded-md' | 'rounded-xl' | 'rounded-2xl' | 'rounded-full';
+    borderStyle: string;
+    badgeStyle: string;
+}
+
+export const MASTER_STYLES: MasterStyleDefinition[] = [
+    {
+        id: 'precision_agro',
+        name: 'Precision Modern Agro',
+        subtitle: 'Sleek, Architectural & Symmetrical',
+        desc: 'Ultra-refined slate geometry, crisp modern sans typography, symmetrical glass buttons, 100% visible high-contrast letters across all inputs, popups, and windows.',
+        presetId: 'obsidian_architecture',
+        accentColor: '#38bdf8',
+        fontFamily: 'Inter, system-ui, sans-serif',
+        buttonRadius: 'rounded-xl',
+        borderStyle: 'border-slate-700/80',
+        badgeStyle: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+    },
+    {
+        id: 'emerald_botanical',
+        name: 'Emerald Botanical High-Tech',
+        subtitle: 'Nature Precision & Organic Elegance',
+        desc: 'Deep forest-emerald harmony, luminous bio-emerald action buttons, elegant rounded geometry, balanced high-contrast white & light-emerald typography across all tools.',
+        presetId: 'cyber_emerald',
+        accentColor: '#10b981',
+        fontFamily: 'Inter, system-ui, sans-serif',
+        buttonRadius: 'rounded-2xl',
+        borderStyle: 'border-emerald-800/80',
+        badgeStyle: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+    },
+    {
+        id: 'command_ops',
+        name: 'Solar Amber Command Ops',
+        subtitle: 'Industrial High-Visibility & Technical Rigor',
+        desc: 'Deep carbon ops palette with solar amber/gold focus elements, technical monospace accents, and guaranteed maximum legibility where every single field is razor-sharp.',
+        presetId: 'carbon_oled',
+        accentColor: '#f59e0b',
+        fontFamily: 'Inter, monospace, sans-serif',
+        buttonRadius: 'rounded-xl',
+        borderStyle: 'border-amber-700/80',
+        badgeStyle: 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+    }
+];
+
+const DEFAULT_MODULE_STYLES: Record<WindowModuleTarget, ModuleStyleConfig> = {
+    all: { masterStyleId: 'precision_agro', fontSizeScale: 'normal', buttonRadius: 'rounded-xl', customFontFamily: 'inter', highContrastLetters: true },
+    labs: { masterStyleId: 'precision_agro', fontSizeScale: 'normal', buttonRadius: 'rounded-xl', customFontFamily: 'inter', highContrastLetters: true },
+    sidebar: { masterStyleId: 'precision_agro', fontSizeScale: 'normal', buttonRadius: 'rounded-xl', customFontFamily: 'inter', highContrastLetters: true },
+    header: { masterStyleId: 'precision_agro', fontSizeScale: 'normal', buttonRadius: 'rounded-xl', customFontFamily: 'inter', highContrastLetters: true },
+    map_planner: { masterStyleId: 'precision_agro', fontSizeScale: 'normal', buttonRadius: 'rounded-xl', customFontFamily: 'inter', highContrastLetters: true },
+    modals: { masterStyleId: 'precision_agro', fontSizeScale: 'normal', buttonRadius: 'rounded-xl', customFontFamily: 'inter', highContrastLetters: true },
+    dashboard: { masterStyleId: 'precision_agro', fontSizeScale: 'normal', buttonRadius: 'rounded-xl', customFontFamily: 'inter', highContrastLetters: true }
+};
+
 interface ThemeContextType {
     currentTheme: AppThemeConfig;
     isDark: boolean;
@@ -296,6 +369,13 @@ interface ThemeContextType {
     resetToDefault: () => void;
     toggleDarkLight: () => void;
     resolvedUnderglowColor: string;
+    // Master Unified Application Styles (1-Click Global Change)
+    activeMasterStyle: MasterStyleId;
+    applyMasterStyle: (styleId: MasterStyleId) => void;
+    // Window / Pop-up Specific Overrides
+    moduleStyles: Record<WindowModuleTarget, ModuleStyleConfig>;
+    updateModuleStyle: (target: WindowModuleTarget, patch: Partial<ModuleStyleConfig>) => void;
+    unifyAllToModuleStyle: (target: WindowModuleTarget) => void;
     // Letter & Typography Color Controls (Fixes letter visibility across menubars and options)
     setAllLettersColor: (hex: string | null, mode?: AllLettersColorMode) => void;
     setMenubarLetterColor: (hex: string | null) => void;
@@ -346,6 +426,26 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         }
         // Default to the original Classic Clean Light matching the screenshot
         return THEME_PRESETS[0];
+    });
+
+    const [activeMasterStyle, setActiveMasterStyle] = useState<MasterStyleId>(() => {
+        try {
+            const saved = localStorage.getItem('agrimap_active_master_style');
+            if (saved === 'precision_agro' || saved === 'emerald_botanical' || saved === 'command_ops') {
+                return saved;
+            }
+        } catch (e) {}
+        return 'precision_agro';
+    });
+
+    const [moduleStyles, setModuleStyles] = useState<Record<WindowModuleTarget, ModuleStyleConfig>>(() => {
+        try {
+            const saved = localStorage.getItem('agrimap_module_styles');
+            if (saved) {
+                return { ...DEFAULT_MODULE_STYLES, ...JSON.parse(saved) };
+            }
+        } catch (e) {}
+        return DEFAULT_MODULE_STYLES;
     });
 
     // Helper to resolve the active underglow color
@@ -546,6 +646,39 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             `;
         }
 
+        // Module and Window Specific Overrides
+        const labsScale = moduleStyles.labs?.fontSizeScale || 'normal';
+        const sidebarScale = moduleStyles.sidebar?.fontSizeScale || 'normal';
+        const modalsScale = moduleStyles.modals?.fontSizeScale || 'normal';
+        const mapScale = moduleStyles.map_planner?.fontSizeScale || 'normal';
+
+        dynamicCss += `
+            .module-labs {
+                font-size: ${labsScale === 'compact' ? '0.8125rem' : labsScale === 'relaxed' ? '1.0625rem' : labsScale === 'large' ? '1.1875rem' : '0.9375rem'};
+            }
+            .module-sidebar {
+                font-size: ${sidebarScale === 'compact' ? '0.8125rem' : sidebarScale === 'relaxed' ? '1.0625rem' : sidebarScale === 'large' ? '1.1875rem' : '0.9375rem'};
+            }
+            .module-modals {
+                font-size: ${modalsScale === 'compact' ? '0.8125rem' : modalsScale === 'relaxed' ? '1.0625rem' : modalsScale === 'large' ? '1.1875rem' : '0.9375rem'};
+            }
+            .module-map_planner {
+                font-size: ${mapScale === 'compact' ? '0.8125rem' : mapScale === 'relaxed' ? '1.0625rem' : mapScale === 'large' ? '1.1875rem' : '0.9375rem'};
+            }
+            /* High-contrast and readability protection in all inputs, dropdowns, and select options */
+            .module-labs input:not([type="checkbox"]):not([type="radio"]), 
+            .module-labs select, 
+            .module-labs textarea {
+                color: #ffffff !important;
+                background-color: #090d16 !important;
+                border-color: #334155 !important;
+            }
+            .module-labs label, .module-labs .field-label {
+                color: #e2e8f0 !important;
+                font-weight: 600;
+            }
+        `;
+
         styleTag.textContent = dynamicCss;
 
         // Underglow Lighting CSS Variables
@@ -743,18 +876,101 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
 
     const resetAllLetterColors = () => {
+        try {
+            localStorage.removeItem('agrimap_letter_colors');
+        } catch (e) {}
+
+        const dynamicStyleTag = document.getElementById('agrimap-letter-color-styles');
+        if (dynamicStyleTag) {
+            dynamicStyleTag.textContent = '';
+        }
+
         updateCustomTheme({
             universalLetterColor: undefined,
-            allLettersColorMode: 'auto',
-            forceAllLettersOverride: false,
             menubarLetterColor: undefined,
             optionsLetterColor: undefined,
             buttonLetterColor: undefined,
+            allLettersColorMode: 'auto',
             textHaloMode: 'none',
             letterWeight: 'normal',
-            textPrimary: currentTheme.isDark ? '#f8fafc' : '#0f172a',
-            textSecondary: currentTheme.isDark ? '#94a3b8' : '#475569'
+            forceAllLettersOverride: false
         });
+    };
+
+    const applyMasterStyle = (styleId: MasterStyleId) => {
+        const foundMaster = MASTER_STYLES.find(m => m.id === styleId);
+        if (!foundMaster) return;
+
+        const basePreset = THEME_PRESETS.find(p => p.id === foundMaster.presetId) || THEME_PRESETS[1];
+        
+        setActiveMasterStyle(styleId);
+        try {
+            localStorage.setItem('agrimap_active_master_style', styleId);
+        } catch (e) {}
+
+        const updatedConfig: AppThemeConfig = {
+            ...basePreset,
+            buttonRadius: foundMaster.buttonRadius,
+            fontFamily: styleId === 'command_ops' ? 'mono' : 'inter',
+            accentPrimary: foundMaster.accentColor,
+            underglowEnabled: true,
+            underglowColorMode: styleId === 'precision_agro' ? 'cyan' : styleId === 'emerald_botanical' ? 'emerald' : 'amber',
+            underglowCustomColor: foundMaster.accentColor,
+            textPrimary: '#ffffff',
+            textSecondary: styleId === 'emerald_botanical' ? '#6ee7b7' : styleId === 'command_ops' ? '#fcd34d' : '#94a3b8',
+            universalLetterColor: '#ffffff',
+            forceAllLettersOverride: false
+        };
+
+        setCurrentTheme(updatedConfig);
+
+        // Update all module styles to this master style
+        const nextModuleStyles: Record<WindowModuleTarget, ModuleStyleConfig> = {
+            all: { masterStyleId: styleId, fontSizeScale: 'normal', buttonRadius: foundMaster.buttonRadius, customFontFamily: styleId === 'command_ops' ? 'mono' : 'inter', highContrastLetters: true },
+            labs: { masterStyleId: styleId, fontSizeScale: 'normal', buttonRadius: foundMaster.buttonRadius, customFontFamily: styleId === 'command_ops' ? 'mono' : 'inter', highContrastLetters: true },
+            sidebar: { masterStyleId: styleId, fontSizeScale: 'normal', buttonRadius: foundMaster.buttonRadius, customFontFamily: styleId === 'command_ops' ? 'mono' : 'inter', highContrastLetters: true },
+            header: { masterStyleId: styleId, fontSizeScale: 'normal', buttonRadius: foundMaster.buttonRadius, customFontFamily: styleId === 'command_ops' ? 'mono' : 'inter', highContrastLetters: true },
+            map_planner: { masterStyleId: styleId, fontSizeScale: 'normal', buttonRadius: foundMaster.buttonRadius, customFontFamily: styleId === 'command_ops' ? 'mono' : 'inter', highContrastLetters: true },
+            modals: { masterStyleId: styleId, fontSizeScale: 'normal', buttonRadius: foundMaster.buttonRadius, customFontFamily: styleId === 'command_ops' ? 'mono' : 'inter', highContrastLetters: true },
+            dashboard: { masterStyleId: styleId, fontSizeScale: 'normal', buttonRadius: foundMaster.buttonRadius, customFontFamily: styleId === 'command_ops' ? 'mono' : 'inter', highContrastLetters: true }
+        };
+        setModuleStyles(nextModuleStyles);
+        try {
+            localStorage.setItem('agrimap_module_styles', JSON.stringify(nextModuleStyles));
+        } catch (e) {}
+    };
+
+    const updateModuleStyle = (target: WindowModuleTarget, patch: Partial<ModuleStyleConfig>) => {
+        setModuleStyles(prev => {
+            const next = {
+                ...prev,
+                [target]: { ...prev[target], ...patch }
+            };
+            try {
+                localStorage.setItem('agrimap_module_styles', JSON.stringify(next));
+            } catch (e) {}
+            return next;
+        });
+    };
+
+    const unifyAllToModuleStyle = (target: WindowModuleTarget) => {
+        const sourceConfig = moduleStyles[target] || DEFAULT_MODULE_STYLES[target];
+        const next: Record<WindowModuleTarget, ModuleStyleConfig> = {
+            all: { ...sourceConfig },
+            labs: { ...sourceConfig },
+            sidebar: { ...sourceConfig },
+            header: { ...sourceConfig },
+            map_planner: { ...sourceConfig },
+            modals: { ...sourceConfig },
+            dashboard: { ...sourceConfig }
+        };
+        setModuleStyles(next);
+        try {
+            localStorage.setItem('agrimap_module_styles', JSON.stringify(next));
+        } catch (e) {}
+
+        // Apply sourceConfig's master style
+        applyMasterStyle(sourceConfig.masterStyleId);
     };
 
     return (
@@ -766,6 +982,11 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             resetToDefault,
             toggleDarkLight,
             resolvedUnderglowColor,
+            activeMasterStyle,
+            applyMasterStyle,
+            moduleStyles,
+            updateModuleStyle,
+            unifyAllToModuleStyle,
             setAllLettersColor,
             setMenubarLetterColor,
             setOptionsLetterColor,

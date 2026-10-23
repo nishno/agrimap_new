@@ -16,6 +16,8 @@ import {
 import { toast } from 'sonner';
 import { safeStorage } from '../services/storageService';
 import type { PlantationCamera } from './SystemManagement/HardwareLabs/CameraNvrLab';
+import { NvrCameraMasterConsole } from './SystemManagement/HardwareLabs/NvrCameraMasterConsole';
+import type { PlantationFeature } from '../types';
 
 export interface DiscoveredNetworkDevice {
     id: string;
@@ -38,6 +40,7 @@ interface NetworkCameraNvrManagerModalProps {
     isOpen: boolean;
     onClose: () => void;
     plantationCoords?: [number, number];
+    plantationFeatures?: PlantationFeature[];
     onImportAllCameras: (cams: PlantationCamera[]) => void;
     onSelectCameraForDetail?: (cam: PlantationCamera) => void;
     currentCameras?: PlantationCamera[];
@@ -892,5 +895,19 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
 
 export const NetworkCameraNvrManagerModal: React.FC<NetworkCameraNvrManagerModalProps> = (props) => {
     if (!props.isOpen) return null;
-    return <NetworkCameraNvrManagerModalContent {...props} />;
+    return (
+        <NvrCameraMasterConsole
+            isModal={true}
+            onClose={props.onClose}
+            mapCenter={props.plantationCoords}
+            plantationFeatures={props.plantationFeatures}
+            onDeployCameraToMap={(cam) => {
+                if (props.onSelectCameraForDetail) props.onSelectCameraForDetail(cam);
+                if (props.onImportAllCameras) props.onImportAllCameras([cam]);
+            }}
+            onDeployAllCamerasToMap={(cams) => {
+                if (props.onImportAllCameras) props.onImportAllCameras(cams);
+            }}
+        />
+    );
 };

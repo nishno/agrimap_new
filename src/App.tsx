@@ -48,6 +48,7 @@ import {
 import { db, auth, doc, getDocFromServer, onSnapshot, collection, query, where, setDoc, updateDoc, deleteDoc, addDoc, getDocs, writeBatch, enableNetwork, disableNetwork, getSyncQueueSize, clearSyncQueue, testFirestoreConnection, resetFirestorePersistence, setConnectionState, trackModification } from './firebase';
 import { syncManager } from './services/SyncManager';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import { getMainPlantation, resolvePlantationCenter, CANONICAL_AGROBARI_CENTER } from './utils/plantationHelper';
 import FieldManagerModal from './components/FieldManagerModal';
 import SaveFieldModal from './components/SaveFieldModal';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -183,6 +184,9 @@ const App: React.FC = () => {
         return (saved as AppMode) || 'dashboard';
     });
     const [labTab, setLabTab] = useState<'hardware' | 'devices_map' | 'theme' | 'letters' | 'analytics'>('hardware');
+    const [hardwareSubTab, setHardwareSubTab] = useState<string>(() => {
+        return safeStorage.getItem('agrimap_hardware_subtab') || 'bluetooth';
+    });
     const { 
         currentUser, 
         setCurrentUser, 
@@ -301,8 +305,35 @@ const App: React.FC = () => {
         const handleSwitchMode = (e: any) => {
             if (e.detail) setAppMode(e.detail);
         };
+        const handleSetMode = (e: any) => {
+            if (e.detail) {
+                if (e.detail === 'labs') {
+                    setLabTab('hardware');
+                    const saved = safeStorage.getItem('agrimap_hardware_subtab');
+                    if (saved) setHardwareSubTab(saved);
+                }
+                setAppMode(e.detail);
+            }
+        };
+        const handleOpenHardwareTab = (e: any) => {
+            const tab = e.detail || 'weather';
+            setHardwareSubTab(tab);
+            try {
+                safeStorage.setItem('agrimap_hardware_subtab', tab);
+                localStorage.setItem('agrimap_hardware_subtab', tab);
+            } catch (_) {}
+            setLabTab('hardware');
+            setAppMode('labs');
+        };
+
         window.addEventListener('agrimap-switch-mode', handleSwitchMode);
-        return () => window.removeEventListener('agrimap-switch-mode', handleSwitchMode);
+        window.addEventListener('agrimap_set_mode', handleSetMode);
+        window.addEventListener('agrimap_open_hardware_tab', handleOpenHardwareTab);
+        return () => {
+            window.removeEventListener('agrimap-switch-mode', handleSwitchMode);
+            window.removeEventListener('agrimap_set_mode', handleSetMode);
+            window.removeEventListener('agrimap_open_hardware_tab', handleOpenHardwareTab);
+        };
     }, []);
 
     const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
@@ -671,7 +702,11 @@ const App: React.FC = () => {
 
     useEffect(() => {
         if (activeOrgId !== undefined) {
+            const orgVal = activeOrgId || 'personal';
             localStorage.setItem('agri-planter-active-org', activeOrgId || '');
+            safeStorage.setItem('agri-planter-active-org', orgVal);
+            localStorage.setItem('agrimap_active_org_id', orgVal);
+            safeStorage.setItem('agrimap_active_org_id', orgVal);
         }
     }, [activeOrgId]);
 
@@ -1540,6 +1575,30 @@ const App: React.FC = () => {
              }
         }
     }, [appMode, activeOrg]);
+
+    // Fly map to active profile's plantation location upon switching profile (company or personal use)
+    useEffect(() => {
+        if (!isAuthReady) return;
+        const main = getMainPlantation(currentOrgFeatures, mapCenter || [41.9023, 44.5], activeOrgId);
+        if (main && Array.isArray(main.center) && Number.isFinite(main.center[0]) && Number.isFinite(main.center[1])) {
+            setMapCenter([main.center[0], main.center[1]]);
+            setMapZoom(16);
+        }
+    }, [activeOrgId, isAuthReady]);
+
+    // Global listener for flying map to chosen plantation location from any tool
+    useEffect(() => {
+        const handleFlyTo = (e: any) => {
+            const { center, name } = e?.detail || {};
+            if (Array.isArray(center) && Number.isFinite(center[0]) && Number.isFinite(center[1])) {
+                setMapCenter([center[0], center[1]]);
+                setMapZoom(17);
+                if (name) toast.success(`რუკა გადაფრინდა: ${name}`);
+            }
+        };
+        window.addEventListener('agrimap:fly-to-location', handleFlyTo);
+        return () => window.removeEventListener('agrimap:fly-to-location', handleFlyTo);
+    }, []);
 
     // Handle committing tested hardware assets from LABS as a new layer in Map Planner
     useEffect(() => {
@@ -6498,7 +6557,7 @@ const App: React.FC = () => {
                                     plantationFeatures={currentOrgFeatures}
                                     mapCenter={mapProps.center || [41.9023, 44.5]}
                                     fullScreenMap={false}
-                                    initialTab="bluetooth"
+                                    initialTab={hardwareSubTab as any}
                                     onOpenDevicesMap={() => setLabTab('devices_map')}
                                     onSelectLabTab={(tab: string) => setLabTab(tab as any)}
                                 />

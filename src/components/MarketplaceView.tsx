@@ -168,19 +168,16 @@ const MarketplaceView: React.FC<MarketplaceViewProps> = (props) => {
 
     return (
         <div className="flex-1 bg-slate-50 flex flex-col overflow-hidden h-full relative">
-            <div className="md:hidden flex-shrink-0 bg-white border-b p-2 flex gap-1 z-20">
+            <div className="lg:hidden flex-shrink-0 bg-white border-b p-2 flex gap-1 z-20">
                 <button onClick={() => setActiveTab('list')} className={`flex-1 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'list' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-400 hover:bg-slate-50'}`}>Listing Results</button>
                 <button onClick={() => setActiveTab('map')} className={`flex-1 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'map' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-400 hover:bg-slate-50'}`}>Satellite View</button>
             </div>
 
-            <div className="flex-grow flex overflow-hidden">
-                <div 
-                    className={`${activeTab === 'list' ? 'flex' : 'hidden md:flex'} w-full flex-shrink-0 flex-col bg-white border-r border-slate-200 shadow-2xl z-10 overflow-hidden`}
-                    style={{
-                        width: typeof window !== 'undefined' && window.innerWidth > 768 ? `${marketPanelWidth}px` : undefined,
-                        maxWidth: '85vw'
-                    }}
-                >
+            <div className="flex-grow flex flex-col overflow-hidden">
+                {activeTab === 'list' && (
+                    <div 
+                        className="flex flex-1 w-full h-full flex-col bg-white border-r border-slate-200 shadow-2xl z-10 overflow-hidden"
+                    >
                     {selectedListing ? (
                         <ListingDetails 
                             listing={selectedListing} 
@@ -199,14 +196,24 @@ const MarketplaceView: React.FC<MarketplaceViewProps> = (props) => {
                             <div className="p-6 border-b flex flex-col gap-4">
                                 <div className="flex justify-between items-center">
                                     <h1 className="text-2xl font-black text-slate-800 tracking-tighter uppercase">{t('market.title')}</h1>
-                                    <button 
-                                        onClick={() => setIsCreateModalOpen(true)} 
-                                        disabled={currentUser?.isGuest}
-                                        className="p-3 bg-slate-900 text-white rounded-2xl shadow-xl transition-transform active:scale-90 disabled:opacity-50 disabled:cursor-not-allowed" 
-                                        title={currentUser?.isGuest ? "Verification required" : "New Listing"}
-                                    >
-                                        <PlusCircleIcon className="h-6 w-6" />
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <button 
+                                            type="button"
+                                            onClick={() => setActiveTab('map')}
+                                            className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[9.5px] font-black uppercase tracking-wider shadow-sm flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                                            title="Switch to Full Map View"
+                                        >
+                                            <span>Only Map</span>
+                                        </button>
+                                        <button 
+                                            onClick={() => setIsCreateModalOpen(true)} 
+                                            disabled={currentUser?.isGuest}
+                                            className="p-3 bg-slate-900 text-white rounded-2xl shadow-xl transition-transform active:scale-90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer" 
+                                            title={currentUser?.isGuest ? "Verification required" : "New Listing"}
+                                        >
+                                            <PlusCircleIcon className="h-6 w-6" />
+                                        </button>
+                                    </div>
                                 </div>
                                 <div className="flex gap-1 bg-slate-100 p-1 rounded-2xl">
                                     <button onClick={() => setTypeFilter('all')} className={`flex-1 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${typeFilter === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>All</button>
@@ -238,54 +245,56 @@ const MarketplaceView: React.FC<MarketplaceViewProps> = (props) => {
                         </div>
                     )}
                 </div>
+                )}
 
-                {/* Resizable Divider between Marketplace Panel and Map */}
-                <ResizableDivider 
-                    direction="horizontal"
-                    currentSize={marketPanelWidth}
-                    onResize={(newWidth) => setMarketPanelWidth(newWidth)}
-                    minSize={280}
-                    maxSize={typeof window !== 'undefined' ? Math.max(window.innerWidth - 300, 600) : 850}
-                    storageKey="marketplace_panel_width"
-                    isKa={t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka'}
-                    className="hidden md:flex"
-                />
-
-                <div className={`${activeTab === 'map' ? 'flex' : 'hidden md:flex'} flex-1 h-full relative overflow-hidden bg-slate-200`}>
-                    <MapComponent {...mapProps} showSearch={true}>
-                        {filteredListings
-                            .map((listing, idx) => {
-                                if (!isValidCoordinate(listing.location)) return null;
-                                const lLoc: [number, number] = [
-                                    typeof listing.location[0] === 'string' ? parseFloat(listing.location[0]) : listing.location[0],
-                                    typeof listing.location[1] === 'string' ? parseFloat(listing.location[1]) : listing.location[1]
-                                ];
-                                return (
-                                    <MapMarker 
-                                        key={`marker-${listing.id || idx}-${idx}`} 
-                                        position={lLoc} 
-                                        icon={L.divIcon({
-                                            html: `<div class="w-10 h-10 rounded-2xl bg-white border-2 border-slate-900 flex items-center justify-center text-slate-900 shadow-2xl hover:scale-110 active:scale-90 transition-transform"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path d="M5.223 2.25c-.497 0-.974.198-1.325.55l-1.1 1.1a1.875 1.875 0 0 0 0 2.652L12 15.75l9.202-9.202a1.875 1.875 0 0 0 0-2.652l-1.1-1.1a1.875 1.875 0 0 0-1.325-.55H5.223Z" /><path fill-rule="evenodd" d="M3 20.25c0 .414.336.75.75.75h16.5a.75.75 0 0 0 .75-.75V8.125l-8.5 8.5a.75.75 0 0 1-1.06 0L3 8.125v12.125Z" clip-rule="evenodd" /></svg></div>`,
-                                            className: '', iconSize: [40, 40], iconAnchor: [20, 20], popupAnchor: [0, -20]
-                                        })}
-                                        eventHandlers={{ click: () => { setSelectedListing(listing); setActiveTab('list'); } }}
-                                    />
-                                );
-                            })
-                            .filter(Boolean)
-                        }
-                    </MapComponent>
-                    <div className="absolute bottom-6 right-6 z-[1000] md:hidden">
-                        <button 
-                            onClick={() => setIsCreateModalOpen(true)} 
-                            disabled={currentUser?.isGuest}
-                            className="bg-slate-900 text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
-                            title={currentUser?.isGuest ? "Verification required" : "New Listing"}
-                        >
-                             <PlusIcon className="h-6 w-6"/>
-                        </button>
+                {activeTab === 'map' && (
+                    <div className="flex flex-1 w-full h-full relative overflow-hidden bg-slate-200">
+                        {/* Floating Return to Panel Button when in Map View */}
+                        <div className="absolute top-4 left-4 z-[1005]">
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('list')}
+                                className="px-4 py-2.5 bg-slate-900/95 hover:bg-black text-white rounded-2xl shadow-2xl flex items-center gap-2 border border-slate-700/80 backdrop-blur-md active:scale-95 transition-all text-xs font-black uppercase tracking-wider cursor-pointer"
+                                title="Back to Panel"
+                            >
+                                <span>Back to Panel</span>
+                            </button>
+                        </div>
+                        <MapComponent {...mapProps} showSearch={true}>
+                            {filteredListings
+                                .map((listing, idx) => {
+                                    if (!isValidCoordinate(listing.location)) return null;
+                                    const lLoc: [number, number] = [
+                                        typeof listing.location[0] === 'string' ? parseFloat(listing.location[0]) : listing.location[0],
+                                        typeof listing.location[1] === 'string' ? parseFloat(listing.location[1]) : listing.location[1]
+                                    ];
+                                    return (
+                                        <MapMarker 
+                                            key={`marker-${listing.id || idx}-${idx}`} 
+                                            position={lLoc} 
+                                            icon={L.divIcon({
+                                                html: `<div class="w-10 h-10 rounded-2xl bg-white border-2 border-slate-900 flex items-center justify-center text-slate-900 shadow-2xl hover:scale-110 active:scale-90 transition-transform"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path d="M5.223 2.25c-.497 0-.974.198-1.325.55l-1.1 1.1a1.875 1.875 0 0 0 0 2.652L12 15.75l9.202-9.202a1.875 1.875 0 0 0 0-2.652l-1.1-1.1a1.875 1.875 0 0 0-1.325-.55H5.223Z" /><path fill-rule="evenodd" d="M3 20.25c0 .414.336.75.75.75h16.5a.75.75 0 0 0 .75-.75V8.125l-8.5 8.5a.75.75 0 0 1-1.06 0L3 8.125v12.125Z" clip-rule="evenodd" /></svg></div>`,
+                                                className: '', iconSize: [40, 40], iconAnchor: [20, 20], popupAnchor: [0, -20]
+                                            })}
+                                            eventHandlers={{ click: () => { setSelectedListing(listing); setActiveTab('list'); } }}
+                                        />
+                                    );
+                                })
+                                .filter(Boolean)
+                            }
+                        </MapComponent>
+                        <div className="absolute bottom-6 right-6 z-[1000] md:hidden">
+                            <button 
+                                onClick={() => setIsCreateModalOpen(true)} 
+                                disabled={currentUser?.isGuest}
+                                className="bg-slate-900 text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+                                title={currentUser?.isGuest ? "Verification required" : "New Listing"}
+                            >
+                                 <PlusIcon className="h-6 w-6"/>
+                            </button>
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
 
             {isCreateModalOpen && currentUser && (

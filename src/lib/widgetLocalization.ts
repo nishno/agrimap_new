@@ -4,6 +4,7 @@ export const getWidgetTitle = (type: string, fallbackTitle: string, t: (key: str
         case 'agronomy_quick': return t('dash.widget.agronomy_quick');
         case 'tasks': return t('dash.widget.tasks');
         case 'planner': return t('dash.widget.planner');
+        case 'weather': return t('dash.widget.weather') || 'Online Weather & Station';
         case 'hardware_labs': return t('dash.widget.hardware_labs');
         case 'team_hubs': return t('dash.widget.team_hubs');
         case 'field_summary': return t('dash.widget.field_summary');
