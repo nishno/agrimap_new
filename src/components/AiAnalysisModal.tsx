@@ -13,6 +13,7 @@ import {
 import { useLanguage } from '../contexts/LanguageContext';
 import { AiAnalysisSuite } from './AiAnalysisSuite';
 import { safeStorage } from '../services/storageService';
+import { triggerAiTopUpModal } from '../services/geminiService';
 
 interface AiAnalysisModalProps {
     isOpen: boolean;
@@ -186,6 +187,15 @@ export const AiAnalysisModal: React.FC<AiAnalysisModalProps> = ({
                                 <span className="hidden sm:inline-flex text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950/90 text-emerald-300 border border-emerald-700/50 font-bold">
                                     {isKa ? 'ვერსია v3.8 Flash' : 'v3.8 Flash'}
                                 </span>
+                                <button
+                                    type="button"
+                                    onClick={() => triggerAiTopUpModal()}
+                                    className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30 transition-colors cursor-pointer"
+                                    title={isKa ? 'AI ბალანსი, კვოტები & ტარიფები' : 'AI Balance, Quota & Pricing'}
+                                >
+                                    <Sparkles size={11} className="text-emerald-400" />
+                                    <span>{isKa ? 'კვოტა / შევსება' : 'Quota / Top-Up'}</span>
+                                </button>
                             </div>
                             <p className="text-[10px] sm:text-xs text-slate-300 flex items-center gap-2 truncate">
                                 <span className="truncate">{isKa ? 'მცენარეთა დაავადებები, რეცეპტები, აგრო ხედვა & გამოცდილების ბაზა' : 'Plant pathology, prescription ledger, agro vision & cross-learning'}</span>

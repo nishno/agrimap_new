@@ -1,0 +1,6 @@
+{
+  "summary":  "Comprehensive architecture and implementation plan for AgriMap Pro's AI infrastructure, featuring a hybrid per-user quota and credit balance system, Stripe Checkout card top-up, Cloud Run backend proxy configuration for agrimap.pro, and Firestore metering.",
+  "updatedAt":  "2026-10-23T10:53:27.415132084Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

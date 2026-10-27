@@ -2701,61 +2701,6 @@ export const MapComponent: React.FC<MapComponentProps> = (props) => {
                                     <div><b>[CH0{cam.channel}] {cam.name}</b></div>
                                     <div className="text-slate-400">Tilt: {cam.tiltAngleDeg || 4}° • Range: {cam.rangeM}m</div>
                                 </Tooltip>
-                                <Popup>
-                                    <div className="p-3 min-w-[220px] text-slate-800 touch-auto">
-                                        <div className="flex items-center justify-between gap-2 mb-2">
-                                            <span className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 font-mono font-bold text-[10px]">
-                                                CH0{cam.channel}
-                                            </span>
-                                            <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
-                                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                                                {cam.status || 'ONLINE'}
-                                            </span>
-                                        </div>
-                                        <h4 className="text-sm font-black text-slate-900 leading-tight mb-1">{cam.name}</h4>
-                                        <div className="text-[11px] text-slate-600 mb-2.5 font-mono bg-slate-50 p-2 rounded-lg border border-slate-200 space-y-0.5">
-                                            <div><b>IP:</b> {cam.ipAddress}:{cam.rtspPort}</div>
-                                            <div><b>Model:</b> {cam.model}</div>
-                                            <div><b>Optical:</b> Range {cam.rangeM}m • FOV {cam.fovAngleDeg}°</div>
-                                            <div><b>Pole:</b> Height {cam.mountHeightM}m • Tilt {cam.tiltAngleDeg || 4}°</div>
-                                            <div><b>Blind Zone:</b> &lt; {blindDistM}m</div>
-                                        </div>
-
-                                        {/* Action buttons: Live View & Properties */}
-                                        <div className="flex gap-2">
-                                            <button
-                                                type="button"
-                                                onPointerDown={(e) => e.stopPropagation()}
-                                                onTouchEnd={(e) => {
-                                                    e.stopPropagation();
-                                                    onSelectCameraForLiveView?.(cam);
-                                                }}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    onSelectCameraForLiveView?.(cam);
-                                                }}
-                                                className="flex-1 py-2.5 px-3 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1 shadow-md shadow-blue-500/30 transition-all cursor-pointer active:scale-95 touch-manipulation min-h-[40px]"
-                                            >
-                                                <span>🎥 Live</span>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onPointerDown={(e) => e.stopPropagation()}
-                                                onTouchEnd={(e) => {
-                                                    e.stopPropagation();
-                                                    onSelectCameraForProperties?.(cam);
-                                                }}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    onSelectCameraForProperties?.(cam);
-                                                }}
-                                                className="flex-1 py-2.5 px-3 bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95 touch-manipulation min-h-[40px]"
-                                            >
-                                                <span>⚙️ Config</span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </Popup>
                             </Marker>
                         </React.Fragment>
                     );

@@ -1352,7 +1352,7 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
             safeStorage.setItem('agrimap_plantation_cameras', JSON.stringify(next));
             return next;
         });
-        window.dispatchEvent(new CustomEvent('agrimap:camera_deployed', { detail: cam }));
+        setSelectedCameraForProperties(prev => prev?.id === cam.id ? cam : prev);
     };
 
     // Save batch of cameras from multi-camera planner

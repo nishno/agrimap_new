@@ -1,7 +1,7 @@
 import pptxgen from 'pptxgenjs';
 import { jsPDF } from 'jspdf';
 import { GoogleGenAI, Type } from '@google/genai';
-import { getActiveGeminiApiKey, PRIMARY_GEMINI_MODEL } from './geminiService';
+import { getActiveGeminiApiKey, PRIMARY_GEMINI_MODEL, executeGeminiCall } from './geminiService';
 import type { PlatformModuleDefinition, ModuleConnection, AiArchitectureReport } from './architectureGuideService';
 
 export interface PresentationSlide {
@@ -401,16 +401,8 @@ export const generateCustomAiPresentationDeck = async (
         return buildStandardPresentationDeck(modules, [], activeReport || {} as any, language);
     }
 
-    const geminiKey = getActiveGeminiApiKey();
-
-    if (geminiKey) {
-        try {
-            const ai = new GoogleGenAI({
-                apiKey: geminiKey,
-                httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
-            });
-
-            const systemInstruction = `You are the Principal Systems Architect and Precision Agriculture Engineer for AgriMap Pro.
+    try {
+        const systemInstruction = `You are the Principal Systems Architect and Precision Agriculture Engineer for AgriMap Pro.
 The user wants a customized, professional presentation deck about AgriMap Pro tailored to their specific request.
 Their request is: "${trimmedPrompt}".
 Language required: ${isKa ? 'Georgian (ქართული ენა)' : 'English'}.
@@ -444,22 +436,20 @@ Respond ONLY with valid JSON conforming to this schema:
   ]
 }`;
 
-            const response = await ai.models.generateContent({
-                model: PRIMARY_GEMINI_MODEL,
-                contents: [
-                    {
-                        role: 'user',
-                        parts: [
-                            { text: `Please create the custom presentation deck based on this specific request: "${trimmedPrompt}"` }
-                        ]
-                    }
-                ],
-                config: {
-                    systemInstruction,
-                    responseMimeType: 'application/json',
-                    temperature: 0.2
+        const response = await executeGeminiCall({
+            contents: [
+                {
+                    role: 'user',
+                    parts: [
+                        { text: `${systemInstruction}\n\nPlease create the custom presentation deck based on this specific request: "${trimmedPrompt}"` }
+                    ]
                 }
-            });
+            ],
+            config: {
+                responseMimeType: 'application/json',
+                temperature: 0.2
+            }
+        });
 
             const rawText = response.text?.trim();
             if (rawText) {
@@ -479,7 +469,6 @@ Respond ONLY with valid JSON conforming to this schema:
         } catch (e) {
             console.warn("Gemini custom deck generation error, falling back to smart heuristic deck:", e);
         }
-    }
 
     // Fallback: Smart, rich domain heuristic generator
     return buildHeuristicCustomDeck(trimmedPrompt, modules, language);
@@ -497,38 +486,29 @@ export const answerPresentationCopilotQuestion = async (
     const isKa = language === 'ka';
     const qLower = question.toLowerCase();
 
-    const geminiKey = getActiveGeminiApiKey();
-    if (geminiKey) {
-        try {
-            const ai = new GoogleGenAI({
-                apiKey: geminiKey,
-                httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
-            });
+    try {
+        const context = currentDeck 
+            ? `Current active presentation deck: "${currentDeck.title}" with ${currentDeck.slides.length} slides.\nSlides:\n` + 
+              currentDeck.slides.map((s, i) => `Slide ${i + 1}: ${s.title} (${s.subtitle || ''})\nBullets: ${s.bullets?.join('; ') || ''}\nHighlight: ${s.highlightBox?.text || ''}`).join('\n\n')
+            : `17 modules available: ${modules.map(m => m.nameEn).join(', ')}`;
 
-            const context = currentDeck 
-                ? `Current active presentation deck: "${currentDeck.title}" with ${currentDeck.slides.length} slides.\nSlides:\n` + 
-                  currentDeck.slides.map((s, i) => `Slide ${i + 1}: ${s.title} (${s.subtitle || ''})\nBullets: ${s.bullets?.join('; ') || ''}\nHighlight: ${s.highlightBox?.text || ''}`).join('\n\n')
-                : `17 modules available: ${modules.map(m => m.nameEn).join(', ')}`;
-
-            const response = await ai.models.generateContent({
-                model: PRIMARY_GEMINI_MODEL,
-                contents: [
-                    {
-                        role: 'user',
-                        parts: [
-                            { text: `You are the AgriMap Pro Systems Architect and Precision Agriculture Copilot. Answer the user's question clearly and authoritatively in ${isKa ? 'Georgian' : 'English'}.\nContext:\n${context}\n\nQuestion: "${question}"` }
-                        ]
-                    }
-                ],
-                config: {
-                    temperature: 0.3
+        const response = await executeGeminiCall({
+            contents: [
+                {
+                    role: 'user',
+                    parts: [
+                        { text: `You are the AgriMap Pro Systems Architect and Precision Agriculture Copilot. Answer the user's question clearly and authoritatively in ${isKa ? 'Georgian' : 'English'}.\nContext:\n${context}\n\nQuestion: "${question}"` }
+                    ]
                 }
-            });
+            ],
+            config: {
+                temperature: 0.3
+            }
+        });
 
-            if (response.text) return response.text;
-        } catch (e) {
-            console.warn("Gemini Q&A failed, falling back to local copilot responder:", e);
-        }
+        if (response?.text) return response.text;
+    } catch (e) {
+        console.warn("Presentation assistant call, using local copilot responder:", e);
     }
 
     // Smart local responder

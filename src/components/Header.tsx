@@ -6,6 +6,7 @@ import { useAppTheme } from '../contexts/ThemeContext';
 import { Ticket, ChevronDown, BookOpen, Search, Sparkles } from 'lucide-react';
 import { motion } from 'motion/react';
 import { APP_VERSION_NAME } from '../utils/version';
+import { getEffectiveUserAiQuota } from '../services/geminiService';
 
 interface HeaderProps {
   currentUser: User | null;
@@ -37,6 +38,7 @@ interface HeaderProps {
   notesCount?: number;
   onOpenThemeStudio?: () => void;
   onOpenGlobalSearch?: () => void;
+  onOpenAiTopUp?: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({ 
@@ -46,7 +48,7 @@ const Header: React.FC<HeaderProps> = ({
   isCloudQuotaExceeded, onOpenLocalServerConfig, localServerConfig,
   onPushToCloud, pendingSyncCount = 0, onOpenDataAuditor, onOpenHomepage,
   onOpenHelp, onOpenChat, onOpenMeet, onOpenAssistant, onOpenNotes, notesCount = 0,
-  onOpenThemeStudio, onOpenGlobalSearch
+  onOpenThemeStudio, onOpenGlobalSearch, onOpenAiTopUp
 }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -54,6 +56,10 @@ const Header: React.FC<HeaderProps> = ({
   const { language, setLanguage, currency, setCurrency, t } = useLanguage();
   const { isDark, currentTheme } = useAppTheme();
   const [storageUsage, setStorageUsage] = useState(0);
+
+  const aiQuota = getEffectiveUserAiQuota(currentUser);
+  const freeRemaining = Math.max(0, aiQuota.monthlyFreeTierTotal - aiQuota.monthlyFreeTierUsed);
+  const isFounder = (currentUser?.roles || []).some(r => ['Founder', 'Co-Founder', 'ROOT_SUPER_ADMIN'].includes(r));
 
   const canManageLocalServer = currentUser?.roles?.some(r => r === 'Founder' || r === 'Admin' || r === 'ROOT_SUPER_ADMIN');
 
@@ -244,10 +250,24 @@ const Header: React.FC<HeaderProps> = ({
                 : 'bg-blue-50 border-blue-100 text-blue-700'
             }`} title={isCloudQuotaExceeded ? "Firebase Database Quota Exceeded for today." : "Cloud Status: All Green"}>
                 <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isCloudQuotaExceeded ? 'bg-red-500 animate-pulse' : 'bg-emerald-400'}`} />
-                <span className="text-[10px] font-black uppercase tracking-widest">
-                    {isCloudQuotaExceeded ? 'Limit Hit' : 'Normal'}
-                </span>
             </div>
+
+            {/* AI Quota & Top-Up Trigger */}
+            <button
+                onClick={onOpenAiTopUp}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[10px] font-mono font-bold transition-all flex-shrink-0 snap-end standing-light cursor-pointer ${
+                    isDark 
+                        ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300 hover:bg-emerald-900/50 hover:border-emerald-400/50' 
+                        : 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
+                }`}
+                title={language === 'ka' ? 'AI კვოტა, ტარიფები და ბალანსის შევსება' : 'AI Quota, Architecture & Top-Up'}
+            >
+                <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span className="font-semibold tracking-tight">AI</span>
+                <span className="tabular-nums font-mono text-[11px]">
+                    {isFounder ? '∞ Free' : freeRemaining > 0 ? `${freeRemaining} Free` : `${aiQuota.aiCreditsBalance} Cr`}
+                </span>
+            </button>
 
             {/* Language Toggle */}
             <button

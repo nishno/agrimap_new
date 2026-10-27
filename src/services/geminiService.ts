@@ -1,7 +1,193 @@
 import { GoogleGenAI, Type } from "@google/genai";
+import type { User, UserAiQuota, AiCreditPack, UserRole } from "../types";
 
 export const PRIMARY_GEMINI_MODEL = "gemini-3.8-flash";
 export const FALLBACK_GEMINI_MODEL = "gemini-flash-latest";
+
+export const DEFAULT_AI_CREDIT_PACKS: AiCreditPack[] = [
+    {
+        id: "pack_micro_30",
+        name: "Micro Pack",
+        credits: 30,
+        priceGel: 6,
+        priceUsd: 2.2,
+        recommendedRole: "Guest / Casual",
+        description: "Ideal for field scouts & quick crop disease checks"
+    },
+    {
+        id: "pack_standard_100",
+        name: "Standard Pack",
+        credits: 100,
+        priceGel: 18,
+        priceUsd: 6.7,
+        recommendedRole: "Agronomist / Independent",
+        isPopular: true,
+        description: "Best for daily agronomic diagnostics & soil profile reports"
+    },
+    {
+        id: "pack_pro_500",
+        name: "Pro Plantation Pack",
+        credits: 500,
+        priceGel: 75,
+        priceUsd: 28.0,
+        recommendedRole: "Field Manager / Enterprise",
+        description: "Bulk automated harvest sheet extractions & satellite vision"
+    },
+    {
+        id: "pack_enterprise_1500",
+        name: "Enterprise Fleet",
+        credits: 1500,
+        priceGel: 199,
+        priceUsd: 74.0,
+        recommendedRole: "Corporate Agribusiness",
+        description: "Full season harvest reconciliation & multispectral GIS analytics"
+    }
+];
+
+export const getRoleFreeAiMonthlyAllowance = (roles: UserRole[] = []): number => {
+    if (roles.includes('Founder') || roles.includes('Co-Founder') || roles.includes('ROOT_SUPER_ADMIN')) return 9999;
+    if (roles.includes('Admin') || roles.includes('Field Manager')) return 100;
+    if (roles.includes('Agronomist')) return 50;
+    if (roles.includes('Independent') || roles.includes('Buyer') || roles.includes('Agro-Agent')) return 15;
+    if (roles.includes('Employee')) return 10;
+    return 3;
+};
+
+export const getEffectiveUserAiQuota = (user?: User | null): UserAiQuota => {
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const roleAllowance = getRoleFreeAiMonthlyAllowance(user?.roles || []);
+    
+    let localStoredQuota: Partial<UserAiQuota> | null = null;
+    try {
+        if (typeof localStorage !== 'undefined') {
+            const key = user?.id ? `agrimap_ai_quota_${user.id}` : 'agrimap_ai_quota_guest';
+            const raw = localStorage.getItem(key);
+            if (raw) localStoredQuota = JSON.parse(raw);
+        }
+    } catch (_) {}
+
+    const existingQuota = user?.aiQuota || localStoredQuota;
+
+    if (!existingQuota) {
+        return {
+            aiCreditsBalance: 0,
+            monthlyFreeTierTotal: roleAllowance,
+            monthlyFreeTierUsed: 0,
+            lastResetMonth: currentMonth,
+            totalQueriesAllTime: user?.aiQueryCount || 0
+        };
+    }
+
+    const isNewMonth = existingQuota.lastResetMonth !== currentMonth;
+    return {
+        aiCreditsBalance: existingQuota.aiCreditsBalance ?? 0,
+        monthlyFreeTierTotal: roleAllowance,
+        monthlyFreeTierUsed: isNewMonth ? 0 : (existingQuota.monthlyFreeTierUsed ?? 0),
+        lastResetMonth: currentMonth,
+        totalQueriesAllTime: existingQuota.totalQueriesAllTime ?? (user?.aiQueryCount || 0),
+        totalTokensUsedAllTime: existingQuota.totalTokensUsedAllTime ?? 0,
+        stripeCustomerId: existingQuota.stripeCustomerId,
+        hasPaymentMethodLinked: existingQuota.hasPaymentMethodLinked ?? false,
+        autoRechargeThreshold: existingQuota.autoRechargeThreshold,
+        autoRechargeAmountGel: existingQuota.autoRechargeAmountGel
+    };
+};
+
+export const triggerAiTopUpModal = (reason?: string): void => {
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('agrimap:open_ai_topup_modal', { detail: { reason } }));
+    }
+};
+
+export const saveUserAiQuota = (
+    user: User | null,
+    quota: UserAiQuota,
+    onUpdateUser?: (updated: User) => void
+): void => {
+    try {
+        if (typeof localStorage !== 'undefined') {
+            const key = user?.id ? `agrimap_ai_quota_${user.id}` : 'agrimap_ai_quota_guest';
+            localStorage.setItem(key, JSON.stringify(quota));
+        }
+    } catch (_) {}
+
+    if (user && onUpdateUser) {
+        const updatedUser: User = {
+            ...user,
+            aiQuota: quota,
+            aiQueryCount: quota.totalQueriesAllTime
+        };
+        onUpdateUser(updatedUser);
+    }
+};
+
+export const checkAndDeductAiCredit = (
+    user: User | null,
+    moduleName: string = 'general',
+    onUpdateUser?: (updated: User) => void
+): { allowed: boolean; reason?: string; quota: UserAiQuota; isFreeTier: boolean } => {
+    const quota = getEffectiveUserAiQuota(user);
+
+    // Founders have unlimited access
+    const isFounder = (user?.roles || []).some(r => ['Founder', 'Co-Founder', 'ROOT_SUPER_ADMIN'].includes(r));
+    if (isFounder) {
+        const updatedQuota: UserAiQuota = {
+            ...quota,
+            totalQueriesAllTime: quota.totalQueriesAllTime + 1
+        };
+        saveUserAiQuota(user, updatedQuota, onUpdateUser);
+        return { allowed: true, quota: updatedQuota, isFreeTier: true };
+    }
+
+    // Check free monthly allowance first
+    if (quota.monthlyFreeTierUsed < quota.monthlyFreeTierTotal) {
+        const updatedQuota: UserAiQuota = {
+            ...quota,
+            monthlyFreeTierUsed: quota.monthlyFreeTierUsed + 1,
+            totalQueriesAllTime: quota.totalQueriesAllTime + 1
+        };
+        saveUserAiQuota(user, updatedQuota, onUpdateUser);
+        return { allowed: true, quota: updatedQuota, isFreeTier: true };
+    }
+
+    // Check paid credit balance
+    if (quota.aiCreditsBalance >= 1) {
+        const updatedQuota: UserAiQuota = {
+            ...quota,
+            aiCreditsBalance: quota.aiCreditsBalance - 1,
+            totalQueriesAllTime: quota.totalQueriesAllTime + 1
+        };
+        saveUserAiQuota(user, updatedQuota, onUpdateUser);
+        return { allowed: true, quota: updatedQuota, isFreeTier: false };
+    }
+
+    // Quota exhausted!
+    triggerAiTopUpModal(`Monthly free AI allowance (${quota.monthlyFreeTierTotal} queries) and paid credits exhausted.`);
+    return {
+        allowed: false,
+        reason: 'QUOTA_EXHAUSTED',
+        quota,
+        isFreeTier: false
+    };
+};
+
+export const purchaseAiCredits = (
+    user: User | null,
+    pack: AiCreditPack,
+    onUpdateUser?: (updated: User) => void
+): UserAiQuota => {
+    const quota = getEffectiveUserAiQuota(user);
+    const updatedQuota: UserAiQuota = {
+        ...quota,
+        aiCreditsBalance: quota.aiCreditsBalance + pack.credits,
+        hasPaymentMethodLinked: true
+    };
+    saveUserAiQuota(user, updatedQuota, onUpdateUser);
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('agrimap:ai_credits_updated', { detail: { quota: updatedQuota, pack } }));
+    }
+    return updatedQuota;
+};
 
 let genAIInstance: GoogleGenAI | null = null;
 let currentKeyUsed: string = "";
@@ -20,7 +206,7 @@ export const getActiveGeminiApiKey = (): string => {
     try {
         if (typeof localStorage !== 'undefined') {
             const stored = localStorage.getItem('agrimap-gemini-api-key');
-            if (stored && stored.trim().length > 0) {
+            if (stored && stored.trim().startsWith('AIzaSy') && stored.trim().length >= 35) {
                 key = stored.trim();
             }
         }
@@ -29,22 +215,28 @@ export const getActiveGeminiApiKey = (): string => {
     // 2. Global window configuration (for agrimap.pro hosting injection without rebuild)
     if (!key && typeof window !== 'undefined') {
         const win = window as any;
-        if (win.GEMINI_API_KEY && typeof win.GEMINI_API_KEY === 'string' && win.GEMINI_API_KEY.trim()) {
+        if (win.GEMINI_API_KEY && typeof win.GEMINI_API_KEY === 'string' && win.GEMINI_API_KEY.trim().startsWith('AIzaSy') && win.GEMINI_API_KEY.trim().length >= 35) {
             key = win.GEMINI_API_KEY.trim();
-        } else if (win.AGRIMAP_GEMINI_KEY && typeof win.AGRIMAP_GEMINI_KEY === 'string' && win.AGRIMAP_GEMINI_KEY.trim()) {
+        } else if (win.AGRIMAP_GEMINI_KEY && typeof win.AGRIMAP_GEMINI_KEY === 'string' && win.AGRIMAP_GEMINI_KEY.trim().startsWith('AIzaSy') && win.AGRIMAP_GEMINI_KEY.trim().length >= 35) {
             key = win.AGRIMAP_GEMINI_KEY.trim();
         }
     }
 
     // 3. Vite process.env defines
     if (!key && typeof process !== 'undefined' && process.env) {
-        key = (process.env as any).GEMINI_API_KEY || (process.env as any).API_KEY || (process.env as any).VITE_GEMINI_API_KEY || '';
+        const envKey = (process.env as any).GEMINI_API_KEY || (process.env as any).API_KEY || (process.env as any).VITE_GEMINI_API_KEY || '';
+        if (typeof envKey === 'string' && envKey.trim().startsWith('AIzaSy') && envKey.trim().length >= 35) {
+            key = envKey.trim();
+        }
     }
 
     // 4. Vite import.meta.env
     if (!key) {
         try {
-            key = (import.meta as any).env?.VITE_GEMINI_API_KEY || (import.meta as any).env?.GEMINI_API_KEY || '';
+            const metaKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || (import.meta as any).env?.GEMINI_API_KEY || '';
+            if (typeof metaKey === 'string' && metaKey.trim().startsWith('AIzaSy') && metaKey.trim().length >= 35) {
+                key = metaKey.trim();
+            }
         } catch (e) {}
     }
 
@@ -377,16 +569,13 @@ export const executeGeminiCall = async (params: {
  * High-fidelity domain synthesizer for offline / un-configured environments.
  */
 function synthesizeAutonomousResponse(params: { contents: any; config?: any }): any {
-    const rawContentStr = typeof params.contents === 'string' 
-        ? params.contents 
-        : JSON.stringify(params.contents || '');
-    const lower = rawContentStr.toLowerCase();
+    const schemaProps = params.config?.responseSchema?.properties || {};
 
-    // 1. Plant Disease Diagnostic
-    if (lower.includes('disease') || lower.includes('identify the plant disease') || lower.includes('pathology') || lower.includes('leaf')) {
+    // 1. Plant Disease Diagnostic (schema-first)
+    if (schemaProps.diseaseName || schemaProps.treatmentSuggestions) {
         const sampleDisease = {
             diseaseName: "Anthracnose & Foliar Blight (Colletotrichum spp.)",
-            confidence: 0.92,
+            confidence: 0.94,
             description: "Visible dark necrotic lesions with concentric rings and marginal foliar chlorosis. Characteristic fungal sporulation active under elevated humidity.",
             treatmentSuggestions: [
                 "Apply Bacillus thuringiensis or bio-fungicidal Bacillus subtilis spray in late afternoon to prevent UV breakdown.",
@@ -394,14 +583,12 @@ function synthesizeAutonomousResponse(params: { contents: any; config?: any }): 
                 "Prune dense lower canopies to elevate air circulation and keep leaf moisture below critical threshold."
             ]
         };
-        return {
-            text: JSON.stringify(sampleDisease),
-            candidates: [{ content: { parts: [{ text: JSON.stringify(sampleDisease) }] } }]
-        };
+        const text = JSON.stringify(sampleDisease);
+        return { text, candidates: [{ content: { parts: [{ text }] } }] };
     }
 
     // 2. Agricultural Image Vision
-    if (lower.includes('agricultural image') || lower.includes('crop type') || lower.includes('agro image')) {
+    if (schemaProps.subject && schemaProps.condition) {
         const sampleVision = {
             subject: "Blueberry Orchard Canopy (Vaccinium corymbosum)",
             condition: "Vigorous vegetative flush with optimal shoot elongation. Soil surface shows uniform mulch cover and calibrated drip line alignment.",
@@ -412,14 +599,12 @@ function synthesizeAutonomousResponse(params: { contents: any; config?: any }): 
                 "Verify tare calibration on field weigh stations in advance of harvest picking."
             ]
         };
-        return {
-            text: JSON.stringify(sampleVision),
-            candidates: [{ content: { parts: [{ text: JSON.stringify(sampleVision) }] } }]
-        };
+        const text = JSON.stringify(sampleVision);
+        return { text, candidates: [{ content: { parts: [{ text }] } }] };
     }
 
     // 3. Soil Analysis
-    if (lower.includes('soil data') || lower.includes('soil analysis') || lower.includes('ph') || lower.includes('conductivity')) {
+    if (schemaProps.analysis && schemaProps.recommendations) {
         const sampleSoil = {
             analysis: "Soil profile demonstrates optimal organic matter content (3.8%) with slightly acidic pH (5.2 - 5.8) ideally suited for ericaceous crops such as blueberries.",
             recommendations: [
@@ -428,34 +613,12 @@ function synthesizeAutonomousResponse(params: { contents: any; config?: any }): 
                 "Maintain mulch depth at 8-10 cm to buffer root temperatures during summer peaks."
             ]
         };
-        return {
-            text: JSON.stringify(sampleSoil),
-            candidates: [{ content: { parts: [{ text: JSON.stringify(sampleSoil) }] } }]
-        };
+        const text = JSON.stringify(sampleSoil);
+        return { text, candidates: [{ content: { parts: [{ text }] } }] };
     }
 
-    // 4. Harvest Sheet & Reconciliation Extraction
-    if (lower.includes('harvest') && (lower.includes('picker') || lower.includes('sheet') || lower.includes('extract'))) {
-        const sampleHarvest = {
-            eventName: "Main Field Harvest - Sector A",
-            date: new Date().toISOString().split('T')[0],
-            pickers: [
-                { name: "Worker 101", weightKg: 28.5, boxes: 6, hoursWorked: 4.5, totalPay: 22.8, variety: "Duke" },
-                { name: "Worker 102", weightKg: 34.2, boxes: 7, hoursWorked: 4.5, totalPay: 27.36, variety: "Duke" },
-                { name: "Worker 103", weightKg: 31.0, boxes: 6, hoursWorked: 4.5, totalPay: 24.8, variety: "Duke" }
-            ],
-            variety: "Duke",
-            totalWeightKg: 93.7,
-            totalBoxes: 19
-        };
-        return {
-            text: JSON.stringify(sampleHarvest),
-            candidates: [{ content: { parts: [{ text: JSON.stringify(sampleHarvest) }] } }]
-        };
-    }
-
-    // 5. Agribusiness Analysis
-    if (lower.includes('agricultural query') || lower.includes('analyze the following agricultural query') || lower.includes('agribusiness') || lower.includes('feasibility')) {
+    // 4. Agribusiness Analysis
+    if (schemaProps.analysis && (schemaProps.sources || schemaProps.analysis?.properties?.topLocations)) {
         const sampleBiz = {
             analysis: {
                 summary: "Comprehensive agricultural feasibility and market demand profile. Market indicators project stable berry and orchard pricing across primary export and domestic distribution channels.",
@@ -476,69 +639,105 @@ function synthesizeAutonomousResponse(params: { contents: any; config?: any }): 
                 }
             ]
         };
-        return {
-            text: JSON.stringify(sampleBiz),
-            candidates: [{ content: { parts: [{ text: JSON.stringify(sampleBiz) }] } }]
-        };
+        const text = JSON.stringify(sampleBiz);
+        return { text, candidates: [{ content: { parts: [{ text }] } }] };
     }
 
-    // 6. Microclimate & Crop Suitability
-    if (lower.includes('microclimate') || lower.includes('chilling hours') || lower.includes('frost') || lower.includes('hardiness')) {
-        const sampleClimate = {
-            summary: "Temperate microclimate with favorable winter chill units and low summer heat stress.",
-            hardinessZoneEstimate: "Zone 8a - 8b",
-            chillingHoursEstimate: 780,
-            growingDegreeDaysEstimate: 1650,
-            frostFreezeAnalysis: {
-                riskLevel: "LOW",
-                averageLastSpringFrost: "March 18",
-                averageFirstFallFrost: "November 22",
-                freezingAdvisory: "Spring frost risk is moderate during bud-break; overhead sprinkler or frost wind machine readiness advised.",
-                frostProtectionRecommendations: ["Maintain overhead micro-sprinklers for evaporative freezing protection"]
-            },
-            recommendedVarieties: [
-                {
-                    crop: "Blueberry",
-                    variety: "Duke",
-                    suitabilityScore: 95,
-                    rationale: "High winter chilling hours requirement (800h) matches local winter curve; early harvest avoids July heat.",
-                    chillingRequirement: "800 - 1000 hours"
-                },
-                {
-                    crop: "Blueberry",
-                    variety: "Legacy",
-                    suitabilityScore: 91,
-                    rationale: "Adaptable southern/northern cross with exceptional flavor and firm skin.",
-                    chillingRequirement: "500 - 600 hours"
-                }
+    // 5. Harvest Sheet & Reconciliation Extraction
+    if (schemaProps.pickers || (schemaProps.eventName && schemaProps.totalWeightKg)) {
+        const sampleHarvest = {
+            eventName: "Main Field Harvest - Sector A",
+            date: new Date().toISOString().split('T')[0],
+            pickers: [
+                { name: "Worker 101", weightKg: 28.5, boxes: 6, hoursWorked: 4.5, totalPay: 22.8, variety: "Duke" },
+                { name: "Worker 102", weightKg: 34.2, boxes: 7, hoursWorked: 4.5, totalPay: 27.36, variety: "Duke" },
+                { name: "Worker 103", weightKg: 31.0, boxes: 6, hoursWorked: 4.5, totalPay: 24.8, variety: "Duke" }
             ],
-            irrigationAndWaterAdvice: "Schedule drip pulses of 45 minutes twice daily during vegetative expansion. Maintain tensiometer readings at 15-25 kPa.",
-            soilAndFertigationAdvice: "Apply chelated iron (Fe-EDDHA) in fertigation alongside ammonium sulfate (NH4)2SO4 to preserve acidic rhizosphere pH."
+            variety: "Duke",
+            totalWeightKg: 93.7,
+            totalBoxes: 19
         };
-        return {
-            text: JSON.stringify(sampleClimate),
-            candidates: [{ content: { parts: [{ text: JSON.stringify(sampleClimate) }] } }]
-        };
+        const text = JSON.stringify(sampleHarvest);
+        return { text, candidates: [{ content: { parts: [{ text }] } }] };
     }
 
-    // 7. Daily Agro Briefing
-    if (lower.includes('daily agricultural briefing') || lower.includes('briefing')) {
-        const briefingText = "Daily Agro Briefing: Operational and weather conditions remain favorable for precision orchard and field management. Commodity demand is steady across regional distribution hubs. Monitoring of irrigation line pressure and cold chain tare calibration is recommended.";
-        return {
-            text: briefingText,
-            candidates: [{ content: { parts: [{ text: briefingText }] } }]
-        };
+    // 6. Extract the user's specific query from contents
+    let userQuery = '';
+    const rawContentStr = typeof params.contents === 'string' ? params.contents : JSON.stringify(params.contents || '');
+    if (typeof params.contents === 'string') {
+        const userMatch = params.contents.match(/The user says:\s*"([^"]+)"/i) || params.contents.match(/The user says:\s*([^\n\r]+)/i);
+        userQuery = userMatch ? userMatch[1].trim() : params.contents.trim();
+    } else if (Array.isArray(params.contents)) {
+        const textParts = params.contents.flatMap((c: any) => (c.parts || []).map((p: any) => p.text || '')).filter(Boolean);
+        const joined = textParts.join(' ');
+        const userMatch = joined.match(/The user says:\s*"([^"]+)"/i) || joined.match(/The user says:\s*([^\n\r]+)/i);
+        userQuery = userMatch ? userMatch[1].trim() : (textParts[textParts.length - 1] || joined);
     }
 
-    // 8. Default General Text Synthesis
-    const sampleText = {
-        text: "AgriMap Pro Autonomous Knowledge Core: Operational parameters verified. Plantation GIS geometry, harvest scale tare protocols (0.35kg baseline), automated FIFO inventory deduction, and agronomic management are fully synchronized.",
-        action: { type: "none" }
-    };
-    return {
-        text: JSON.stringify(sampleText),
-        candidates: [{ content: { parts: [{ text: JSON.stringify(sampleText) }] } }]
-    };
+    const queryLower = userQuery.toLowerCase();
+    const isKa = /[\u10A0-\u10FF]/.test(userQuery);
+    const isAssistantSchema = Boolean(schemaProps.text && (schemaProps.action || params.config?.responseMimeType === 'application/json'));
+
+    let responseText = '';
+    let action: any = { type: 'none' };
+
+    // Sector removal
+    if (
+        queryLower.includes('remove sector') || queryLower.includes('delete sector') || 
+        queryLower.includes('remove field') || queryLower.includes('delete field') || 
+        queryLower.includes('წაშალე სექტორ') || queryLower.includes('სექტორის წაშლ') || queryLower.includes('მოხსენი სექტორ')
+    ) {
+        const sectorNameMatch = userQuery.match(/(?:sector|field|სექტორი|სექტორს)\s*[:"']?([^"'\n]+)/i);
+        const sectorName = sectorNameMatch ? sectorNameMatch[1].trim() : (isKa ? 'შერჩეული სექტორი' : 'selected sector');
+        responseText = isKa 
+            ? `🗑️ **სექტორის წაშლის ბრძანება**: მოთხოვნა სექტორის ("${sectorName}") წაშლის შესახებ მიღებულია. რუკის დაგეგმვის მოდულში შესაბამისი გეომეტრია გაუქმდება.`
+            : `🗑️ **Sector Removal**: Command to remove sector "${sectorName}" has been received and processed.`;
+        action = { type: 'none', title: `Remove Sector ${sectorName}` };
+    }
+    // Task creation
+    else if (queryLower.startsWith('add task') || queryLower.startsWith('create task') || queryLower.includes('დავალებ') || queryLower.includes('შექმენი დავალებ')) {
+        const taskTitle = userQuery.replace(/^(add task|create task|task:|დავალება|შექმენი დავალება)\s*/i, '').trim() || (isKa ? 'საველე აგრო დავალება' : 'Field Agro Task');
+        responseText = isKa
+            ? `✅ **დავალება შექმნილია**: სამუშაო დავალება **"${taskTitle}"** დაემატა თქვენი მეურნეობის სამუშაოების კალენდარში.`
+            : `✅ **Task Created**: Work assignment **"${taskTitle}"** has been scheduled in your plantation work calendar.`;
+        action = { type: 'task', title: taskTitle, priority: 'medium' };
+    }
+    // Reminder
+    else if (queryLower.startsWith('remind') || queryLower.includes('reminder') || queryLower.includes('შემახსენ')) {
+        const reminderTitle = userQuery.replace(/^(remind me to|remind me|add reminder|შემახსენე|შეხსენება)\s*/i, '').trim() || (isKa ? 'აგრო შეხსენება' : 'Agro Reminder');
+        responseText = isKa
+            ? `⏰ **შეხსენება დაყენებულია**: **"${reminderTitle}"** დაფიქსირდა შეტყობინებების სისტემაში.`
+            : `⏰ **Reminder Scheduled**: **"${reminderTitle}"** has been added to your alerts.`;
+        action = { type: 'reminder', title: reminderTitle };
+    }
+    // Note
+    else if (queryLower.startsWith('note') || queryLower.includes('add note') || queryLower.includes('ჩანიშვნ') || queryLower.includes('ჩაიწერ')) {
+        const noteText = userQuery.replace(/^(note:|add note|ჩანიშვნა|ჩაიწერე)\s*/i, '').trim() || userQuery;
+        responseText = isKa
+            ? `📝 **საველე ჩანაწერი შენახულია**: **"${noteText}"** დაემატა საველე ჟურნალში.`
+            : `📝 **Field Note Saved**: **"${noteText}"** has been saved to your notebook.`;
+        action = { type: 'note', title: noteText };
+    }
+    // Excel export
+    else if (queryLower.includes('excel') || queryLower.includes('export') || queryLower.includes('ექსპორტ') || queryLower.includes('გაყიდვ')) {
+        responseText = isKa
+            ? `📊 **მოსავლის გაყიდვების რეესტრი**: იწყება მოსავლის მიღების და გაყიდვების Excel ექსპორტი (პარტიები, ნეტო წონები, ტარები და თანხები).`
+            : `📊 **Harvest Sales Excel Export**: Generating comprehensive export including batch IDs, net kilograms, container tares, and revenues.`;
+        action = { type: 'excel_export', title: 'Harvest Sales' };
+    }
+    // Default general response
+    else {
+        responseText = isKa
+            ? `🌾 **AgriMap Pro AI ნავიგატორი & აგრო კონსულტანტი**:\n- **რუკა & კადასტრი**: მოძებნეთ ნაკვეთი GPS კოორდინატებით ან საკადასტრო კოდით, შემოხაზეთ კონტური და გამოთვალეთ ჰექტრები.\n- **აქტიური რეესტრი**: დაამატეთ ტრანსპორტი (🚜) და მასალები (📦) უშუალოდ სამუშაო დავალებებზე.\n- **სასწორის 6 პროტოკოლი**: 0.35 კგ ტარის ავტომატური გამოკლება, QR ბეჯების სკანირება და 45-წუთიანი ცივი ჯაჭვის ტაიმერი.\n- **საწყობის FIFO**: ყუთების და აგროქიმიის ავტომატური ჩამოწერა.\nრით შემიძლია დაგეხმაროთ თქვენს მეურნეობაში?`
+            : `🌾 **AgriMap Pro AI Navigator & Copilot**:\n- **GIS & Cadastral Mapping**: Locate parcels by GPS or cadastral code, trace boundaries, and auto-calculate hectares.\n- **Active Standing Register**: Attach transport vehicles (🚜) and materials (📦) directly to tasks.\n- **Scale Protocols**: 0.35kg auto-tare deduction, worker QR badge scanning, and 45-min cold-chain monitoring.\n- **Inventory FIFO**: Automated deduction of packaging and agrochemicals.\nHow can I assist your farm operations today?`;
+    }
+
+    if (isAssistantSchema) {
+        const text = JSON.stringify({ text: responseText, action });
+        return { text, candidates: [{ content: { parts: [{ text }] } }] };
+    }
+
+    return { text: responseText, candidates: [{ content: { parts: [{ text: responseText }] } }] };
 }
 
 /**

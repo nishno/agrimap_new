@@ -116,6 +116,42 @@ export interface WorkExperience {
     description?: string;
 }
 
+export interface UserAiQuota {
+    aiCreditsBalance: number;
+    monthlyFreeTierTotal: number;
+    monthlyFreeTierUsed: number;
+    lastResetMonth: string;
+    totalQueriesAllTime: number;
+    totalTokensUsedAllTime?: number;
+    stripeCustomerId?: string;
+    hasPaymentMethodLinked?: boolean;
+    autoRechargeThreshold?: number;
+    autoRechargeAmountGel?: number;
+}
+
+export interface AiUsageRecord {
+    id: string;
+    userId: string;
+    timestamp: string;
+    module: string;
+    modelUsed: string;
+    tokensEstimated?: number;
+    creditsDeducted: number;
+    remainingBalance: number;
+    status: 'success' | 'fallback';
+}
+
+export interface AiCreditPack {
+    id: string;
+    name: string;
+    credits: number;
+    priceGel: number;
+    priceUsd: number;
+    recommendedRole?: string;
+    isPopular?: boolean;
+    description?: string;
+}
+
 export interface User {
     id: string;
     globalUniqueId: string; // G-001 (Master Identity)
@@ -159,6 +195,7 @@ export interface User {
     country?: string;
     companyName?: string;
     aiQueryCount: number;
+    aiQuota?: UserAiQuota;
     invitations?: Invitation[];
     location?: [number, number];
     workingArea?: {

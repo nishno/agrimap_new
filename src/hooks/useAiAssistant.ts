@@ -150,6 +150,53 @@ If you require macro ecosystem benchmarks, please switch to the **Root AI Assist
         }
     }
 
+    // 0.1 Sector Removal / Feature Deletion
+    const isRemoveSectorQuery = lower.includes('remove sector') || lower.includes('delete sector') || 
+        lower.includes('remove field') || lower.includes('delete field') || 
+        lower.includes('წაშალე სექტორ') || lower.includes('სექტორის წაშლ') || 
+        lower.includes('მოხსენი სექტორ') || lower.includes('სექტორი წაშალე');
+
+    if (isRemoveSectorQuery) {
+        const features = context?.plantationFeatures || [];
+        const namePart = command
+            .replace(/^(remove sector|delete sector|remove field|delete field|წაშალე სექტორი|სექტორის წაშლა|მოხსენი სექტორი|სექტორი წაშალე)\s*[:"']?/i, '')
+            .replace(/["']?$/i, '')
+            .trim();
+
+        const matched = features.find((f: any) => {
+            const fName = (f.name || f.title || f.id || '').toLowerCase();
+            return namePart && (fName === namePart.toLowerCase() || fName.includes(namePart.toLowerCase()) || namePart.toLowerCase().includes(fName));
+        });
+
+        if (matched) {
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('agrimap_delete_features', { detail: { ids: [matched.id] } }));
+            }
+            return {
+                text: `🗑️ **სექტორი წარმატებით წაიშალა / Sector Removed**
+
+- **სექტორის დასახელება / Name**: "${matched.name || matched.id}"
+- **ტიპი / Type**: ${matched.type || 'Field Polygon'}
+- **სტატუსი / Status**: სექტორი წარმატებით ამოიშალა რუკიდან და სისტემიდან. GIS მონაცემთა ბაზა განახლებულია.${noticeFooter}`,
+                action: { type: 'none', title: `Deleted Sector ${matched.name || matched.id}` }
+            };
+        } else {
+            const activeList = features.filter((f: any) => f.name).map((f: any) => `• ${f.name} (${f.type || 'Sector'})`).slice(0, 6).join('\n');
+            return {
+                text: `🗑️ **სექტორის წაშლა / Sector Deletion Notice**
+
+მოთხოვნილი სექტორი "${namePart || 'მითითებული სექტორი'}" ვერ მოიძებნა სახელით.
+
+${activeList ? `**თქვენს მეურნეობაში არსებული აქტიური სექტორები:**\n${activeList}\n\n` : ''}**როგორ წაშალოთ სექტორი რუკიდან:**
+1. გადადით მოდულში **„დიზაინი / რუკა“ (Design / Map Planner)**.
+2. რუკაზე პირდაპირ დაკლიკეთ სასურველ სექტორზე მის მოსანიშნად.
+3. მარცხენა პანელზე ან კონტექსტურ მენიუში დააჭირეთ **წაშლის ღილაკს (🗑️ / Delete)**.
+4. ან ჩამოსწერეთ სექტორის ზუსტი სახელი AI ასისტენტში (მაგ. \`წაშალე სექტორი [სექტორის სახელი]\`).${noticeFooter}`,
+                action: { type: 'none' }
+            };
+        }
+    }
+
     // 1. Profile Creation & KYC Verification
     if (lower.includes('profile') || lower.includes('kyc') || lower.includes('პროფილ') || lower.includes('ვერიფიკაც') || lower.includes('identity') || lower.includes('passport')) {
         return {
@@ -617,14 +664,49 @@ export const useAiAssistant = (language: string) => {
                 }
             });
             
-            const result = JSON.parse(response.text);
+            let result: any = null;
+            try {
+                result = typeof response?.text === 'string' ? JSON.parse(response.text) : (response?.text || response);
+            } catch {
+                result = { text: response?.text || String(response) };
+            }
+            
+            let replyText = '';
+            if (result && typeof result.text === 'string' && result.text.trim()) {
+                replyText = result.text.trim();
+            } else if (typeof result === 'string' && result.trim()) {
+                replyText = result.trim();
+            } else if (result?.analysis?.summary) {
+                replyText = result.analysis.summary;
+            } else if (result?.description) {
+                replyText = result.description;
+            } else {
+                const autonomous = generateAutonomousAssistantResponse(command, context, effectiveMode);
+                replyText = autonomous.text;
+                if (!result?.action) {
+                    result = { text: replyText, action: autonomous.action };
+                }
+            }
             
             const botMsg: AssistantMessage = { 
                 id: (Date.now() + 1).toString(), 
                 type: 'bot', 
-                text: result.text || "I'm sorry, I couldn't process that.", 
+                text: replyText, 
             };
             setAssistantMessages(prev => [...prev, botMsg]);
+
+            // Execute sector deletion if requested
+            if (command.toLowerCase().includes('remove sector') || command.toLowerCase().includes('delete sector') || command.includes('წაშალე სექტორ') || command.includes('სექტორის წაშლ') || command.includes('მოხსენი სექტორ')) {
+                const features = context?.plantationFeatures || [];
+                const namePart = command.replace(/^(remove sector|delete sector|remove field|delete field|წაშალე სექტორი|სექტორის წაშლა|მოხსენი სექტორი|სექტორი წაშალე)\s*[:"']?/i, '').replace(/["']?$/i, '').trim();
+                const matched = features.find((f: any) => {
+                    const fName = (f.name || f.title || f.id || '').toLowerCase();
+                    return namePart && (fName === namePart.toLowerCase() || fName.includes(namePart.toLowerCase()) || namePart.toLowerCase().includes(fName));
+                });
+                if (matched && typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('agrimap_delete_features', { detail: { ids: [matched.id] } }));
+                }
+            }
 
             if (result.action && result.action.type !== 'none') {
                 const title = result.action.title || command;

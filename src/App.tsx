@@ -25,6 +25,7 @@ import RegistrationModal from './components/RegistrationModal';
 import WelcomeModal from './components/WelcomeModal';
 import PostRegistrationChoiceModal from './components/PostRegistrationChoiceModal';
 import LocalServerModal from './components/LocalServerModal';
+import AiBalanceTopUpModal from './components/AiBalanceTopUpModal';
 import { SmartOfflineDisconnectModal, ReSyncNotificationPrompt } from './components/SmartOfflineDisconnectModal';
 import TicketManager from './components/TicketManager';
 import { generateAgriBusinessAnalysis, analyzePlantDisease, generateDocumentComparison, generateSoilAnalysis } from './services/geminiService';
@@ -854,6 +855,17 @@ const App: React.FC = () => {
     const [isLocalServerModalOpen, setIsLocalServerModalOpen] = useState(false);
     const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
     const [isTicketManagerOpen, setIsTicketManagerOpen] = useState(false);
+    const [isAiTopUpModalOpen, setIsAiTopUpModalOpen] = useState(false);
+    const [aiTopUpReason, setAiTopUpReason] = useState<string | undefined>(undefined);
+
+    useEffect(() => {
+        const handleOpenAiTopUp = (e: any) => {
+            setAiTopUpReason(e.detail?.reasonNotice);
+            setIsAiTopUpModalOpen(true);
+        };
+        window.addEventListener('agrimap:open_ai_topup_modal', handleOpenAiTopUp);
+        return () => window.removeEventListener('agrimap:open_ai_topup_modal', handleOpenAiTopUp);
+    }, []);
     const [showPostRegChoice, setShowPostRegChoice] = useState(false);
     const [autoOpenHRModal, setAutoOpenHRModal] = useState(false);
     const [aiTab, setAiTab] = useState<'agro' | 'global' | 'market' | 'cross_module' | 'diagnostics'>('agro');
@@ -6759,6 +6771,10 @@ const App: React.FC = () => {
                         setLabTab('theme');
                     }}
                     onOpenGlobalSearch={() => setIsSpotlightOpen(true)}
+                    onOpenAiTopUp={() => {
+                        setAiTopUpReason(undefined);
+                        setIsAiTopUpModalOpen(true);
+                    }}
                 />
                 <div className="flex-1 flex flex-col min-h-0 overflow-auto">
                     <Toaster position="top-right" richColors />
@@ -7128,6 +7144,14 @@ const App: React.FC = () => {
                 onImport={handleImportProjects} 
                 onExport={handleExportProjects} 
                 onShare={(project) => handleShareProject(project.id)} 
+            />
+            <AiBalanceTopUpModal 
+                isOpen={isAiTopUpModalOpen}
+                onClose={() => setIsAiTopUpModalOpen(false)}
+                currentUser={currentUser}
+                onUpdateUser={handleUpdateUser}
+                reasonNotice={aiTopUpReason}
+                isKa={language === 'ka'}
             />
         </div>
         </FirebaseDataProvider>

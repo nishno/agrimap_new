@@ -24,6 +24,14 @@ export interface PlantationCamera {
     isPtz: boolean;
     isNightVision: boolean;
     status: 'ONLINE' | 'STANDBY' | 'RECORDING';
+    ptzSpeed?: number;
+    currentPreset?: number;
+    isPatrolling?: boolean;
+    resolution?: string;
+    fps?: number;
+    subStreamUrl?: string;
+    onvifPort?: number;
+    ptzPresets?: { id: number; name: string; azimuth: number; tilt: number; range: number; zoom: number }[];
 }
 
 export interface DiscoveredNetworkDevice {
