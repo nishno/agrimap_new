@@ -108,6 +108,16 @@ const AiAnalystView: React.FC<AiAnalystViewProps> = (props) => {
 
     // Map vs Panel View State for Tablet & Mobile (and desktop)
     const [viewMode, setViewMode] = useState<'panel' | 'map'>('panel');
+    const [isDesktop, setIsDesktop] = useState<boolean>(() => typeof window !== 'undefined' && window.innerWidth >= 1024);
+
+    useEffect(() => {
+        const handleResize = () => {
+            setIsDesktop(window.innerWidth >= 1024);
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
     const handleToggleViewMode = () => {
         const next = viewMode === 'map' ? 'panel' : 'map';
         setViewMode(next);
@@ -364,8 +374,8 @@ const AiAnalystView: React.FC<AiAnalystViewProps> = (props) => {
 
     return (
         <div className="flex flex-col h-full relative">
-            {/* Switcher Button: 100% Map vs 100% Panel */}
-            <div className="absolute top-2.5 right-2.5 z-[1005] flex items-center gap-1.5">
+            {/* Switcher Button: 100% Map vs 100% Panel (Mobile & Tablet only) */}
+            <div className="lg:hidden absolute top-2.5 right-2.5 z-[1005] flex items-center gap-1.5">
                 <button 
                     type="button"
                     onClick={handleToggleViewMode}
@@ -394,12 +404,12 @@ const AiAnalystView: React.FC<AiAnalystViewProps> = (props) => {
                     <TabButton id="global" label={t('ai.global_intel')} icon={<SparklesIcon className="h-5 w-5" />} />
                     <TabButton id="market" label={t('ai.market_analysis')} icon={<ChartBarIcon className="h-5 w-5" />} />
 
-                    {/* Desktop Map / Panel Switcher Button */}
+                    {/* Tablet/Mobile Map / Panel Switcher Button - Hidden on PC */}
                     <button 
                         type="button"
                         onClick={handleToggleViewMode}
-                        className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 my-1.5 mr-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-slate-900 hover:bg-black text-white border border-slate-700 active:scale-95 transition-all shrink-0 cursor-pointer self-center"
-                        title={viewMode === 'map' ? (isKa ? "პანელზე დაბრუნება" : "Back to Panel") : (isKa ? "მხოლოდ რუკის ჩვენება" : "Switch to Full Map View")}
+                        className="flex lg:hidden items-center gap-1.5 px-3 py-1.5 my-1.5 mr-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-slate-900 hover:bg-black text-white border border-slate-700 active:scale-95 transition-all shrink-0 cursor-pointer self-center"
+                        title={viewMode === 'map' ? (isKa ? "პანელზე დაბრუნება" : "Back to Panel") : (isKa ? "მხოლოდ რუკის ჩვენება" : "Switch to Map View")}
                     >
                         {viewMode === 'map' ? (
                             <>
@@ -427,11 +437,12 @@ const AiAnalystView: React.FC<AiAnalystViewProps> = (props) => {
                     />
                 </div>
             ) : (
-            <div className="flex-1 overflow-hidden flex flex-col h-full w-full bg-gray-100">
-                {/* Control Panel - 100% width and height when on panel */}
-                {!(viewMode === 'map' || isMapFullScreen) && (
+            <div className="flex-1 overflow-hidden flex flex-col lg:flex-row h-full w-full bg-gray-100 relative">
+                {/* Control Panel - side-by-side on PC, full toggle on mobile/tablet */}
+                {(isDesktop || !(viewMode === 'map' || isMapFullScreen)) && (
                     <div 
-                        className="w-full h-full overflow-y-auto bg-white flex flex-col flex-1"
+                        className={`h-full overflow-y-auto bg-white flex flex-col flex-shrink-0 ${isDesktop ? 'border-r border-slate-200 shadow-xs' : 'w-full flex-1'}`}
+                        style={{ width: isDesktop ? `${analystPanelWidth}px` : undefined }}
                     >
                     
                     {activeTab === 'cross_module' && (
@@ -877,11 +888,23 @@ const AiAnalystView: React.FC<AiAnalystViewProps> = (props) => {
                 </div>
                 )}
 
-                {/* Map View - 100% width and height when in map mode */}
-                {(viewMode === 'map' || isMapFullScreen) && (
-                    <div className="w-full h-full flex-1 relative">
-                        {/* Floating Return to Panel Button when in Map View */}
-                        <div className="absolute top-4 left-4 z-[1005]">
+                {/* Resizable Edge Divider (PC Desktop) */}
+                <ResizableDivider 
+                    direction="horizontal" 
+                    currentSize={analystPanelWidth} 
+                    onResize={setAnalystPanelWidth} 
+                    minSize={340} 
+                    maxSize={typeof window !== 'undefined' ? Math.max(window.innerWidth - 300, 700) : 800} 
+                    storageKey="ai_analyst_panel_width" 
+                    isKa={isKa} 
+                    className="hidden lg:flex" 
+                />
+
+                {/* Map View - side-by-side flex-1 on PC, full toggle on tablet/mobile */}
+                {(isDesktop || viewMode === 'map' || isMapFullScreen) && (
+                    <div className="w-full lg:w-auto h-full flex-1 relative overflow-hidden bg-slate-100 min-w-0">
+                        {/* Floating Return to Panel Button when in Map View (Mobile / Tablet only) */}
+                        <div className="lg:hidden absolute top-4 left-4 z-[1005]">
                             <button
                                 type="button"
                                 onClick={handleToggleViewMode}
@@ -899,7 +922,7 @@ const AiAnalystView: React.FC<AiAnalystViewProps> = (props) => {
                         />
                         <button 
                            onClick={handleToggleViewMode} 
-                           className="absolute top-4 right-4 z-[1000] bg-white p-2 rounded-full shadow-md hover:bg-gray-100 transition cursor-pointer"
+                           className="lg:hidden absolute top-4 right-4 z-[1000] bg-white p-2 rounded-full shadow-md hover:bg-gray-100 transition cursor-pointer"
                            title={isKa ? "პანელზე დაბრუნება" : "Back to Panel"}
                         >
                             <ArrowsPointingInIcon className="h-5 w-5 text-gray-700" />

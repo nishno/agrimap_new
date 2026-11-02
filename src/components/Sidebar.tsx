@@ -13,7 +13,8 @@ import type { AppMode, User, Organization, Membership } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAppTheme } from '../contexts/ThemeContext';
 import ContextualStatusEngine from './ContextualStatusEngine';
-import { APP_VERSION_CODE, APP_VERSION_NAME } from '../utils/version';
+import { APP_VERSION_CODE, APP_VERSION_NAME, APP_CLASSIC_VERSION_NAME, UiVersionMode, getUiVersionMode, setUiVersionMode } from '../utils/version';
+
 
 interface SidebarProps {
   appMode: AppMode;
@@ -83,6 +84,28 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [isContactOpen, setIsContactOpen] = useState(false);
   const [copiedType, setCopiedType] = useState<'phone' | 'email' | null>(null);
   const isRoot = currentUser?.roles?.includes('ROOT_SUPER_ADMIN');
+  const [uiVersionMode, setUiVersionModeState] = useState<UiVersionMode>(getUiVersionMode());
+
+  React.useEffect(() => {
+    const handleVersionChange = (e: any) => {
+      if (e.detail?.mode) setUiVersionModeState(e.detail.mode);
+    };
+    window.addEventListener('agrimap-ui-version-changed', handleVersionChange);
+    return () => window.removeEventListener('agrimap-ui-version-changed', handleVersionChange);
+  }, []);
+
+  const handleToggleUiVersion = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const nextMode: UiVersionMode = uiVersionMode === 'modern' ? 'classic' : 'modern';
+    setUiVersionMode(nextMode);
+    setUiVersionModeState(nextMode);
+    toast.success(
+      nextMode === 'modern'
+        ? (language === 'ka' ? 'გადაირთო sonik G2.0.1.4 (თანამედროვე მინიმალისტური)' : 'Switched to sonik G2.0.1.4 (Modern Minimalist)')
+        : (language === 'ka' ? 'გადაირთო sonik G2.0.1.3 (კლასიკური მრავალპანელიანი)' : 'Switched to sonik G2.0.1.3 (Classic Comprehensive)')
+    );
+  };
+
   
   const savedLocalConfig = localStorage.getItem('agrimap-local-config');
   let isLocalMode = false;
@@ -150,24 +173,43 @@ const Sidebar: React.FC<SidebarProps> = ({
         borderColor: currentTheme.borderColor || undefined
       }}
     >
-      <button 
-        type="button"
-        onClick={onOpenHomepage} 
-        className={`h-16 flex flex-col justify-center px-5 border-b text-left transition-colors cursor-pointer group w-full ${
+      <div 
+        className={`flex flex-col px-4 py-3 border-b transition-colors w-full ${
           isDark 
-            ? 'border-slate-800/80 hover:bg-slate-900/60' 
-            : 'border-gray-100 hover:bg-slate-50/80'
+            ? 'border-slate-800/80 bg-slate-900/40' 
+            : 'border-gray-100 bg-slate-50/50'
         }`}
-        title="Go to Homepage / Startup Showcase"
       >
-        <h1 className="text-xl font-black tracking-tighter uppercase leading-none transition-colors flex items-center gap-1.5">
-          <span className={isDark ? 'text-white' : 'text-slate-800'}>AgriMap</span>
-          <span className="text-emerald-500 italic">V2</span>
-        </h1>
-        <span className="text-[9px] font-bold font-mono tracking-wider mt-1 transition-colors text-slate-400 group-hover:text-emerald-400">
-          {APP_VERSION_NAME}
-        </span>
-      </button>
+        <button
+          type="button"
+          onClick={onOpenHomepage} 
+          className="flex flex-col text-left hover:opacity-85 transition-opacity cursor-pointer group"
+          title="Go to Homepage / Startup Showcase"
+        >
+          <h1 className="text-xl font-black tracking-tighter uppercase leading-none transition-colors flex items-center gap-1.5">
+            <span className={isDark ? 'text-white' : 'text-slate-800'}>AgriMap</span>
+            <span className="text-emerald-500 italic">V2</span>
+          </h1>
+          <span className="text-[9px] font-mono text-slate-400 mt-1">sonik G2.0.1.3</span>
+        </button>
+
+        {/* Version Switcher Badge (Exact matching image_5c5f59eb.png) */}
+        <div className="mt-2.5 pt-2 border-t border-slate-100/80 dark:border-slate-800/80">
+          <button
+            type="button"
+            onClick={handleToggleUiVersion}
+            className="w-full text-left text-[11px] font-medium text-emerald-800 dark:text-emerald-400 hover:text-emerald-950 transition-colors flex items-center justify-between group cursor-pointer"
+            title={uiVersionMode === 'modern' ? "Switch to Classic Mode" : "Switch to Modern Mode"}
+          >
+            <span className="truncate">
+              {uiVersionMode === 'modern'
+                ? (language === 'ka' ? 'sonik g2.0.1.4 · კლასიკური ინტერფეისის' : 'sonik g2.0.1.4 · Classic Interface')
+                : (language === 'ka' ? 'sonik g2.0.1.3 · თანამედროვე ინტერფეისი' : 'sonik g2.0.1.3 · Modern Interface')}
+            </span>
+            <span className="text-[9px] text-emerald-600 opacity-60 group-hover:opacity-100">⇄</span>
+          </button>
+        </div>
+      </div>
       <nav className="flex-1 p-3 overflow-y-auto custom-scrollbar">
         <div className="mb-5 px-1">
           <div 
@@ -191,9 +233,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <DocumentTextIcon className="h-4.5 w-4.5" />
               </div>
               <p className={`text-[10px] font-black uppercase tracking-widest text-center ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-                Architecture Guide
+                {language === 'ka' ? 'სისტემის გზამკვლევი' : 'Architecture Guide'}
               </p>
-              <p className="text-[9px] font-bold text-slate-400 mt-0.5 text-center">SOPs & AI Models</p>
+              <p className="text-[9px] font-bold text-slate-400 mt-0.5 text-center">
+                {language === 'ka' ? 'ინსტრუქციები და ინტელექტუალური მოდელები' : 'SOPs & AI Models'}
+              </p>
           </div>
         </div>
       {renderSection(t('nav.public_portal'), publicPortal as any)}

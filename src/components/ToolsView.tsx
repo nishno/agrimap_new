@@ -11,6 +11,7 @@ import { USE_FIREBASE } from '../config';
 import EmployeeModal from './EmployeeModal';
 import ForemanManagerModal from './ForemanManagerModal';
 import EmployeeIdCard from './EmployeeIdCard';
+import HrLaborAiModal from './HrLaborAiModal';
 import QrScannerModal from './QrScannerModal';
 import { initGlobalHardwareScannerListener, getActiveAdoptedScanner } from '../utils/hardwareScannerBus';
 import { 
@@ -251,6 +252,7 @@ const HrManager: React.FC<ToolsViewProps> = (props) => {
     const [activeScanner, setActiveScanner] = useState<any>(() => getActiveAdoptedScanner());
     const [isGoogleSheetsOpen, setIsGoogleSheetsOpen] = useState(false);
     const [googleSheetsModule, setGoogleSheetsModule] = useState<GoogleSheetsModuleType>('workers');
+    const [isHrLaborAiOpen, setIsHrLaborAiOpen] = useState(false);
 
     useEffect(() => {
         initGlobalHardwareScannerListener();
@@ -929,6 +931,14 @@ const HrManager: React.FC<ToolsViewProps> = (props) => {
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                         <button 
+                            onClick={() => setIsHrLaborAiOpen(true)}
+                            className="px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 shadow-md shadow-indigo-950/40 cursor-pointer"
+                            title="AI Labor & Payroll Analytics: Regional Top Pickers, Picker Consistency, Wages & GPS Smart Cards"
+                        >
+                            <SparklesIcon className="w-3.5 h-3.5 text-amber-300" /> AI Labor & Payroll Intelligence
+                        </button>
+
+                        <button 
                             onClick={() => {
                                 setGoogleSheetsModule('workers');
                                 setIsGoogleSheetsOpen(true);
@@ -1275,6 +1285,17 @@ const HrManager: React.FC<ToolsViewProps> = (props) => {
                     harvestEntries={harvestEntries} 
                     plantationFeatures={plantationFeatures} 
                     onClose={() => setScannedCardEmployee(null)} 
+                />
+             )}
+
+             {isHrLaborAiOpen && (
+                <HrLaborAiModal
+                    isOpen={isHrLaborAiOpen}
+                    onClose={() => setIsHrLaborAiOpen(false)}
+                    employees={employees}
+                    harvestEntries={harvestEntries || []}
+                    harvestEvents={harvestEvents || []}
+                    plantationFeatures={plantationFeatures || []}
                 />
              )}
              

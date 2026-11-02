@@ -2,14 +2,19 @@
 import React, { createContext, useContext, useState } from 'react';
 import { translations, Language } from '../translations';
 import { safeStorage } from '../services/storageService';
+import { translateUi, setUiLanguage } from '../i18n/runtime';
+
 
 export type Currency = 'USD' | 'GEL';
+export type AppRegion = 'GE' | 'GLOBAL';
 
 interface LanguageContextType {
   language: Language;
   setLanguage: (lang: Language) => void;
   currency: Currency;
   setCurrency: (c: Currency) => void;
+  region: AppRegion;
+  setRegion: (r: AppRegion) => void;
   formatCurrency: (amount: number) => string;
   t: (key: string, params?: Record<string, string | number>) => string;
 }
@@ -35,18 +40,40 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   });
 
+  const [region, setRegionState] = useState<AppRegion>(() => {
+    try {
+      const saved = safeStorage.getItem('agri-app-region');
+      return (saved === 'GE' || saved === 'GLOBAL') ? saved : 'GE';
+    } catch (e) {
+      return 'GE';
+    }
+  });
+
   const [currency, setCurrencyState] = useState<Currency>(() => {
     try {
       const saved = safeStorage.getItem('agri-app-currency');
-      return (saved === 'USD' || saved === 'GEL') ? saved : 'USD';
+      if (saved === 'USD' || saved === 'GEL') return saved;
+      return region === 'GE' ? 'GEL' : 'USD';
     } catch (e) {
-      return 'USD';
+      return 'GEL';
     }
   });
 
   const setLanguage = (lang: Language) => {
     setLanguageState(lang);
     safeStorage.setItem('agri-app-lang', lang);
+    setUiLanguage(lang);
+  };
+
+
+  const setRegion = (r: AppRegion) => {
+    setRegionState(r);
+    safeStorage.setItem('agri-app-region', r);
+    if (r === 'GE') {
+      setCurrency('GEL');
+    } else {
+      setCurrency('USD');
+    }
   };
 
   const setCurrency = (c: Currency) => {
@@ -58,6 +85,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return new Intl.NumberFormat(language === 'ka' ? 'ka-GE' : 'en-US', {
       style: 'currency',
       currency: currency,
+
       minimumFractionDigits: 2
     }).format(amount);
   };
@@ -87,6 +115,15 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     }
 
+    // 3) Try 15,000+ key pure translation dictionary from i18n
+    if (typeof result !== 'string' || result === key) {
+      const i18nLookup = translateUi(key, language);
+      if (i18nLookup && i18nLookup !== key) {
+        result = i18nLookup;
+      }
+    }
+
+
     if (typeof result !== 'string') {
       // Fallback to English
       let fallbackResult = fallbackCurrent ? fallbackCurrent[key] : undefined;
@@ -113,7 +150,11 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (typeof (result as any).title === 'string') return (result as any).title;
         return String(key);
       }
-      return String(result ?? key);
+      result = String(result ?? key);
+    }
+
+    if (language === 'ka' && typeof result === 'string') {
+      result = translateUi(result, 'ka');
     }
 
     if (params && typeof result === 'string') {
@@ -126,7 +167,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, currency, setCurrency, formatCurrency, t }}>
+    <LanguageContext.Provider value={{ language, setLanguage, currency, setCurrency, region, setRegion, formatCurrency, t }}>
       {children}
     </LanguageContext.Provider>
   );

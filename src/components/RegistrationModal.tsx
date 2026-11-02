@@ -10,6 +10,7 @@ import { USE_FIREBASE } from '../config';
 import { useLanguage } from '../contexts/LanguageContext';
 import { safeStorage } from '../services/storageService';
 import { DEFAULT_COMPANIES } from '../hooks/useFirebaseData';
+import { LanguageSwitch } from '../local/EntryControls';
 
 const transliterateGeoToEng = (str: string): string => {
   const geoToEngMap: { [key: string]: string } = {
@@ -434,7 +435,7 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({
         {currentUser && !currentUser.isGuest ? (
           // LOGGED IN USER VIEW - Handshake / Company Registration
           <>
-            <div className="p-8 border-b bg-indigo-50/45 flex justify-between items-center">
+            <div className="p-6 md:p-8 border-b bg-indigo-50/45 flex justify-between items-center gap-3">
                 <div>
                     <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">
                         Workspace Linker
@@ -443,7 +444,10 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({
                         Active Profile: <span className="text-slate-700">{currentUser.name}</span>
                     </p>
                 </div>
-                <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors"><XIcon className="h-5 w-5 text-slate-400" /></button>
+                <div className="flex items-center gap-2">
+                  <LanguageSwitch className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 rounded-xl bg-white text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer text-xs font-semibold shadow-xs" />
+                  <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors"><XIcon className="h-5 w-5 text-slate-400" /></button>
+                </div>
             </div>
 
             {/* TAB SELECTOR FOR LOGGED IN USERS */}
@@ -752,16 +756,19 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({
         ) : (
           // PUBLIC VISITOR VIEW - Registration & Email Signup
           <>
-            <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center">
+            <div className="p-6 md:p-8 border-b bg-gray-50/50 flex justify-between items-center gap-3">
                 <div>
-                    <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight">
+                    <h2 className="text-xl md:text-2xl font-black text-slate-800 uppercase tracking-tight">
                       {t('reg.create_account')}
                     </h2>
                     <p className="text-[10px] font-black text-slate-400 uppercase mt-1">
                       {t('reg.start_journey')}
                     </p>
                 </div>
-                <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors"><XIcon className="h-6 w-6 text-slate-400" /></button>
+                <div className="flex items-center gap-2">
+                  <LanguageSwitch className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 rounded-xl bg-white text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer text-xs font-semibold shadow-xs" />
+                  <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors"><XIcon className="h-6 w-6 text-slate-400" /></button>
+                </div>
             </div>
 
             <div className="p-10 flex-grow max-h-[70vh] overflow-y-auto w-full">

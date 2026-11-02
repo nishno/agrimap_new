@@ -5,8 +5,10 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAppTheme } from '../contexts/ThemeContext';
 import { Ticket, ChevronDown, BookOpen, Search, Sparkles } from 'lucide-react';
 import { motion } from 'motion/react';
-import { APP_VERSION_NAME } from '../utils/version';
+import { toast } from 'sonner';
+import { APP_VERSION_NAME, APP_CLASSIC_VERSION_NAME, UiVersionMode, getUiVersionMode, setUiVersionMode } from '../utils/version';
 import { getEffectiveUserAiQuota } from '../services/geminiService';
+
 
 interface HeaderProps {
   currentUser: User | null;
@@ -53,9 +55,30 @@ const Header: React.FC<HeaderProps> = ({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { language, setLanguage, currency, setCurrency, t } = useLanguage();
+  const { language, setLanguage, currency, setCurrency, region, setRegion, t } = useLanguage();
   const { isDark, currentTheme } = useAppTheme();
   const [storageUsage, setStorageUsage] = useState(0);
+  const [uiVersionMode, setUiVersionModeState] = useState<UiVersionMode>(getUiVersionMode());
+
+  useEffect(() => {
+    const handleVersionChange = (e: any) => {
+      if (e.detail?.mode) setUiVersionModeState(e.detail.mode);
+    };
+    window.addEventListener('agrimap-ui-version-changed', handleVersionChange);
+    return () => window.removeEventListener('agrimap-ui-version-changed', handleVersionChange);
+  }, []);
+
+  const toggleUiVersion = () => {
+    const nextMode: UiVersionMode = uiVersionMode === 'modern' ? 'classic' : 'modern';
+    setUiVersionMode(nextMode);
+    setUiVersionModeState(nextMode);
+    toast.success(
+      nextMode === 'modern'
+        ? (language === 'ka' ? 'გადაირთო sonik G2.0.1.4 (თანამედროვე მინიმალისტური)' : 'Switched to sonik G2.0.1.4 (Modern Minimalist)')
+        : (language === 'ka' ? 'გადაირთო sonik G2.0.1.3 (კლასიკური მრავალპანელიანი)' : 'Switched to sonik G2.0.1.3 (Classic Comprehensive)')
+    );
+  };
+
 
   const aiQuota = getEffectiveUserAiQuota(currentUser);
   const freeRemaining = Math.max(0, aiQuota.monthlyFreeTierTotal - aiQuota.monthlyFreeTierUsed);
@@ -116,15 +139,25 @@ const Header: React.FC<HeaderProps> = ({
     >
         {/* Left Side: Brand Logo and Active Workspace button */}
         <div className="flex items-center gap-2 md:gap-4 flex-shrink-0 mr-1 sm:mr-2">
-            <button 
-                type="button" 
-                onClick={onOpenHomepage} 
-                className="flex flex-col lg:hidden leading-none justify-center text-left hover:opacity-80 transition-opacity cursor-pointer group"
-                title="Go to Homepage / Startup Showcase"
-            >
-                <span className="font-black text-emerald-500 group-hover:text-emerald-400 text-base sm:text-lg uppercase tracking-tighter transition-colors">AgriMap</span>
-                <span className="text-[8px] font-bold text-slate-400 font-mono tracking-wide mt-0.5">{APP_VERSION_NAME}</span>
-            </button>
+            <div className="flex flex-col lg:hidden leading-none justify-center text-left">
+                <button 
+                    type="button" 
+                    onClick={onOpenHomepage} 
+                    className="font-black text-emerald-500 hover:text-emerald-400 text-base sm:text-lg uppercase tracking-tighter transition-colors cursor-pointer text-left"
+                    title="Go to Homepage / Startup Showcase"
+                >
+                    AgriMap
+                </button>
+                <button 
+                    type="button"
+                    onClick={toggleUiVersion}
+                    className="text-[8px] font-bold text-slate-400 hover:text-emerald-400 font-mono tracking-wide mt-0.5 cursor-pointer flex items-center gap-1"
+                    title="Click to switch whole application version"
+                >
+                    <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>{uiVersionMode === 'modern' ? APP_VERSION_NAME : APP_CLASSIC_VERSION_NAME}</span>
+                </button>
+            </div>
             
             {activeOrgName && (
               <button 
@@ -269,6 +302,53 @@ const Header: React.FC<HeaderProps> = ({
                 </span>
             </button>
 
+            {/* UI Version Mode Switcher: sonik G2.0.1.4 (Modern) <-> sonik G2.0.1.3 (Classic) */}
+            <button
+                onClick={toggleUiVersion}
+                className={`px-2 sm:px-2.5 py-1.5 rounded-xl border text-[10px] sm:text-xs font-mono font-bold flex items-center gap-1.5 transition-all flex-shrink-0 snap-end standing-light cursor-pointer ${
+                    uiVersionMode === 'modern'
+                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/25'
+                        : 'bg-indigo-500/15 border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/25'
+                }`}
+                title={
+                    uiVersionMode === 'modern'
+                        ? 'Active: sonik G2.0.1.4 (Modern Minimalist). Click to switch to Classic G2.0.1.3'
+                        : 'Active: sonik G2.0.1.3 (Classic Multi-Panel). Click to switch to Modern G2.0.1.4'
+                }
+            >
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="hidden md:inline font-bold">
+                    {uiVersionMode === 'modern' ? APP_VERSION_NAME : APP_CLASSIC_VERSION_NAME}
+                </span>
+                <span className="md:hidden font-bold">
+                    {uiVersionMode === 'modern' ? 'V2.0.1.4' : 'V2.0.1.3'}
+                </span>
+                <span className={`text-[8px] uppercase tracking-wider px-1.5 py-0.5 rounded font-black ${
+                    uiVersionMode === 'modern' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-indigo-500/20 text-indigo-200'
+                }`}>
+                    {uiVersionMode === 'modern' ? 'MODERN' : 'CLASSIC'}
+                </span>
+            </button>
+
+            {/* Region Selector: Georgia (GE) vs Global (GLOBAL) */}
+            <button
+                onClick={() => setRegion(region === 'GE' ? 'GLOBAL' : 'GE')}
+                className={`px-2 sm:px-2.5 py-1.5 rounded-xl border text-[10px] sm:text-xs font-black flex items-center gap-1 sm:gap-1.5 transition-all flex-shrink-0 snap-end standing-light cursor-pointer ${
+                    region === 'GE'
+                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-300 hover:bg-rose-500/20'
+                        : 'bg-blue-500/10 border-blue-500/30 text-blue-300 hover:bg-blue-500/20'
+                }`}
+                title={
+                    region === 'GE'
+                        ? 'Region: Georgia (GEL ₾, ha, Georgian Municipalities). Click for Global'
+                        : 'Region: Global (USD $, ha/acres, International corridors). Click for Georgia'
+                }
+            >
+                <span>{region === 'GE' ? '🇬🇪' : '🌐'}</span>
+                <span className="hidden sm:inline font-bold">{region === 'GE' ? 'GEORGIA' : 'GLOBAL'}</span>
+                <span className="sm:hidden font-bold">{region}</span>
+            </button>
+
             {/* Language Toggle */}
             <button
                 onClick={toggleLanguage}
@@ -277,6 +357,7 @@ const Header: React.FC<HeaderProps> = ({
                     ? 'bg-slate-900/90 border-slate-700 text-slate-200 hover:bg-slate-800' 
                     : 'bg-gray-50 border-gray-250 text-gray-700 hover:bg-gray-100'
                 }`}
+                title="Switch Language"
             >
                 <span>{language === 'en' ? '🇺🇸' : '🇬🇪'}</span>
                 <span className="hidden sm:inline font-bold">{language === 'en' ? 'EN' : 'GE'}</span>
@@ -294,6 +375,7 @@ const Header: React.FC<HeaderProps> = ({
                 <span>{currency === 'USD' ? '💲' : '₾'}</span>
                 <span className="hidden sm:inline font-bold">{currency}</span>
             </button>
+
 
             <button 
               onClick={onSaveProject} 

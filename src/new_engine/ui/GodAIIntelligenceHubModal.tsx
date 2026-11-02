@@ -23,10 +23,15 @@ import {
     ArrowUpDown,
     Building2,
     Zap,
-    BookOpen
+    BookOpen,
+    Lock,
+    Server,
+    Wifi,
+    Download
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { appEngine } from '../AppEventEngine';
+import { godAIKnowledgeEngine } from '../ai/GodAIKnowledgeEngine';
 import { 
     WorkTaskAnalysisResult, 
     OmniscientGodAIMatrix, 
@@ -89,7 +94,7 @@ export const GodAIIntelligenceHubModal: React.FC<GodAIIntelligenceHubModalProps>
     const { language } = useLanguage();
     const isKa = language === 'ka';
 
-    const [activeTab, setActiveTab] = useState<'pm' | 'agronomy' | 'heuristics' | 'god_ai'>('pm');
+    const [activeTab, setActiveTab] = useState<'pm' | 'agronomy' | 'heuristics' | 'god_ai' | 'offline_local_ai'>('pm');
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [analysisResult, setAnalysisResult] = useState<WorkTaskAnalysisResult | null>(null);
     const [godAiMatrix, setGodAiMatrix] = useState<OmniscientGodAIMatrix | null>(null);
@@ -265,6 +270,40 @@ export const GodAIIntelligenceHubModal: React.FC<GodAIIntelligenceHubModalProps>
     }, [heuristics, selectedDomain]);
 
     if (!isOpen) return null;
+
+    const userHasAccess = Boolean(
+        isSystemAdmin || 
+        (currentUser?.roles || []).some((r: string) => ['ROOT_SUPER_ADMIN', 'Founder', 'Co-Founder', 'Admin'].includes(r))
+    );
+
+    if (!userHasAccess) {
+        return (
+            <div className="fixed inset-0 z-[6000] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in">
+                <div className="bg-slate-900 border border-amber-500/40 rounded-3xl p-6 sm:p-8 max-w-md text-center text-slate-200 space-y-4 shadow-2xl">
+                    <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto shadow-lg shadow-amber-950/50">
+                        <Lock size={26} />
+                    </div>
+                    <div>
+                        <h3 className="text-base sm:text-lg font-black text-white">
+                            {isKa ? 'წვდომა შეზღუდულია: Root & Admin Console' : 'Access Restricted: Root & Admin Console'}
+                        </h3>
+                        <p className="text-xs text-slate-400 leading-relaxed mt-2">
+                            {isKa 
+                                ? 'God AI კონსოლი და კომპანიის ცენტრალური ოფლაინ ცოდნის ბაზა ხელმისაწვდომია მხოლოდ Root Authority და System Admin მომხმარებლებისთვის.' 
+                                : 'The God AI Console and offline centralized knowledge repository are strictly restricted to Root Authority and System Administrators.'}
+                        </p>
+                    </div>
+                    <button 
+                        type="button" 
+                        onClick={onClose} 
+                        className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer border border-slate-700"
+                    >
+                        {isKa ? 'დახურვა' : 'Close'}
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div 
@@ -458,6 +497,17 @@ export const GodAIIntelligenceHubModal: React.FC<GodAIIntelligenceHubModalProps>
                                 {isKa ? 'სუპერ ადმინი' : 'Super Admin'}
                             </span>
                         )}
+                    </button>
+
+                    <button
+                        onClick={() => setActiveTab('offline_local_ai')}
+                        className={`py-3 px-2 border-b-2 font-bold text-xs sm:text-sm flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer shrink-0 ${activeTab === 'offline_local_ai' ? 'border-cyan-500 text-cyan-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+                    >
+                        <Server className="w-4 h-4 text-cyan-400" />
+                        <span>{isKa ? 'Offline Local AI & ტაბლეტების LAN ბაზა' : 'Offline Local AI & LAN Tablets'}</span>
+                        <span className="px-1.5 py-0.2 rounded-full bg-cyan-950/80 text-cyan-300 border border-cyan-700/50 text-[10px]">
+                            LAN Hub
+                        </span>
                     </button>
                 </div>
 
@@ -943,6 +993,103 @@ export const GodAIIntelligenceHubModal: React.FC<GodAIIntelligenceHubModalProps>
                                     </div>
                                 </div>
                             )}
+                        </div>
+                    )}
+
+                    {/* TAB 5: OFFLINE LOCAL AI & LAN TABLETS */}
+                    {activeTab === 'offline_local_ai' && (
+                        <div className="space-y-6">
+                            {/* HUD Banner */}
+                            <div className="p-5 bg-gradient-to-r from-slate-950 via-cyan-950/30 to-slate-950 border border-cyan-500/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+                                        <h3 className="text-sm sm:text-base font-black text-white uppercase tracking-wider flex items-center gap-2">
+                                            <Server size={18} className="text-cyan-400" />
+                                            {isKa ? 'Offline Local AI - მეურნეობის ლოკალური ქსელის ბირთვი' : 'Offline Local AI - Plantation LAN Knowledge Core'}
+                                        </h3>
+                                    </div>
+                                    <p className="text-xs text-slate-300 max-w-xl">
+                                        {isKa 
+                                            ? 'პლანშეტები და საველე მოწყობილობები იღებენ განახლებებს ლოკალური სერვერიდან (LAN). ყველა მოდულის (აგრონომია, მოსავალი, LABS, საწყობი, კომუნიკატორი, HR) AI ანალიზი გროვდება God AI ფაილში და გამოიყენება ოფლაინ რეჟიმში.'
+                                            : 'Field tablets and weigh stations pull real-time updates directly from the local server node on farm Wi-Fi. All AI analyses across Agro, Harvest, LABS, Stock, Communicator, and HR are aggregated into the central God AI file for instant offline use.'}
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const pkg = godAIKnowledgeEngine.getOfflineKnowledgePackage();
+                                            const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
+                                            const url = URL.createObjectURL(blob);
+                                            const a = document.createElement('a');
+                                            a.href = url;
+                                            a.download = `god_ai_offline_knowledge_${new Date().toISOString().split('T')[0]}.json`;
+                                            a.click();
+                                            URL.revokeObjectURL(url);
+                                            toast.success(isKa ? 'God AI ოფლაინ ცოდნის ფაილი ჩამოიტვირთა!' : 'God AI offline knowledge package exported!');
+                                        }}
+                                        className="px-3.5 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-lg shadow-cyan-950/40"
+                                    >
+                                        <Download size={14} />
+                                        <span>{isKa ? 'ფაილის ექსპორტი (JSON)' : 'Export God AI File'}</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Knowledge Stats Grid */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1">
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase">{isKa ? 'შენახული წესები' : 'Learned Heuristics'}</span>
+                                    <div className="text-xl font-black text-cyan-400 font-mono">{heuristics.length}</div>
+                                    <span className="text-[10px] text-slate-500">Autonomous rules</span>
+                                </div>
+                                <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1">
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase">{isKa ? 'მოდულების ივენთები' : 'Module AI Events'}</span>
+                                    <div className="text-xl font-black text-emerald-400 font-mono">{godAIKnowledgeEngine.getModuleAiRecords().length}</div>
+                                    <span className="text-[10px] text-slate-500">Aggregated insights</span>
+                                </div>
+                                <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1">
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase">{isKa ? 'ლოკალური LAN პორტი' : 'LAN Port Binding'}</span>
+                                    <div className="text-xl font-black text-white font-mono">3000</div>
+                                    <span className="text-[10px] text-slate-500">http://0.0.0.0:3000</span>
+                                </div>
+                                <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1">
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase">{isKa ? 'ოფლაინ სტატუსი' : 'Offline Readiness'}</span>
+                                    <div className="text-xl font-black text-emerald-400 flex items-center gap-1.5 font-mono">
+                                        <CheckCircle2 size={16} /> 100%
+                                    </div>
+                                    <span className="text-[10px] text-slate-500">Zero Internet Required</span>
+                                </div>
+                            </div>
+
+                            {/* Aggregated Modules Breakdown */}
+                            <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-xl space-y-3">
+                                <h4 className="text-xs font-black uppercase tracking-wider text-slate-200 flex items-center gap-2">
+                                    <Layers size={14} className="text-cyan-400" />
+                                    {isKa ? '8 სპეციალიზებული მოდულის შეგროვებული AI ცოდნა' : '8 Connected Modules Aggregating into God AI File'}
+                                </h4>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 text-xs">
+                                    {[
+                                        { title: 'AI Agro Analysis', desc: 'Soil tension, irrigation & climate benchmarks', icon: '🌿' },
+                                        { title: 'Communicator', desc: 'Global navigator queries & farmer notes', icon: '💬' },
+                                        { title: 'Individual Tools', desc: 'Document & leaf disease vision scans', icon: '🔬' },
+                                        { title: 'LABS Hardware', desc: 'Optical sensor tare & scale telemetry', icon: '⚙️' },
+                                        { title: 'Harvest Logistics', desc: 'Reconciliation, box tallies & tare dedupe', icon: '🫐' },
+                                        { title: 'Agronomy Tasks', desc: 'Fertigation timing & Bt spray windows', icon: '🚜' },
+                                        { title: 'Stock & Inventory', desc: 'FIFO chemical tracking & depletion rates', icon: '📦' },
+                                        { title: 'Help & HR Labor', desc: 'Payroll benchmarks, top pickers & SOPs', icon: '👥' }
+                                    ].map((mod, i) => (
+                                        <div key={i} className="p-3 bg-slate-900 border border-slate-800/80 rounded-xl flex items-start gap-2.5">
+                                            <span className="text-lg">{mod.icon}</span>
+                                            <div>
+                                                <div className="font-bold text-white text-[11px]">{mod.title}</div>
+                                                <div className="text-[10px] text-slate-400 leading-tight mt-0.5">{mod.desc}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>

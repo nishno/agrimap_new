@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Type } from "@google/genai";
 import { AssistantMessage, AnalysisResult, GroundingSource, SoilAnalysisResult, UploadedDocument, PlantDiseaseAnalysis, SoilData, NutritionPlan } from '../types';
 import { 
+    Type,
     generateAgriBusinessAnalysis, 
     analyzePlantDisease, 
     analyzeAgriImage, 

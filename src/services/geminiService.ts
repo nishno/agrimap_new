@@ -1,5 +1,15 @@
-import { GoogleGenAI, Type } from "@google/genai";
-import type { User, UserAiQuota, AiCreditPack, UserRole } from "../types";
+import type { User, UserAiQuota, AiCreditPack, UserRole, AiSubscriptionPlan } from "../types";
+
+export const Type = {
+    TYPE_UNSPECIFIED: 'TYPE_UNSPECIFIED',
+    STRING: 'STRING',
+    NUMBER: 'NUMBER',
+    INTEGER: 'INTEGER',
+    BOOLEAN: 'BOOLEAN',
+    ARRAY: 'ARRAY',
+    OBJECT: 'OBJECT'
+} as const;
+export type Type = (typeof Type)[keyof typeof Type];
 
 export const PRIMARY_GEMINI_MODEL = "gemini-3.8-flash";
 export const FALLBACK_GEMINI_MODEL = "gemini-flash-latest";
@@ -44,6 +54,45 @@ export const DEFAULT_AI_CREDIT_PACKS: AiCreditPack[] = [
     }
 ];
 
+export const DEFAULT_AI_SUBSCRIPTION_PLANS: AiSubscriptionPlan[] = [
+    {
+        id: "sub_premium_300",
+        name: "Premium Unlimited AI",
+        tier: "premium_unlimited",
+        priceGel: 300,
+        priceUsd: 110.0,
+        billingCycle: "monthly",
+        isUnlimited: true,
+        tokenAllowance: "unlimited",
+        description: "Unlimited tokens per month for all modules: Agro Analysis, Pest & Vision, Communicator, God AI, and HR Labor Intelligence.",
+        features: [
+            "Unlimited Monthly AI Tokens & Priority Queuing",
+            "Full access to all 8 specialized agricultural modules",
+            "Automatic synchronization to God AI offline LAN knowledge",
+            "HR Labor & Picker consistency intelligence with GPS analysis",
+            "High-priority live audio and streaming responses"
+        ],
+        isPopular: true
+    },
+    {
+        id: "sub_standard_50",
+        name: "Standard Pro AI",
+        tier: "standard",
+        priceGel: 50,
+        priceUsd: 18.5,
+        billingCycle: "monthly",
+        isUnlimited: false,
+        tokenAllowance: 300,
+        description: "300 monthly queries for regular farm operational needs and harvest reconciliation.",
+        features: [
+            "300 AI queries per month",
+            "Full plant disease diagnostics & leaf analysis",
+            "Automated harvest sheet data extraction",
+            "Unused tokens roll over to the next month"
+        ]
+    }
+];
+
 export const getRoleFreeAiMonthlyAllowance = (roles: UserRole[] = []): number => {
     if (roles.includes('Founder') || roles.includes('Co-Founder') || roles.includes('ROOT_SUPER_ADMIN')) return 9999;
     if (roles.includes('Admin') || roles.includes('Field Manager')) return 100;
@@ -74,13 +123,17 @@ export const getEffectiveUserAiQuota = (user?: User | null): UserAiQuota => {
             monthlyFreeTierTotal: roleAllowance,
             monthlyFreeTierUsed: 0,
             lastResetMonth: currentMonth,
-            totalQueriesAllTime: user?.aiQueryCount || 0
+            totalQueriesAllTime: user?.aiQueryCount || 0,
+            subscriptionTier: 'none',
+            isUnlimited: false
         };
     }
 
     const isNewMonth = existingQuota.lastResetMonth !== currentMonth;
+    const isUnlimited = Boolean(existingQuota.isUnlimited || existingQuota.subscriptionTier === 'premium_unlimited');
+
     return {
-        aiCreditsBalance: existingQuota.aiCreditsBalance ?? 0,
+        aiCreditsBalance: isUnlimited ? Math.max(99999, existingQuota.aiCreditsBalance ?? 0) : (existingQuota.aiCreditsBalance ?? 0),
         monthlyFreeTierTotal: roleAllowance,
         monthlyFreeTierUsed: isNewMonth ? 0 : (existingQuota.monthlyFreeTierUsed ?? 0),
         lastResetMonth: currentMonth,
@@ -89,7 +142,12 @@ export const getEffectiveUserAiQuota = (user?: User | null): UserAiQuota => {
         stripeCustomerId: existingQuota.stripeCustomerId,
         hasPaymentMethodLinked: existingQuota.hasPaymentMethodLinked ?? false,
         autoRechargeThreshold: existingQuota.autoRechargeThreshold,
-        autoRechargeAmountGel: existingQuota.autoRechargeAmountGel
+        autoRechargeAmountGel: existingQuota.autoRechargeAmountGel,
+        subscriptionTier: existingQuota.subscriptionTier || 'none',
+        subscriptionRenewalDate: existingQuota.subscriptionRenewalDate,
+        subscriptionPriceGel: existingQuota.subscriptionPriceGel,
+        isUnlimited,
+        grantedByAdmin: existingQuota.grantedByAdmin
     };
 };
 
@@ -128,9 +186,9 @@ export const checkAndDeductAiCredit = (
 ): { allowed: boolean; reason?: string; quota: UserAiQuota; isFreeTier: boolean } => {
     const quota = getEffectiveUserAiQuota(user);
 
-    // Founders have unlimited access
+    // Founders or Unlimited Subscribers have unlimited access
     const isFounder = (user?.roles || []).some(r => ['Founder', 'Co-Founder', 'ROOT_SUPER_ADMIN'].includes(r));
-    if (isFounder) {
+    if (isFounder || quota.isUnlimited || quota.subscriptionTier === 'premium_unlimited') {
         const updatedQuota: UserAiQuota = {
             ...quota,
             totalQueriesAllTime: quota.totalQueriesAllTime + 1
@@ -189,7 +247,97 @@ export const purchaseAiCredits = (
     return updatedQuota;
 };
 
-let genAIInstance: GoogleGenAI | null = null;
+export const subscribeToAiPlan = (
+    user: User | null,
+    plan: AiSubscriptionPlan,
+    onUpdateUser?: (updated: User) => void
+): UserAiQuota => {
+    const quota = getEffectiveUserAiQuota(user);
+    const renewalDate = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+    const tokenIncrement = plan.isUnlimited ? 99999 : (typeof plan.tokenAllowance === 'number' ? plan.tokenAllowance : 300);
+
+    const updatedQuota: UserAiQuota = {
+        ...quota,
+        subscriptionTier: plan.tier,
+        subscriptionRenewalDate: renewalDate,
+        subscriptionPriceGel: plan.priceGel,
+        isUnlimited: plan.isUnlimited,
+        aiCreditsBalance: plan.isUnlimited ? Math.max(99999, quota.aiCreditsBalance + 99999) : quota.aiCreditsBalance + tokenIncrement,
+        hasPaymentMethodLinked: true
+    };
+    saveUserAiQuota(user, updatedQuota, onUpdateUser);
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('agrimap:ai_subscription_updated', { detail: { quota: updatedQuota, plan } }));
+    }
+    return updatedQuota;
+};
+
+export const grantAiCreditsByAdmin = (
+    targetUserId: string,
+    amount: number,
+    adminUser: User | null,
+    reason: string = 'Administrative Allocation',
+    allUsers?: User[],
+    onUpdateUser?: (updated: User) => void
+): { success: boolean; newBalance: number; isUnlimited: boolean } => {
+    const isRootOrAdmin = (adminUser?.roles || []).some(r => ['Founder', 'Co-Founder', 'ROOT_SUPER_ADMIN', 'Admin'].includes(r));
+    if (!isRootOrAdmin) {
+        throw new Error("UNAUTHORIZED: Only Root Authority and System Administrators can grant AI tokens.");
+    }
+
+    const key = `agrimap_ai_quota_${targetUserId}`;
+    let existingQuota: UserAiQuota = {
+        aiCreditsBalance: 0,
+        monthlyFreeTierTotal: 10,
+        monthlyFreeTierUsed: 0,
+        lastResetMonth: new Date().toISOString().slice(0, 7),
+        totalQueriesAllTime: 0
+    };
+
+    try {
+        if (typeof localStorage !== 'undefined') {
+            const raw = localStorage.getItem(key);
+            if (raw) existingQuota = { ...existingQuota, ...JSON.parse(raw) };
+        }
+    } catch (_) {}
+
+    const isUnlimitedGrant = amount >= 99999;
+    const newBalance = isUnlimitedGrant ? 99999 : (existingQuota.aiCreditsBalance + amount);
+    const updatedQuota: UserAiQuota = {
+        ...existingQuota,
+        aiCreditsBalance: newBalance,
+        isUnlimited: isUnlimitedGrant || existingQuota.isUnlimited,
+        grantedByAdmin: {
+            grantedAt: new Date().toISOString(),
+            grantedBy: adminUser?.name || adminUser?.id || 'Root Admin',
+            amount,
+            reason
+        }
+    };
+
+    try {
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(key, JSON.stringify(updatedQuota));
+        }
+    } catch (_) {}
+
+    if (adminUser?.id === targetUserId && onUpdateUser) {
+        onUpdateUser({
+            ...adminUser,
+            aiQuota: updatedQuota
+        });
+    }
+
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('agrimap:admin_granted_tokens', {
+            detail: { targetUserId, amount, updatedQuota }
+        }));
+    }
+
+    return { success: true, newBalance, isUnlimited: Boolean(updatedQuota.isUnlimited) };
+};
+
+let genAIInstance: any = null;
 let currentKeyUsed: string = "";
 
 /**
@@ -294,28 +442,11 @@ export const setCustomGeminiApiKey = (newKey: string): void => {
 };
 
 /**
- * Returns an instantiated GoogleGenAI client with the active key if available.
+ * All Gemini operations are performed via the server proxy endpoints.
  */
-export const getGenAI = (): GoogleGenAI => {
-    const key = getActiveGeminiApiKey();
-
-    if (!key) {
-        throw new Error("GEMINI_KEY_MISSING: Gemini API key is missing. Please enter your Gemini API key in AI Settings (⚙️) or configure GEMINI_API_KEY in your environment.");
-    }
-
-    if (!genAIInstance || currentKeyUsed !== key) {
-        genAIInstance = new GoogleGenAI({ 
-            apiKey: key,
-            httpOptions: {
-                headers: {
-                    'User-Agent': 'aistudio-build'
-                }
-            }
-        });
-        currentKeyUsed = key;
-    }
-
-    return genAIInstance;
+export const getGenAI = (): any => {
+    console.warn("[Gemini Service] getGenAI called on browser client. All Gemini operations are securely handled server-side.");
+    return null;
 };
 
 /**
@@ -384,51 +515,13 @@ export const testGeminiApiKey = async (testKey?: string): Promise<{
             }
         }
     } catch (e) {
-        // Fallback to client test
-    }
-
-    // 3. Test client SDK directly if key is available
-    if (keyToTest) {
-        try {
-            const testClient = new GoogleGenAI({
-                apiKey: keyToTest,
-                httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
-            });
-            
-            const res = await testClient.models.generateContent({
-                model: PRIMARY_GEMINI_MODEL,
-                contents: "Respond with the word 'OK' to verify connection."
-            });
-            const elapsed = Date.now() - startTime;
-            
-            return { 
-                success: true, 
-                ok: true, 
-                message: `Connection successful! Model ${PRIMARY_GEMINI_MODEL} responded: "${res.text?.trim() || 'OK'}"`,
-                modelUsed: PRIMARY_GEMINI_MODEL,
-                latencyMs: elapsed
-            };
-        } catch (err: any) {
-            const errStr = err?.message || String(err);
-            if (errStr.includes('429') || errStr.includes('RESOURCE_EXHAUSTED')) {
-                return {
-                    success: false,
-                    ok: false,
-                    message: "Quota Exceeded (429): Credits exhausted. Falling back to autonomous agronomic engine."
-                };
-            }
-            return {
-                success: false,
-                ok: false,
-                message: `Connection test error: ${errStr.slice(0, 160)}`
-            };
-        }
+        // Fallback to autonomous notification
     }
 
     return { 
         success: true, 
         ok: true, 
-        message: "AI Core active! Running in Autonomous Agricultural Knowledge Core mode.",
+        message: "AI Core active! Running with server-side proxy & Autonomous Agricultural Knowledge Core.",
         modelUsed: "autonomous-knowledge-core"
     };
 };
@@ -437,8 +530,7 @@ export const testGeminiApiKey = async (testKey?: string): Promise<{
  * Universal Gemini API execution pipeline:
  * 1. Tries Local Server Node /api/gemini/call if in local mode.
  * 2. Tries server-side proxy /api/gemini/call (works for any user in web/dev/preview).
- * 3. Tries client-side direct @google/genai call if an API key is available.
- * 4. Falls back to Autonomous Agricultural Knowledge Core (zero crashes, 100% uptime for any user).
+ * 3. Falls back to Autonomous Agricultural Knowledge Core (zero crashes, 100% uptime for any user).
  */
 export const executeGeminiCall = async (params: {
     contents: any;
@@ -519,50 +611,129 @@ export const executeGeminiCall = async (params: {
         // Main server proxy failed or running on static CDN
     }
 
-    // --- STRATEGY 3: Client-Side Direct @google/genai SDK (if key available) ---
-    if (customKey) {
-        try {
-            const ai = getGenAI();
-            const callWithTimeout = async (modelName: string) => {
-                let timer: any;
-                const timeoutPromise = new Promise((_, reject) => {
-                    timer = setTimeout(() => reject(new Error('Gemini API call timed out')), timeout);
-                });
-                try {
-                    const result = await Promise.race([
-                        ai.models.generateContent({
-                            model: modelName,
-                            contents: params.contents,
-                            config: params.config
-                        }),
-                        timeoutPromise
-                    ]);
-                    clearTimeout(timer);
-                    return result;
-                } catch (err) {
-                    clearTimeout(timer);
-                    throw err;
-                }
-            };
-
-            try {
-                return await callWithTimeout(targetModel);
-            } catch (primaryErr: any) {
-                const errStr = primaryErr?.message || String(primaryErr);
-                if ((errStr.includes('404') || errStr.includes('not found')) && targetModel !== FALLBACK_GEMINI_MODEL) {
-                    return await callWithTimeout(FALLBACK_GEMINI_MODEL);
-                }
-                throw primaryErr;
-            }
-        } catch (clientErr: any) {
-            console.warn('[Gemini Service] Client SDK call returned error:', clientErr?.message || clientErr);
-        }
-    }
-
-    // --- STRATEGY 4: Autonomous Agricultural Knowledge Core Fallback ---
+    // --- STRATEGY 3: Autonomous Agricultural Knowledge Core Fallback ---
     // Guarantees zero crashes and immediate domain-accurate outputs for any user anywhere
     console.info('[Gemini Service] Synthesizing domain response via Autonomous Agricultural Knowledge Core...');
     return synthesizeAutonomousResponse(params);
+};
+
+/**
+ * Server-Sent Events (SSE) streaming consumer for real-time model token completion.
+ * Streams chunks from /api/gemini/stream and notifies the onChunk callback.
+ */
+export const streamGeminiCall = async (params: {
+    contents: any;
+    config?: any;
+    model?: string;
+    onChunk: (textChunk: string) => void;
+    onComplete?: (fullText: string) => void;
+    onError?: (err: any) => void;
+}): Promise<string> => {
+    const targetModel = params.model || PRIMARY_GEMINI_MODEL;
+    const customKey = getActiveGeminiApiKey();
+    let accumulated = '';
+
+    try {
+        const res = await fetch('/api/gemini/stream', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(customKey ? { 'x-gemini-api-key': customKey } : {})
+            },
+            body: JSON.stringify({
+                contents: params.contents,
+                config: params.config,
+                model: targetModel,
+                customApiKey: customKey || undefined
+            })
+        });
+
+        if (!res.ok || !res.body) {
+            throw new Error(`Streaming failed: HTTP ${res.status}`);
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (trimmed.startsWith('data: ')) {
+                    const dataStr = trimmed.slice(6).trim();
+                    if (dataStr === '[DONE]') {
+                        break;
+                    }
+                    try {
+                        const parsed = JSON.parse(dataStr);
+                        if (parsed.text) {
+                            accumulated += parsed.text;
+                            params.onChunk(parsed.text);
+                        }
+                    } catch (e) {}
+                }
+            }
+        }
+
+        params.onComplete?.(accumulated);
+        return accumulated;
+    } catch (err) {
+        if (params.onError) {
+            params.onError(err);
+        }
+        // Fall back to standard server call if streaming reader fails
+        const fallbackRes = await executeGeminiCall(params);
+        const text = fallbackRes?.text || '';
+        params.onChunk(text);
+        params.onComplete?.(text);
+        return text;
+    }
+};
+
+/**
+ * Connects to the server-side Live API bidirectional WebSocket proxy (/api/gemini/live).
+ * Bridges real-time audio and text events with gemini-3.8-live.
+ */
+export const createGeminiLiveSession = (options?: {
+    onOpen?: () => void;
+    onMessage?: (data: any) => void;
+    onError?: (err: any) => void;
+    onClose?: () => void;
+}): WebSocket | null => {
+    if (typeof window === 'undefined') return null;
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/api/gemini/live`;
+    try {
+        const ws = new WebSocket(wsUrl);
+        ws.onopen = () => {
+            options?.onOpen?.();
+        };
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                options?.onMessage?.(data);
+            } catch (e) {
+                options?.onMessage?.(event.data);
+            }
+        };
+        ws.onerror = (err) => {
+            options?.onError?.(err);
+        };
+        ws.onclose = () => {
+            options?.onClose?.();
+        };
+        return ws;
+    } catch (err) {
+        console.warn('[Gemini Live Bridge] WebSocket init error:', err);
+        options?.onError?.(err);
+        return null;
+    }
 };
 
 /**

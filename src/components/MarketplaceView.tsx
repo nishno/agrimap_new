@@ -125,6 +125,16 @@ const MarketplaceView: React.FC<MarketplaceViewProps> = (props) => {
         return Number.isFinite(parsed) && parsed >= 280 ? parsed : 420;
     });
 
+    const [isDesktop, setIsDesktop] = useState<boolean>(() => typeof window !== 'undefined' && window.innerWidth >= 1024);
+
+    useEffect(() => {
+        const handleResize = () => {
+            setIsDesktop(window.innerWidth >= 1024);
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
     useEffect(() => {
         if (initialListing && currentUser) {
             setIsCreateModalOpen(true);
@@ -173,10 +183,12 @@ const MarketplaceView: React.FC<MarketplaceViewProps> = (props) => {
                 <button onClick={() => setActiveTab('map')} className={`flex-1 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'map' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-400 hover:bg-slate-50'}`}>Satellite View</button>
             </div>
 
-            <div className="flex-grow flex flex-col overflow-hidden">
-                {activeTab === 'list' && (
+            <div className="flex-grow flex flex-col lg:flex-row overflow-hidden relative">
+                {/* Panel Area - side-by-side on PC, toggle on mobile/tablet */}
+                {(isDesktop || activeTab === 'list') && (
                     <div 
-                        className="flex flex-1 w-full h-full flex-col bg-white border-r border-slate-200 shadow-2xl z-10 overflow-hidden"
+                        className={`flex h-full flex-col bg-white border-r border-slate-200 shadow-2xl z-10 overflow-hidden flex-shrink-0 ${isDesktop ? 'w-auto' : 'w-full flex-1'}`}
+                        style={{ width: isDesktop ? `${marketPanelWidth}px` : undefined }}
                     >
                     {selectedListing ? (
                         <ListingDetails 
@@ -197,11 +209,12 @@ const MarketplaceView: React.FC<MarketplaceViewProps> = (props) => {
                                 <div className="flex justify-between items-center">
                                     <h1 className="text-2xl font-black text-slate-800 tracking-tighter uppercase">{t('market.title')}</h1>
                                     <div className="flex items-center gap-2">
+                                        {/* Only Map button: shown on tablets & mobile, hidden on PC */}
                                         <button 
                                             type="button"
                                             onClick={() => setActiveTab('map')}
-                                            className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[9.5px] font-black uppercase tracking-wider shadow-sm flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-                                            title="Switch to Full Map View"
+                                            className="lg:hidden px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[9.5px] font-black uppercase tracking-wider shadow-sm flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                                            title="Switch to Map View"
                                         >
                                             <span>Only Map</span>
                                         </button>
@@ -247,10 +260,23 @@ const MarketplaceView: React.FC<MarketplaceViewProps> = (props) => {
                 </div>
                 )}
 
-                {activeTab === 'map' && (
-                    <div className="flex flex-1 w-full h-full relative overflow-hidden bg-slate-200">
-                        {/* Floating Return to Panel Button when in Map View */}
-                        <div className="absolute top-4 left-4 z-[1005]">
+                {/* Resizable Divider on PC Desktop */}
+                <ResizableDivider 
+                    direction="horizontal" 
+                    currentSize={marketPanelWidth} 
+                    onResize={setMarketPanelWidth} 
+                    minSize={320} 
+                    maxSize={typeof window !== 'undefined' ? Math.max(window.innerWidth - 300, 750) : 850} 
+                    storageKey="marketplace_panel_width" 
+                    isKa={t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka'} 
+                    className="hidden lg:flex" 
+                />
+
+                {/* Map Area - side-by-side on PC, full toggle on mobile/tablet */}
+                {(isDesktop || activeTab === 'map') && (
+                    <div className="flex flex-1 w-full lg:w-auto h-full relative overflow-hidden bg-slate-200 min-w-0">
+                        {/* Floating Return to Panel Button when in Map View (Mobile / Tablet only) */}
+                        <div className="lg:hidden absolute top-4 left-4 z-[1005]">
                             <button
                                 type="button"
                                 onClick={() => setActiveTab('list')}

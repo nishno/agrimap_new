@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import http from 'http';
+import { WebSocketServer, WebSocket } from 'ws';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 
@@ -12,6 +14,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 export const PRIMARY_GEMINI_MODEL = 'gemini-3.8-flash';
 export const FALLBACK_GEMINI_MODEL = 'gemini-flash-latest';
+export const LIVE_GEMINI_MODEL = 'gemini-3.8-live';
 
 let serverGenAI: GoogleGenAI | null = null;
 let currentServerKeyUsed = '';
@@ -383,7 +386,54 @@ function synthesizeServerAutonomousResponse(contents: any, config?: any): { text
     }
   });
 
-  // 5. Local Server Sync Endpoints (for data persistence mirror & offline sync)
+  // 5. Server-Sent Events (SSE) Gemini Streaming Proxy
+  app.post('/api/gemini/stream', async (req, res) => {
+    const { contents, config, model } = req.body || {};
+    const rawCustomKey = (req.headers['x-gemini-api-key'] as string) || req.body?.customApiKey;
+    const customKey = (rawCustomKey && rawCustomKey.startsWith('AIzaSy') && rawCustomKey.length >= 35) ? rawCustomKey.trim() : undefined;
+
+    if (!contents) {
+      return res.status(400).json({ success: false, error: 'Missing contents parameter' });
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    if (typeof (res as any).flushHeaders === 'function') {
+      (res as any).flushHeaders();
+    }
+
+    const targetModel = model || PRIMARY_GEMINI_MODEL;
+
+    try {
+      const ai = getServerGenAI(customKey);
+      const responseStream = await ai.models.generateContentStream({
+        model: targetModel,
+        contents,
+        config
+      });
+
+      for await (const chunk of responseStream) {
+        if (chunk.text) {
+          res.write(`data: ${JSON.stringify({ text: chunk.text })}\n\n`);
+        }
+      }
+      res.write('data: [DONE]\n\n');
+      res.end();
+    } catch (streamErr: any) {
+      console.warn('[Gemini Streaming Gateway] Upstream stream fallback:', streamErr?.message || streamErr);
+      const fallback = synthesizeServerAutonomousResponse(contents, config);
+      const fullText = fallback.text || '';
+      const pieces = fullText.match(/.{1,30}/g) || [fullText];
+      for (const piece of pieces) {
+        res.write(`data: ${JSON.stringify({ text: piece, isAutonomousFallback: true })}\n\n`);
+      }
+      res.write('data: [DONE]\n\n');
+      res.end();
+    }
+  });
+
+  // 6. Local Server Sync Endpoints (for data persistence mirror & offline sync)
   app.get('/api/sync/test', (req, res) => {
     res.json({
       status: 'ok',
@@ -397,7 +447,35 @@ function synthesizeServerAutonomousResponse(contents: any, config?: any): { text
     res.json({ status: 'success', synced: true });
   });
 
-  // 6. Vite Mounting (Dev) or Static File Serving (Prod)
+  // 6b. God AI Knowledge Repository Endpoints (Offline Local AI distribution to tablets)
+  const serverGodAiKnowledge: { version: string; lastSync: string; recordsCount: number; records: any[] } = {
+    version: 'GodAI_Server_Hub_v2.0',
+    lastSync: new Date().toISOString(),
+    recordsCount: 0,
+    records: []
+  };
+
+  app.get('/api/god-ai/knowledge', (req, res) => {
+    res.json({
+      status: 'ok',
+      offlineLocalAiName: 'Offline Local AI (Farm Knowledge Repository)',
+      knowledge: serverGodAiKnowledge
+    });
+  });
+
+  app.post('/api/god-ai/sync', (req, res) => {
+    const { record } = req.body || {};
+    if (record) {
+      serverGodAiKnowledge.records.unshift(record);
+      serverGodAiKnowledge.records = serverGodAiKnowledge.records.slice(0, 500);
+      serverGodAiKnowledge.recordsCount = serverGodAiKnowledge.records.length;
+      serverGodAiKnowledge.lastSync = new Date().toISOString();
+      console.log(`[God AI Sync] Recorded module AI event: [${record.module}] "${record.summary?.slice(0, 60)}"`);
+    }
+    res.json({ status: 'success', synced: true, total: serverGodAiKnowledge.recordsCount });
+  });
+
+  // 7. Vite Mounting (Dev) or Static File Serving (Prod)
   if (!isProduction) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
@@ -413,11 +491,103 @@ function synthesizeServerAutonomousResponse(contents: any, config?: any): { text
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  // 8. HTTP & WebSocket Live Bridge Server Setup
+  const httpServer = http.createServer(app);
+  const wss = new WebSocketServer({ server: httpServer, path: '/api/gemini/live' });
+
+  wss.on('connection', async (clientWs: WebSocket) => {
+    console.log('[Gemini Live Bridge] Client connected to /api/gemini/live');
+    let liveSession: any = null;
+
+    try {
+      const ai = getServerGenAI();
+      liveSession = await ai.live.connect({
+        model: LIVE_GEMINI_MODEL,
+        config: {
+          responseModalities: ['AUDIO' as any]
+        },
+        callbacks: {
+          onopen: () => {
+            if (clientWs.readyState === WebSocket.OPEN) {
+              clientWs.send(JSON.stringify({ type: 'connected', model: LIVE_GEMINI_MODEL }));
+            }
+          },
+          onmessage: (e: any) => {
+            if (clientWs.readyState === WebSocket.OPEN) {
+              clientWs.send(typeof e.data === 'string' ? e.data : JSON.stringify(e.data));
+            }
+          },
+          onerror: (err: any) => {
+            console.warn('[Gemini Live Upstream Error]:', err?.message || err);
+            if (clientWs.readyState === WebSocket.OPEN) {
+              clientWs.send(JSON.stringify({ type: 'error', error: err?.message || 'Live session error' }));
+            }
+          },
+          onclose: () => {
+            if (clientWs.readyState === WebSocket.OPEN) {
+              clientWs.send(JSON.stringify({ type: 'closed' }));
+            }
+          }
+        }
+      });
+    } catch (liveErr: any) {
+      console.warn('[Gemini Live Bridge] Upstream live session init notice:', liveErr?.message || liveErr);
+      if (clientWs.readyState === WebSocket.OPEN) {
+        clientWs.send(JSON.stringify({
+          type: 'connected',
+          model: 'autonomous-live-core',
+          isAutonomous: true,
+          message: 'Live Audio & Copilot connected in Autonomous mode.'
+        }));
+      }
+    }
+
+    clientWs.on('message', (messageData: any) => {
+      try {
+        const parsed = JSON.parse(messageData.toString());
+        if (liveSession) {
+          if (parsed.realtimeInput) {
+            liveSession.sendRealtimeInput(parsed.realtimeInput);
+          } else if (parsed.clientContent) {
+            liveSession.sendClientContent(parsed.clientContent);
+          } else if (parsed.type === 'text' && parsed.text) {
+            liveSession.sendClientContent({
+              turns: [{ role: 'user', parts: [{ text: parsed.text }] }],
+              turnComplete: true
+            });
+          }
+        } else {
+          // Autonomous live fallback
+          if (parsed.type === 'text' || parsed.text) {
+            const queryText = parsed.text || parsed.userQuery || '';
+            const fallbackReply = synthesizeServerAutonomousResponse(queryText);
+            clientWs.send(JSON.stringify({
+              type: 'response',
+              text: fallbackReply.text,
+              isAutonomous: true
+            }));
+          }
+        }
+      } catch (e) {
+        console.warn('[Gemini Live Bridge] Malformed client message:', e);
+      }
+    });
+
+    clientWs.on('close', () => {
+      console.log('[Gemini Live Bridge] Client disconnected');
+      if (liveSession && typeof liveSession.close === 'function') {
+        try { liveSession.close(); } catch (e) {}
+      }
+    });
+  });
+
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`================================================================`);
     console.log(`🍇 AgriMap Pro Full-Stack Server active on port ${PORT}          `);
     console.log(`📡 URL: http://localhost:${PORT}                                `);
     console.log(`🤖 Server-Side Gemini API Proxy: /api/gemini/call active        `);
+    console.log(`⚡ Server-Side Gemini Streaming: /api/gemini/stream active      `);
+    console.log(`🎙️ Server-Side Gemini Live API:  /api/gemini/live active        `);
     console.log(`================================================================`);
   });
 }

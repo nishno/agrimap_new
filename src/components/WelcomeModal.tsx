@@ -1,26 +1,34 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-    Globe, 
-    ExternalLink, 
-    ArrowRight, 
     Map, 
-    Snowflake, 
-    Bot, 
-    ShieldCheck, 
-    X, 
-    PackageCheck,
-    FlaskConical,
-    FileSpreadsheet,
-    Compass,
+    ArrowUpRight, 
+    ArrowRight,
+    Search,
+    ShoppingBag,
+    MessageSquare,
     Sparkles,
-    CheckCircle2,
+    Cpu,
+    Video,
+    Plane,
+    Radio,
     Scale,
     Layers,
-    Cpu,
-    Radio
+    CheckCircle2,
+    Shield,
+    Leaf,
+    Users,
+    Activity,
+    Compass,
+    X,
+    Building2,
+    Database,
+    HardDrive,
+    ExternalLink,
+    ChevronDown
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import type { AppMode } from '../types';
 
 interface WelcomeModalProps {
     isOpen: boolean;
@@ -32,337 +40,561 @@ interface WelcomeModalProps {
 
 export const WelcomeModal: React.FC<WelcomeModalProps> = ({ 
     isOpen, 
-    onClose: _onClose, 
-    onRegister: _onRegister, 
+    onClose, 
+    onRegister, 
     onExplore,
     onLogin: _onLogin
 }) => {
     const { language, setLanguage } = useLanguage();
     const isKa = language === 'ka';
 
-    const handleGoToDashboard = () => {
+    const [selectedRegion, setSelectedRegion] = useState<string>('all');
+    const [selectedCropCategory, setSelectedCropCategory] = useState<string>('all');
+    const [activePillarTab, setActivePillarTab] = useState<'all' | 'services' | 'market' | 'ai' | 'iot' | 'plantation'>('all');
+
+    if (!isOpen) return null;
+
+    const handleNavigate = (mode: AppMode) => {
+        window.dispatchEvent(new CustomEvent('agrimap-mode-changed', { detail: { mode } }));
         onExplore();
     };
 
+    const regions = [
+        { id: 'all', nameKa: 'ყველა რეგიონი', nameEn: 'All Regions' },
+        { id: 'guria', nameKa: 'გურია (ოზურგეთი, ლანჩხუთი)', nameEn: 'Guria (Ozurgeti, Lanchkhuti)' },
+        { id: 'samegrelo', nameKa: 'სამეგრელო (ზუგდიდი, სენაკი)', nameEn: 'Samegrelo (Zugdidi, Senaki)' },
+        { id: 'kakheti', nameKa: 'კახეთი (ყვარელი, თელავი)', nameEn: 'Kakheti (Kvareli, Telavi)' },
+        { id: 'imereti', nameKa: 'იმერეთი (წყალტუბო, სამტრედია)', nameEn: 'Imereti (Tskaltubo, Samtredia)' },
+        { id: 'kartli', nameKa: 'ქვემო & შიდა ქართლი', nameEn: 'Kvemo & Shida Kartli' },
+        { id: 'adjara', nameKa: 'აჭარა (ქობულეთი, ჩაქვი)', nameEn: 'Adjara (Kobuleti, Chakvi)' },
+    ];
+
+    const cropCategories = [
+        { id: 'all', nameKa: 'ყველა კულტურა', nameEn: 'All Crops' },
+        { id: 'blueberry', nameKa: 'მოცვი (Duke, Legacy, Draper)', nameEn: 'Blueberries (Duke, Legacy, Draper)' },
+        { id: 'hazelnut', nameKa: 'თხილი & კაკლოვნები (ანაკლიური)', nameEn: 'Hazelnuts & Nuts' },
+        { id: 'grape', nameKa: 'ყურძენი & მევენახეობა (საფერავი)', nameEn: 'Grapes & Vineyards' },
+        { id: 'citrus', nameKa: 'ციტრუსი (მანდარინი, ფორთოხალი)', nameEn: 'Citrus (Tangerine, Orange)' },
+        { id: 'greenhouse', nameKa: 'სასათბურე ბოსტნეული & მწვანილი', nameEn: 'Greenhouse Vegetables' }
+    ];
+
     return (
         <AnimatePresence>
-            {isOpen && (
-                <div className="fixed inset-0 z-[7000] flex items-center justify-center p-0 bg-slate-950/85 backdrop-blur-md overflow-hidden animate-fade-in">
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.97, y: 10 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.97, y: 10 }}
-                        transition={{ duration: 0.25, ease: 'easeOut' }}
-                        style={{ width: '84vw', maxWidth: '84vw', height: '94vh', maxHeight: '94vh' }}
-                        className="bg-slate-900 text-white rounded-[2rem] sm:rounded-[2.5rem] shadow-[0_25px_80px_rgba(0,0,0,0.8)] overflow-hidden border border-slate-700/80 flex flex-col relative m-auto"
-                    >
-                        {/* Top Navigation Bar */}
-                        <div className="flex items-center justify-between px-5 sm:px-8 py-3.5 border-b border-slate-800 bg-slate-950/90 backdrop-blur-md shrink-0">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-gradient-to-tr from-emerald-600 to-teal-400 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/20 font-black">
-                                    <Map className="w-5 h-5" />
-                                </div>
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <h1 className="font-black text-lg sm:text-xl tracking-tight text-white">
-                                            AGRIMAP<span className="text-emerald-400">PRO</span>
-                                        </h1>
-                                        <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-                                            {isKa ? 'ოფიციალური პორტალი' : 'Official Portal'}
-                                        </span>
-                                    </div>
-                                    <p className="text-[11px] font-bold text-slate-400">
-                                        {isKa ? 'სოფლის მეურნეობის ციფრული ტექნოლოგიები' : 'Mapping the Future of Precision Farming'}
-                                    </p>
-                                </div>
+            <div className="fixed inset-0 z-[7000] flex items-center justify-center p-0 sm:p-4 md:p-6 bg-[#16271c]/60 backdrop-blur-md overflow-hidden animate-fade-in">
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.98, y: 15 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.98, y: 15 }}
+                    transition={{ duration: 0.3, ease: 'easeOut' }}
+                    className="w-full h-full max-w-7xl max-h-[96vh] bg-[#FAFBF8] text-[#1D3224] rounded-none sm:rounded-[2.5rem] shadow-[0_20px_70px_rgba(18,36,25,0.35)] overflow-hidden border border-[#D8E3D4] flex flex-col relative"
+                >
+                    {/* Top Website Header Navbar matching FERE_7cfe5525.jpg */}
+                    <header className="px-6 md:px-10 py-4 bg-[#FAFBF8] border-b border-[#E3EBE0] flex items-center justify-between shrink-0 z-30">
+                        {/* Logo Left */}
+                        <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-full bg-[#1E3B2B] text-white flex items-center justify-center shadow-sm">
+                                <Leaf className="w-5 h-5 text-[#86D49C]" />
                             </div>
-
-                            {/* Center Highlights (Desktop only) */}
-                            <div className="hidden lg:flex items-center gap-5 text-xs font-bold text-slate-300">
-                                <span className="flex items-center gap-1.5 text-emerald-400">
-                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                                    {isKa ? 'ავტო-ჩამოწერა საწყობიდან' : 'Auto Stock Depletion'}
+                            <div>
+                                <span className="text-xl md:text-2xl font-black tracking-tight text-[#163022] font-serif">
+                                    GeoBlueBerry
                                 </span>
-                                <span className="flex items-center gap-1.5 text-cyan-400">
-                                    <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" />
-                                    {isKa ? 'აგრონომიული მონიტორინგი' : 'Agronomy Purpose Tracking'}
+                                <span className="text-[10px] uppercase tracking-wider text-[#4A7258] font-bold block leading-none">
+                                    AgriMap Pro · sonik G2.0.1.4
                                 </span>
-                                <span className="flex items-center gap-1.5 text-indigo-400">
-                                    <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400" />
-                                    {isKa ? '100% ოფლაინ მზადყოფნა' : '100% Offline Capable'}
-                                </span>
-                            </div>
-
-                            {/* Language Switcher & Close Button */}
-                            <div className="flex items-center gap-2 sm:gap-3">
-                                <div className="flex items-center bg-slate-800/90 border border-slate-700 rounded-xl p-0.5 shadow-inner">
-                                    <button
-                                        type="button"
-                                        onClick={() => setLanguage('en')}
-                                        className={`px-2.5 py-1 text-xs font-black rounded-lg transition-all cursor-pointer ${
-                                            language === 'en'
-                                                ? 'bg-emerald-600 text-white shadow-md'
-                                                : 'text-slate-400 hover:text-white'
-                                        }`}
-                                    >
-                                        EN
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setLanguage('ka')}
-                                        className={`px-2.5 py-1 text-xs font-black rounded-lg transition-all cursor-pointer ${
-                                            language === 'ka'
-                                                ? 'bg-emerald-600 text-white shadow-md'
-                                                : 'text-slate-400 hover:text-white'
-                                        }`}
-                                    >
-                                        KA
-                                    </button>
-                                </div>
-
-                                <button
-                                    type="button"
-                                    onClick={handleGoToDashboard}
-                                    className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-colors cursor-pointer border border-slate-700 flex items-center gap-1.5"
-                                    title={isKa ? 'დახურვა და დაშბორდზე გადასვლა' : 'Close & Go to Dashboard'}
-                                >
-                                    <span className="hidden sm:inline text-xs font-bold text-slate-300">{isKa ? 'დახურვა' : 'Close'}</span>
-                                    <X className="w-4 h-4 text-slate-300" />
-                                </button>
                             </div>
                         </div>
 
-                        {/* Scrollable Content Body with Agronomic Webpage Styling */}
-                        <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-5 sm:py-7 space-y-6 custom-scrollbar">
-                            
-                            {/* Rich Hero Banner with Agricultural Tablet Background Image */}
-                            <div className="relative rounded-3xl overflow-hidden border border-emerald-500/30 shadow-2xl min-h-[300px] sm:min-h-[340px] flex flex-col justify-end p-5 sm:p-8">
-                                {/* Background Image with Deep Gradient Shading */}
-                                <div 
-                                    className="absolute inset-0 bg-cover bg-center transition-transform duration-1000 scale-105 hover:scale-100"
-                                    style={{
-                                        backgroundImage: `url('https://images.unsplash.com/photo-1592982537447-7440770cbfc9?auto=format&fit=crop&w=2200&q=85')`
-                                    }}
-                                />
-                                
-                                {/* Multi-layer atmospheric overlays for crystal readability */}
-                                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/85 to-slate-900/60" />
-                                <div className="absolute inset-0 bg-emerald-950/25 mix-blend-multiply" />
-                                <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none" />
+                        {/* Center Navigation Links (matching FERE_7cfe5525.jpg) */}
+                        <nav className="hidden lg:flex items-center gap-7 text-[13px] font-medium text-[#385342]">
+                            <button 
+                                type="button"
+                                onClick={() => handleNavigate('design')}
+                                className="hover:text-[#163022] transition-colors cursor-pointer"
+                            >
+                                {isKa ? 'ჩვენი ბაღები' : 'Our Plantations'}
+                            </button>
+                            <button 
+                                type="button"
+                                onClick={() => handleNavigate('marketplace')}
+                                className="hover:text-[#163022] transition-colors cursor-pointer"
+                            >
+                                {isKa ? 'ჩვენი მოცვი' : 'Our Blueberries'}
+                            </button>
+                            <button 
+                                type="button"
+                                onClick={() => handleNavigate('stock')}
+                                className="hover:text-[#163022] transition-colors cursor-pointer"
+                            >
+                                {isKa ? 'ექსპორტი & საწყობი' : 'Export & Stock'}
+                            </button>
+                            <a 
+                                href="https://agrimappro.com" 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="inline-flex items-center gap-1 hover:text-[#163022] font-semibold text-[#1E3B2B] transition-colors"
+                            >
+                                AgriMap <ArrowUpRight className="w-3.5 h-3.5 text-[#2E6B47]" />
+                            </a>
+                        </nav>
 
-                                <div className="relative z-10 max-w-4xl space-y-3">
-                                    <div className="inline-flex items-center gap-2 px-3.5 py-1 bg-emerald-500/30 text-emerald-300 border border-emerald-400/40 rounded-full text-xs font-black uppercase tracking-wider backdrop-blur-md">
-                                        <Sparkles className="w-3.5 h-3.5 text-emerald-300 animate-pulse" />
-                                        <span>{isKa ? 'ჩვენს შესახებ • AGRIMAP PRO' : 'About Us • AgriMap Pro'}</span>
+                        {/* Right Actions: Request Quote, Language Dropdown & Close */}
+                        <div className="flex items-center gap-3">
+                            <button
+                                type="button"
+                                onClick={onRegister}
+                                className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#1E3B2B] hover:bg-[#142A1E] text-white text-xs font-semibold tracking-wide transition-all shadow-xs cursor-pointer active:scale-95"
+                            >
+                                <span>{isKa ? 'მოითხოვეთ შეთავაზება' : 'Request a Quote'}</span>
+                                <ArrowUpRight className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Language Switcher Dropdown */}
+                            <button
+                                type="button"
+                                onClick={() => setLanguage(isKa ? 'en' : 'ka')}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-[#CFDCCB] bg-white text-[#22402E] text-xs font-semibold hover:bg-[#F2F7EF] transition-colors cursor-pointer shadow-2xs"
+                            >
+                                <span>{isKa ? 'ქართული' : 'English'}</span>
+                                <ChevronDown className="w-3 h-3 text-[#5A7E67]" />
+                            </button>
+
+                            {/* Close Modal button */}
+                            <button
+                                type="button"
+                                onClick={onExplore}
+                                className="p-2 text-[#4E6B58] hover:text-[#163022] hover:bg-[#EEF4EB] rounded-full transition-colors cursor-pointer"
+                                aria-label="Close"
+                                title={isKa ? 'დახურვა' : 'Close'}
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                    </header>
+
+                    {/* Scrollable Website Body */}
+                    <div className="flex-1 overflow-y-auto px-5 sm:px-8 md:px-12 py-6 md:py-8 space-y-10 custom-scrollbar bg-[#FAFBF8]">
+                        
+                        {/* Section 1: Hero Container (Light Pastel Herbal Sage from FERE_7cfe5525.jpg) */}
+                        <section className="bg-[#EDF2E8] border border-[#DCE4D6] rounded-[2rem] p-6 sm:p-10 relative overflow-hidden shadow-xs">
+                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative z-10">
+                                
+                                {/* Left Hero Copy */}
+                                <div className="lg:col-span-7 space-y-5">
+                                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/80 border border-[#CBD8C6] text-[#28573A] text-xs font-bold uppercase tracking-wider">
+                                        <Sparkles className="w-3.5 h-3.5 text-[#2E6B47]" />
+                                        <span>{isKa ? 'ციფრული სოფლის მეურნეობა · AGRIMAP PRO' : 'Digital Agriculture · AgriMap Pro'}</span>
                                     </div>
 
-                                    <h2 className="text-xl sm:text-3xl lg:text-4xl font-black tracking-tight text-white leading-[1.15]">
-                                        {isKa 
-                                            ? 'სრული აგრონომიული კონტროლი, მარაგების ავტო-ჩამოწერა და ანალიტიკა' 
-                                            : 'Mapping the Future of Farming — Stock, Agronomy & Smart Logistics'}
-                                    </h2>
+                                    <h1 className="text-2xl sm:text-4xl md:text-5xl font-black text-[#142A1E] font-serif leading-[1.15] tracking-tight">
+                                        {isKa ? (
+                                            <>
+                                                სრული აგრონომიული კონტროლი, მარაგების <span className="text-[#2B6843] italic font-normal">ავტო-ჩამოწერა</span> და ანალიტიკა
+                                            </>
+                                        ) : (
+                                            <>
+                                                Mapping the Future of Farming — Stock, <span className="text-[#2B6843] italic font-normal">Agronomy</span> & Smart Logistics
+                                            </>
+                                        )}
+                                    </h1>
 
-                                    <p className="text-slate-200 text-xs sm:text-sm font-medium leading-relaxed max-w-3xl">
+                                    <p className="text-sm md:text-base text-[#385342] font-normal leading-relaxed max-w-2xl">
                                         {isKa
                                             ? 'AgriMap Pro ავტომატურად აკავშირებს მცენარეთა მკურნალობას, სასუქებსა და პესტიციდებს საწყობის ნაშთებთან. ნებისმიერი აგრო-ღონისძიების შესრულებისას მარაგი მყისიერად ჩამოიწერება, ხარჯები ნაწილდება ნაკვეთებზე და გენერირდება სრული სტატისტიკური ანგარიშგება.'
                                             : 'AgriMap Pro seamlessly interconnects field operations, fertilizer treatments, and spray records directly with real-time warehouse inventory. Logging any agronomy event instantly deducts stock balances, calculates per-hectare cost allocations, and consolidates high-precision reporting.'}
                                     </p>
 
-                                    {/* Weight Station & Harvest Intake Callout Highlight */}
-                                    <div className="p-3 bg-emerald-950/70 border border-emerald-500/40 rounded-2xl backdrop-blur-md flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center justify-center shrink-0">
-                                            <Scale className="w-4 h-4 text-emerald-300" />
-                                        </div>
-                                        <p className="text-xs font-bold text-emerald-200 leading-snug">
-                                            {isKa 
-                                                ? 'კრეფის მოცულობის ჩაბარება და ელექტრონული სასწორებით (ამწონი სადგური) ავტომატური აწონვა, ტარის დედუქცია & პარტიის QR იარლიყები.'
-                                                : 'Harvest intake recording with electronic weight stations, auto gross/tare calculation, Bluetooth scale capture & batch QR labeling.'}
+                                    {/* Primary CTA and Quick Links */}
+                                    <div className="flex flex-wrap items-center gap-3.5 pt-2">
+                                        <button
+                                            type="button"
+                                            onClick={onExplore}
+                                            className="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-2xl bg-[#1E3B2B] hover:bg-[#142A1E] text-white font-bold text-sm tracking-wide transition-all shadow-md active:scale-95 cursor-pointer"
+                                        >
+                                            <span>{isKa ? 'აპლიკაციის დაშბორდზე გადასვლა' : 'Launch Application Dashboard'}</span>
+                                            <ArrowUpRight className="w-4 h-4" />
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => handleNavigate('marketplace')}
+                                            className="inline-flex items-center gap-2 px-5 py-3.5 rounded-2xl bg-white hover:bg-[#F2F7EF] border border-[#CBD8C6] text-[#20422F] font-bold text-sm transition-all cursor-pointer shadow-2xs"
+                                        >
+                                            <ShoppingBag className="w-4 h-4 text-[#2B6843]" />
+                                            <span>{isKa ? 'ბაზარი & პროდუქცია' : 'Market & Produce'}</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Right Minimalist Grid Symbols from FERE_7cfe5525.jpg */}
+                                <div className="lg:col-span-5 grid grid-cols-2 gap-3 sm:gap-4">
+                                    <div className="p-4 sm:p-5 rounded-2xl bg-white/90 border border-[#D5E1D0] space-y-1.5 shadow-2xs">
+                                        <span className="text-xl text-[#2B6843] font-light">◎</span>
+                                        <p className="text-sm font-black text-[#163022]">
+                                            {isKa ? 'GIS ნაკვეთების რუკა' : 'GIS Field Mapping'}
+                                        </p>
+                                        <p className="text-xs text-[#52705D] leading-snug">
+                                            {isKa ? 'საზღვრების, რიგებისა და ჯიშების ზუსტი ზონირება.' : 'Precise parcel, row, and crop zoning.'}
                                         </p>
                                     </div>
 
-                                    {/* Real-time Metric Highlights */}
-                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
-                                        <div className="p-3 bg-slate-900/85 border border-emerald-500/40 rounded-2xl backdrop-blur-md shadow-lg">
-                                            <p className="text-lg sm:text-2xl font-black text-emerald-400">100%</p>
-                                            <p className="text-[10px] font-black text-slate-300 uppercase tracking-wider mt-0.5">{isKa ? 'ავტო-ჩამოწერა' : 'Auto Stock Depletion'}</p>
+                                    <div className="p-4 sm:p-5 rounded-2xl bg-white/90 border border-[#D5E1D0] space-y-1.5 shadow-2xs">
+                                        <span className="text-xl text-[#2B6843] font-light">❄</span>
+                                        <p className="text-sm font-black text-[#163022]">
+                                            {isKa ? 'საცივრე & ამწონი' : 'Cold Chain & Scales'}
+                                        </p>
+                                        <p className="text-xs text-[#52705D] leading-snug">
+                                            {isKa ? 'ავტომატური აწონვა, ტარის მოჭრა და QR იარლიყები.' : 'Bluetooth scale capture & QR tagging.'}
+                                        </p>
+                                    </div>
+
+                                    <div className="p-4 sm:p-5 rounded-2xl bg-white/90 border border-[#D5E1D0] space-y-1.5 shadow-2xs">
+                                        <span className="text-xl text-[#2B6843] font-light">↗</span>
+                                        <p className="text-sm font-black text-[#163022]">
+                                            {isKa ? 'ექსპორტი & მარკეტი' : 'Export & Trading'}
+                                        </p>
+                                        <p className="text-xs text-[#52705D] leading-snug">
+                                            {isKa ? 'B2B გაყიდვები პირდაპირ მწარმოებლიდან.' : 'Direct grower-to-buyer transactions.'}
+                                        </p>
+                                    </div>
+
+                                    <div className="p-4 sm:p-5 rounded-2xl bg-white/90 border border-[#D5E1D0] space-y-1.5 shadow-2xs">
+                                        <span className="text-xl text-[#2B6843] font-light">☷</span>
+                                        <p className="text-sm font-black text-[#163022]">
+                                            {isKa ? '100% ავტო-ჩამოწერა' : '100% Auto Depletion'}
+                                        </p>
+                                        <p className="text-xs text-[#52705D] leading-snug">
+                                            {isKa ? 'საწყობის ნაშთების მყისიერი განახლება.' : 'Zero-error real-time stock deductions.'}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        {/* Section 2: Split Showcase (The Orchard Image & Editorial Copy from FERE_7cfe5525.jpg) */}
+                        <section className="grid grid-cols-1 lg:grid-cols-12 gap-8 md:gap-12 items-center">
+                            
+                            {/* Left Column: Blueberry Orchard Photo with Holographic/GIS Hotspots */}
+                            <div className="lg:col-span-6">
+                                <div className="relative rounded-[2rem] overflow-hidden border border-[#D8E3D4] shadow-xl bg-slate-100 group">
+                                    <img
+                                        src="/assets/aistudio/FERE_7cfe5525.jpg"
+                                        alt="AgriMap Plantation"
+                                        className="w-full h-[380px] sm:h-[460px] object-cover object-bottom transition-transform duration-700 group-hover:scale-[1.02]"
+                                    />
+                                    
+                                    {/* Subtle Top-Left Badge */}
+                                    <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/60 shadow-sm">
+                                        <span className="text-xs font-bold text-[#1E3B2B] flex items-center gap-1.5">
+                                            <span className="w-2 h-2 rounded-full bg-[#34A853] animate-pulse"></span>
+                                            {isKa ? 'თქვენი ბაღი. ერთიან ქსელში.' : 'Your orchard. In a single network.'}
+                                        </span>
+                                    </div>
+
+                                    {/* Hotspot 1: Soil Sensor */}
+                                    <div className="absolute top-[32%] left-[24%] bg-[#1E3B2B]/90 backdrop-blur-md text-white px-2.5 py-1 rounded-xl text-[10px] font-bold flex items-center gap-1.5 shadow-md border border-white/30 animate-bounce duration-1000">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-[#86D49C]"></span>
+                                        <span>{isKa ? 'ნიადაგის სენსორი' : 'Soil Sensor'}</span>
+                                    </div>
+
+                                    {/* Hotspot 2: Weather Station */}
+                                    <div className="absolute top-[52%] right-[18%] bg-[#1E3B2B]/90 backdrop-blur-md text-white px-2.5 py-1 rounded-xl text-[10px] font-bold flex items-center gap-1.5 shadow-md border border-white/30">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-[#4FC3F7]"></span>
+                                        <span>{isKa ? 'მეტეოსადგური' : 'Weather Station'}</span>
+                                    </div>
+
+                                    {/* Hotspot 3: Harvest Recording & Scale Station */}
+                                    <div className="absolute bottom-[28%] left-[28%] bg-[#1E3B2B]/90 backdrop-blur-md text-white px-2.5 py-1 rounded-xl text-[10px] font-bold flex items-center gap-1.5 shadow-md border border-white/30">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-[#FFD54F]"></span>
+                                        <span>{isKa ? 'მოსავლის აღრიცხვა' : 'Harvest Intake'}</span>
+                                    </div>
+
+                                    {/* Bottom Card Overlay on Image (Exact replica from FERE_7cfe5525.jpg) */}
+                                    <div className="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur-md rounded-2xl p-4 border border-[#DCE4D6] shadow-lg flex items-center gap-3.5">
+                                        <div className="w-9 h-9 rounded-xl bg-[#EDF2E8] text-[#1E3B2B] flex items-center justify-center shrink-0">
+                                            <Activity className="w-5 h-5 text-[#2B6843]" />
                                         </div>
-                                        <div className="p-3 bg-slate-900/85 border border-cyan-500/40 rounded-2xl backdrop-blur-md shadow-lg">
-                                            <p className="text-lg sm:text-2xl font-black text-cyan-400">GIS</p>
-                                            <p className="text-[10px] font-black text-slate-300 uppercase tracking-wider mt-0.5">{isKa ? 'ნაკვეთის მონიტორინგი' : 'Plot Diagnostics'}</p>
-                                        </div>
-                                        <div className="p-3 bg-slate-900/85 border border-indigo-500/40 rounded-2xl backdrop-blur-md shadow-lg">
-                                            <p className="text-lg sm:text-2xl font-black text-indigo-400">AI</p>
-                                            <p className="text-[10px] font-black text-slate-300 uppercase tracking-wider mt-0.5">{isKa ? 'აგრონომის ანალიტიკა' : 'AI Agro Analyst'}</p>
-                                        </div>
-                                        <div className="p-3 bg-slate-900/85 border border-amber-500/40 rounded-2xl backdrop-blur-md shadow-lg">
-                                            <p className="text-lg sm:text-2xl font-black text-amber-400">OPEX</p>
-                                            <p className="text-[10px] font-black text-slate-300 uppercase tracking-wider mt-0.5">{isKa ? 'ერთიანი რეპორტები' : 'Unified Reports'}</p>
+                                        <div>
+                                            <p className="text-xs sm:text-sm font-black text-[#163022]">
+                                                {isKa ? 'პლანტაციის მონიტორინგი და მართვა.' : 'Plantation Monitoring & Management.'}
+                                            </p>
+                                            <p className="text-[11px] text-[#557060]">
+                                                {isKa ? 'საოპერაციო მონაცემები ერთ პლატფორმაზე.' : 'All operational data in a unified platform.'}
+                                            </p>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Core Functional Modules (Glassmorphic cards) */}
-                            <div className="space-y-3.5">
-                                <div className="flex items-center justify-between">
-                                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                                        <Compass className="w-4 h-4 text-emerald-400" />
-                                        {isKa ? 'პლატფორმის ძირითადი მოდულები და ინოვაციები' : 'Platform Core Modules & Operations'}
+                            {/* Right Column: Editorial Typography & Copy (Exact replica from FERE_7cfe5525.jpg) */}
+                            <div className="lg:col-span-6 space-y-6">
+                                <div className="space-y-3">
+                                    <span className="text-xs font-black uppercase tracking-widest text-[#4C755B]">
+                                        {isKa ? 'გაიცანით AGRIMAP' : 'DISCOVER AGRIMAP'}
+                                    </span>
+                                    <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-[#142A1E] font-serif leading-[1.15]">
+                                        {isKa ? (
+                                            <>
+                                                მართვა.<br />
+                                                <span className="italic font-normal text-[#2B6843]">მონაცემებზე დაფუძნებული</span> გადაწყვეტილებები.
+                                            </>
+                                        ) : (
+                                            <>
+                                                Management.<br />
+                                                <span className="italic font-normal text-[#2B6843]">Data-driven</span> decisions.
+                                            </>
+                                        )}
+                                    </h2>
+                                </div>
+
+                                <div className="space-y-4 text-sm sm:text-base text-[#385342] leading-relaxed font-normal">
+                                    <p>
+                                        {isKa 
+                                            ? 'შექმენით თქვენი პლანტაციის ციფრული ტყუპი AgriMap-ით. დააკავშირეთ IoT მოწყობილობები, კამერები, დრონები და მეტეოსადგურები, რათა უკეთ დაინახოთ, რა ხდება თქვენს მიწაზე.'
+                                            : 'Create a comprehensive digital twin of your plantation with AgriMap. Connect IoT sensors, surveillance cameras, drones, and microclimate stations to see exactly what is happening in your soil and rows.'}
+                                    </p>
+                                    <p>
+                                        {isKa
+                                            ? 'მართეთ ყოველი ეტაპი, გააანალიზეთ მონაცემები ხელოვნური ინტელექტით და გაამარტივეთ მოსავლის აღრიცხვა QR კოდებითა და ავტომატური აწონვით.'
+                                            : 'Manage every production phase, analyze data with embedded artificial intelligence, and streamline harvest recording with batch QR codes and automated Bluetooth scale capture.'}
+                                    </p>
+                                </div>
+
+                                {/* Metric Badges */}
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+                                    <div className="p-3 bg-[#EDF2E8] border border-[#DCE4D6] rounded-2xl text-center">
+                                        <span className="text-xl font-black text-[#1E3B2B] block">100%</span>
+                                        <span className="text-[10px] font-bold text-[#557060] uppercase">{isKa ? 'ავტო-ჩამოწერა' : 'Auto Stock'}</span>
+                                    </div>
+                                    <div className="p-3 bg-[#EDF2E8] border border-[#DCE4D6] rounded-2xl text-center">
+                                        <span className="text-xl font-black text-[#2B6843] block">GIS</span>
+                                        <span className="text-[10px] font-bold text-[#557060] uppercase">{isKa ? 'ნაკვეთის რუკა' : 'Field GIS'}</span>
+                                    </div>
+                                    <div className="p-3 bg-[#EDF2E8] border border-[#DCE4D6] rounded-2xl text-center">
+                                        <span className="text-xl font-black text-[#1E3B2B] block">AI</span>
+                                        <span className="text-[10px] font-bold text-[#557060] uppercase">{isKa ? 'აგრონომი' : 'Agro AI'}</span>
+                                    </div>
+                                    <div className="p-3 bg-[#EDF2E8] border border-[#DCE4D6] rounded-2xl text-center">
+                                        <span className="text-xl font-black text-[#2B6843] block">OPEX</span>
+                                        <span className="text-[10px] font-bold text-[#557060] uppercase">{isKa ? 'რეპორტინგი' : 'Reports'}</span>
+                                    </div>
+                                </div>
+
+                                <div className="pt-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleNavigate('design')}
+                                        className="inline-flex items-center gap-2 text-sm font-bold text-[#1E3B2B] hover:text-[#2B6843] transition-colors cursor-pointer"
+                                    >
+                                        <span>{isKa ? 'გაიგეთ მეტი პლანტაციის ციფრული მართვის შესახებ' : 'Learn more about digital plantation management'}</span>
+                                        <ArrowRight className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </div>
+                        </section>
+
+                        {/* Section 3: Key Points & Interactive Filters Requested by User */}
+                        <section className="space-y-6 pt-4 border-t border-[#E3EBE0]">
+                            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                                <div>
+                                    <span className="text-xs font-black uppercase tracking-widest text-[#4C755B]">
+                                        {isKa ? 'პლატფორმის ძირითადი მიმართულებები & სერვისები' : 'Core Platform Capabilities & Regional Services'}
+                                    </span>
+                                    <h3 className="text-2xl sm:text-3xl font-black text-[#163022] font-serif mt-1">
+                                        {isKa ? 'ყველა აგრო-ინსტრუმენტი ერთ ეკოსისტემაში' : 'Integrated Precision Agriculture Ecosystem'}
                                     </h3>
                                 </div>
 
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    
-                                    {/* 1. Stock Management & Auto Depletion */}
-                                    <div className="p-5 rounded-3xl bg-slate-800/80 border border-emerald-500/40 hover:border-emerald-400 hover:bg-slate-800 transition-all space-y-2.5 shadow-lg">
-                                        <div className="w-10 h-10 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded-2xl flex items-center justify-center font-black">
-                                            <PackageCheck className="w-5 h-5" />
-                                        </div>
-                                        <h4 className="font-black text-sm text-white">
-                                            {isKa ? 'საწყობის მართვა & ავტო-ჩამოწერა' : 'Stock Management & Auto Charge'}
-                                        </h4>
-                                        <p className="text-[11px] font-medium text-slate-300 leading-relaxed">
-                                            {isKa
-                                                ? 'სასუქები, პრეპარატები და შეფუთვები ავტომატურად კონტროლდება და ჩამოიწერება საწყობიდან ყოველი დამუშავებისას ან მოსავლის აღებისას.'
-                                                : 'All fertilizers, chemicals, spray items, and packaging materials are tracked and automatically deducted from warehouse stock upon activity logging.'}
-                                        </p>
-                                    </div>
-
-                                    {/* 2. Agronomy Purpose Monitoring */}
-                                    <div className="p-5 rounded-3xl bg-slate-800/80 border border-purple-500/40 hover:border-purple-400 hover:bg-slate-800 transition-all space-y-2.5 shadow-lg">
-                                        <div className="w-10 h-10 bg-purple-500/20 text-purple-400 border border-purple-500/40 rounded-2xl flex items-center justify-center font-black">
-                                            <FlaskConical className="w-5 h-5" />
-                                        </div>
-                                        <h4 className="font-black text-sm text-white">
-                                            {isKa ? 'აგრონომიული მონიტორინგი' : 'Agronomy Purpose Monitoring'}
-                                        </h4>
-                                        <p className="text-[11px] font-medium text-slate-300 leading-relaxed">
-                                            {isKa
-                                                ? 'ყველა აგრონომიული მიზნის (მორწყვა, განაყოფიერება, წამლობა, გასხვლა) სრული ისტორია ნაკვეთებისა და რიგების მიხედვით.'
-                                                : 'Track exact purpose, dosages, application timing, active ingredients, and recurrence schedule across specific field blocks and rows.'}
-                                        </p>
-                                    </div>
-
-                                    {/* 3. Cross-Module Reports & Statistics */}
-                                    <div className="p-5 rounded-3xl bg-slate-800/80 border border-blue-500/40 hover:border-blue-400 hover:bg-slate-800 transition-all space-y-2.5 shadow-lg">
-                                        <div className="w-10 h-10 bg-blue-500/20 text-blue-400 border border-blue-500/40 rounded-2xl flex items-center justify-center font-black">
-                                            <FileSpreadsheet className="w-5 h-5" />
-                                        </div>
-                                        <h4 className="font-black text-sm text-white">
-                                            {isKa ? 'ერთიანი რეპორტები & სტატისტიკა' : 'Cross-Module Reports & Analytics'}
-                                        </h4>
-                                        <p className="text-[11px] font-medium text-slate-300 leading-relaxed">
-                                            {isKa
-                                                ? 'ავტომატური სტატისტიკა ყველა მოდულიდან: ხარჯები (OPEX), მოგება, თვითღირებულება, მუშახელი და მოსავლის ბალანსი.'
-                                                : 'Consolidated reporting compiling real-time OPEX, net yield profitability, labor payroll, cold storage lots, and crop cost per KG.'}
-                                        </p>
-                                    </div>
-
-                                    {/* 4. GIS Precision Mapping */}
-                                    <div className="p-5 rounded-3xl bg-slate-800/80 border border-teal-500/40 hover:border-teal-400 hover:bg-slate-800 transition-all space-y-2.5 shadow-lg">
-                                        <div className="w-10 h-10 bg-teal-500/20 text-teal-400 border border-teal-500/40 rounded-2xl flex items-center justify-center font-black">
-                                            <Map className="w-5 h-5" />
-                                        </div>
-                                        <h4 className="font-black text-sm text-white">
-                                            {isKa ? 'GIS დაგეგმვა & რუკები' : 'Precision GIS Mapping'}
-                                        </h4>
-                                        <p className="text-[11px] font-medium text-slate-300 leading-relaxed">
-                                            {isKa
-                                                ? 'ნაკვეთების საზღვრების ზუსტი აზომვა, ჯიშების ზონირება, GPS ტრეკინგი და ფენების მართვა.'
-                                                : 'Sub-meter boundary tracing, crop variety zoning, real-time GPS land surveys, and topography layers.'}
-                                        </p>
-                                    </div>
-
-                                    {/* 5. Weight Station & Cold Storage */}
-                                    <div className="p-5 rounded-3xl bg-slate-800/80 border border-cyan-500/40 hover:border-cyan-400 hover:bg-slate-800 transition-all space-y-2.5 shadow-lg">
-                                        <div className="w-10 h-10 bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 rounded-2xl flex items-center justify-center font-black">
-                                            <Scale className="w-5 h-5" />
-                                        </div>
-                                        <h4 className="font-black text-sm text-white">
-                                            {isKa ? 'ამწონი სადგური & საცივრე' : 'Weight Station & Cold Storage'}
-                                        </h4>
-                                        <p className="text-[11px] font-medium text-slate-300 leading-relaxed">
-                                            {isKa
-                                                ? 'ელექტრონული სასწორებით ავტომატური აწონვა, ტარის გამოკლება, QR იარლიყები და სამაცივრე პარტიების კონტროლი.'
-                                                : 'Weight Station integration with digital scales, auto-tare subtraction, QR batch tags, and cold storage routing.'}
-                                        </p>
-                                    </div>
-
-                                    {/* 6. AI Agronomist & B2B Market */}
-                                    <div className="p-5 rounded-3xl bg-slate-800/80 border border-amber-500/40 hover:border-amber-400 hover:bg-slate-800 transition-all space-y-2.5 shadow-lg">
-                                        <div className="w-10 h-10 bg-amber-500/20 text-amber-400 border border-amber-500/40 rounded-2xl flex items-center justify-center font-black">
-                                            <Bot className="w-5 h-5" />
-                                        </div>
-                                        <h4 className="font-black text-sm text-white">
-                                            {isKa ? 'AI აგრონომი & ბაზარი' : 'AI Agro Analyst & Market'}
-                                        </h4>
-                                        <p className="text-[11px] font-medium text-slate-300 leading-relaxed">
-                                            {isKa
-                                                ? 'დაავადებების მყისიერი დიაგნოსტიკა ფოტოებით, მკურნალობის რეცეპტები და პირდაპირი B2B აგრო ვაჭრობა.'
-                                                : '24/7 plant health image diagnostics, prescription generation, and direct producer-to-buyer commodity trading.'}
-                                        </p>
-                                    </div>
-
+                                {/* Regional Filter Selector */}
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-semibold text-[#52705D] shrink-0">
+                                        {isKa ? 'რეგიონი:' : 'Region:'}
+                                    </span>
+                                    <select
+                                        value={selectedRegion}
+                                        onChange={(e) => setSelectedRegion(e.target.value)}
+                                        className="px-3.5 py-2 rounded-xl bg-white border border-[#CBD8C6] text-xs font-bold text-[#1E3B2B] outline-none cursor-pointer hover:border-[#1E3B2B] transition-colors shadow-2xs"
+                                    >
+                                        {regions.map(r => (
+                                            <option key={r.id} value={r.id}>
+                                                {isKa ? r.nameKa : r.nameEn}
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
                             </div>
 
-                        </div>
-
-                        {/* Bottom Glowing High-Impact Action Footer */}
-                        <div className="px-5 sm:px-8 py-3.5 sm:py-4 bg-slate-950 border-t border-slate-800 flex flex-col lg:flex-row items-center justify-between gap-4 shrink-0">
-                            
-                            <div className="flex items-center gap-3 text-xs font-bold text-slate-400 text-center lg:text-left">
-                                <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl border border-emerald-500/20 shrink-0">
-                                    <ShieldCheck className="w-4 h-4" />
-                                </div>
-                                <div>
-                                    <p className="text-slate-200 font-bold text-xs">
-                                        {isKa ? 'ღია წვდომა დაშბორდზე' : 'Instant Open Access to Dashboard'}
-                                    </p>
-                                    <p className="text-[11px] text-slate-400">
-                                        {isKa ? 'გამოიკვლიეთ ყველა ფუნქცია თავისუფლად' : 'Explore all tools, GIS maps & AI analyst without restrictions'}
-                                    </p>
-                                </div>
-                            </div>
-
-                            {/* Noticeable & Blinking Action Buttons */}
-                            <div className="flex flex-col sm:flex-row items-center gap-3.5 w-full lg:w-auto justify-end">
+                            {/* 6 Core Functional Modules as Bright, Elegant Website Cards */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                                 
-                                {/* 1. Official Website Link (Noticeable with Glowing Border) */}
-                                <a
-                                    href="https://agrimappro.com"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="group relative px-5 py-3 rounded-2xl bg-slate-900 hover:bg-slate-850 text-white border-2 border-indigo-500/80 hover:border-indigo-400 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2.5 shadow-[0_0_20px_rgba(99,102,241,0.25)] hover:shadow-[0_0_30px_rgba(99,102,241,0.45)] transition-all cursor-pointer w-full sm:w-auto"
+                                {/* 1. Regional Services & Field Discovery */}
+                                <div 
+                                    onClick={() => handleNavigate('marketplace')}
+                                    className="p-6 rounded-3xl bg-[#FAFBF8] border border-[#DCE4D6] hover:border-[#1E3B2B] hover:shadow-md transition-all cursor-pointer group space-y-3"
                                 >
-                                    <span className="relative flex h-2.5 w-2.5">
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-500"></span>
-                                    </span>
-                                    <ExternalLink className="w-3.5 h-3.5 text-indigo-400 group-hover:scale-110 transition-transform" />
-                                    <span>{isKa ? 'ოფიციალური საიტი: AGRIMAPPRO.COM' : 'VISIT WEBSITE (AGRIMAPPRO.COM)'}</span>
-                                </a>
+                                    <div className="w-11 h-11 rounded-2xl bg-[#EDF2E8] group-hover:bg-[#1E3B2B] text-[#1E3B2B] group-hover:text-white transition-colors flex items-center justify-center">
+                                        <Search className="w-5 h-5" />
+                                    </div>
+                                    <h4 className="text-base font-black text-[#163022] group-hover:text-[#2B6843] transition-colors">
+                                        {isKa ? 'სერვისების შეთავაზება & ძიება რეგიონებში' : 'Regional Services & Provider Search'}
+                                    </h4>
+                                    <p className="text-xs text-[#4F6C5B] leading-relaxed">
+                                        {isKa
+                                            ? 'იპოვეთ და შესთავაზეთ აგრონომიული სერვისები საქართველოს რეგიონების მიხედვით (გურია, სამეგრელო, კახეთი, ქართლი): ნიადაგის ლაბორატორია, დრონით წამლობა, ტექნიკა და საცივრეები.'
+                                            : 'Discover and offer localized agricultural services across Georgian regions: soil lab testing, drone precision spraying, harvesting equipment, and cold-storage logistics.'}
+                                    </p>
+                                    <div className="pt-2 flex items-center gap-1.5 text-xs font-bold text-[#1E3B2B] group-hover:underline">
+                                        <span>{isKa ? 'სერვისების გახსნა' : 'Explore Services'}</span>
+                                        <ArrowUpRight className="w-3.5 h-3.5" />
+                                    </div>
+                                </div>
 
-                                {/* 2. Application Dashboard Button (Pulsing Glow & Highly Noticeable) */}
-                                <button
-                                    type="button"
-                                    onClick={handleGoToDashboard}
-                                    className="group relative px-7 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2.5 shadow-[0_0_25px_rgba(16,185,129,0.35)] hover:shadow-[0_0_40px_rgba(16,185,129,0.6)] transition-all cursor-pointer w-full sm:w-auto border border-emerald-400/50"
+                                {/* 2. B2B Market & Variety Search with AI */}
+                                <div 
+                                    onClick={() => handleNavigate('marketplace')}
+                                    className="p-6 rounded-3xl bg-[#FAFBF8] border border-[#DCE4D6] hover:border-[#1E3B2B] hover:shadow-md transition-all cursor-pointer group space-y-3"
                                 >
-                                    <span className="relative flex h-2.5 w-2.5">
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-90"></span>
-                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-300"></span>
-                                    </span>
-                                    <span>{isKa ? 'აპლიკაციის დაშბორდზე გადასვლა' : 'LAUNCH APP DASHBOARD'}</span>
-                                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                                </button>
+                                    <div className="w-11 h-11 rounded-2xl bg-[#EDF2E8] group-hover:bg-[#1E3B2B] text-[#1E3B2B] group-hover:text-white transition-colors flex items-center justify-center">
+                                        <ShoppingBag className="w-5 h-5" />
+                                    </div>
+                                    <h4 className="text-base font-black text-[#163022] group-hover:text-[#2B6843] transition-colors">
+                                        {isKa ? 'აგრო მარკეტი & ჯიშების ძიება რუკაზე' : 'Agro Market & Crop Variety Search'}
+                                    </h4>
+                                    <p className="text-xs text-[#4F6C5B] leading-relaxed">
+                                        {isKa
+                                            ? 'პროდუქციის ყიდვა-გაყიდვა კულტურებისა და ჯიშების მიხედვით (მოცვი, თხილი, ყურძენი). AI ასისტენტი ეხმარება მყიდველებსა და ფერმერებს პირდაპირ გარიგებაში.'
+                                            : 'Buy and sell agricultural harvest by crop and specific variety on the interactive map. AI assistant matches buyers and producers directly for price and volume transparency.'}
+                                    </p>
+                                    <div className="pt-2 flex items-center gap-1.5 text-xs font-bold text-[#1E3B2B] group-hover:underline">
+                                        <span>{isKa ? 'მარკეტზე გადასვლა' : 'Open Marketplace'}</span>
+                                        <ArrowUpRight className="w-3.5 h-3.5" />
+                                    </div>
+                                </div>
+
+                                {/* 3. Communicator & Knowledge Forum */}
+                                <div 
+                                    onClick={() => handleNavigate('community')}
+                                    className="p-6 rounded-3xl bg-[#FAFBF8] border border-[#DCE4D6] hover:border-[#1E3B2B] hover:shadow-md transition-all cursor-pointer group space-y-3"
+                                >
+                                    <div className="w-11 h-11 rounded-2xl bg-[#EDF2E8] group-hover:bg-[#1E3B2B] text-[#1E3B2B] group-hover:text-white transition-colors flex items-center justify-center">
+                                        <MessageSquare className="w-5 h-5" />
+                                    </div>
+                                    <h4 className="text-base font-black text-[#163022] group-hover:text-[#2B6843] transition-colors">
+                                        {isKa ? 'კომუნიკატორი & ცოდნის ფორუმი' : 'Communicator & Knowledge Forum'}
+                                    </h4>
+                                    <p className="text-xs text-[#4F6C5B] leading-relaxed">
+                                        {isKa
+                                            ? 'ცოცხალი კავშირი თანამშრომლებს, კომპანიებს, მყიდველებსა და გამყიდველებს შორის ფასების სტაბილიზაციის, ხარისხის სტანდარტებისა და გამოცდილების გაზიარებისთვის.'
+                                            : 'Unified communication between field workers, farm owners, sellers, and buyers to stabilize commodity pricing and maintain certified export quality standards.'}
+                                    </p>
+                                    <div className="pt-2 flex items-center gap-1.5 text-xs font-bold text-[#1E3B2B] group-hover:underline">
+                                        <span>{isKa ? 'ფორუმის ნახვა' : 'Open Forum'}</span>
+                                        <ArrowUpRight className="w-3.5 h-3.5" />
+                                    </div>
+                                </div>
+
+                                {/* 4. AI Analysis & Offline Local God AI */}
+                                <div 
+                                    onClick={() => handleNavigate('ai')}
+                                    className="p-6 rounded-3xl bg-[#FAFBF8] border border-[#DCE4D6] hover:border-[#1E3B2B] hover:shadow-md transition-all cursor-pointer group space-y-3"
+                                >
+                                    <div className="w-11 h-11 rounded-2xl bg-[#EDF2E8] group-hover:bg-[#1E3B2B] text-[#1E3B2B] group-hover:text-white transition-colors flex items-center justify-center">
+                                        <Sparkles className="w-5 h-5" />
+                                    </div>
+                                    <h4 className="text-base font-black text-[#163022] group-hover:text-[#2B6843] transition-colors">
+                                        {isKa ? 'აგრო ანალიტიკა & ლოკალური God AI' : 'Agro AI Analytics & Offline LAN Knowledge'}
+                                    </h4>
+                                    <p className="text-xs text-[#4F6C5B] leading-relaxed">
+                                        {isKa
+                                            ? 'AI ასისტენტი ყველა მოდულში: დაავადებების ამოცნობა ფოტოთი, წამლობის რეცეპტები და ლოკალური God AI ბაზა, რომელიც ინტერნეტის გარეშეც მუშაობს ფერმის ლოკალურ სერვერზე.'
+                                            : 'AI assistance in every module: photo disease diagnosis, soil prescriptions, and centralized offline God AI knowledge running on your local network farm node.'}
+                                    </p>
+                                    <div className="pt-2 flex items-center gap-1.5 text-xs font-bold text-[#1E3B2B] group-hover:underline">
+                                        <span>{isKa ? 'AI ანალიტიკოსის გახსნა' : 'Launch AI Analyst'}</span>
+                                        <ArrowUpRight className="w-3.5 h-3.5" />
+                                    </div>
+                                </div>
+
+                                {/* 5. IoT Cameras, Drones, GPS & 3D Modeling */}
+                                <div 
+                                    onClick={() => handleNavigate('labs')}
+                                    className="p-6 rounded-3xl bg-[#FAFBF8] border border-[#DCE4D6] hover:border-[#1E3B2B] hover:shadow-md transition-all cursor-pointer group space-y-3"
+                                >
+                                    <div className="w-11 h-11 rounded-2xl bg-[#EDF2E8] group-hover:bg-[#1E3B2B] text-[#1E3B2B] group-hover:text-white transition-colors flex items-center justify-center">
+                                        <Plane className="w-5 h-5" />
+                                    </div>
+                                    <h4 className="text-base font-black text-[#163022] group-hover:text-[#2B6843] transition-colors">
+                                        {isKa ? 'IoT კამერები, დრონები & GPS 3D მოდელი' : 'IoT Cameras, Drones & GPS 3D Models'}
+                                    </h4>
+                                    <p className="text-xs text-[#4F6C5B] leading-relaxed">
+                                        {isKa
+                                            ? 'პირდაპირი WebRTC ვიდეო სტრიმინგი, დრონის ორთოფოტო რუკები, 3D რელიეფის მოდელირება და მკრეფავთა GPS ID-ბარათები შრომის ხარისხის ზუსტი მონიტორინგისთვის.'
+                                            : 'Live WebRTC camera feeds, drone orthophoto elevation models, and GPS ID-card tracking for precision labor productivity and work quality control.'}
+                                    </p>
+                                    <div className="pt-2 flex items-center gap-1.5 text-xs font-bold text-[#1E3B2B] group-hover:underline">
+                                        <span>{isKa ? 'ტელემეტრიის ლაბორატორია' : 'View Hardware Labs'}</span>
+                                        <ArrowUpRight className="w-3.5 h-3.5" />
+                                    </div>
+                                </div>
+
+                                {/* 6. Plantation Management & Stock Auto-Depletion */}
+                                <div 
+                                    onClick={() => handleNavigate('harvesting')}
+                                    className="p-6 rounded-3xl bg-[#FAFBF8] border border-[#DCE4D6] hover:border-[#1E3B2B] hover:shadow-md transition-all cursor-pointer group space-y-3"
+                                >
+                                    <div className="w-11 h-11 rounded-2xl bg-[#EDF2E8] group-hover:bg-[#1E3B2B] text-[#1E3B2B] group-hover:text-white transition-colors flex items-center justify-center">
+                                        <Scale className="w-5 h-5" />
+                                    </div>
+                                    <h4 className="text-base font-black text-[#163022] group-hover:text-[#2B6843] transition-colors">
+                                        {isKa ? 'პლანტაციის მართვა & საწყობის ავტო-ჩამოწერა' : 'Plantation System & Stock Auto-Depletion'}
+                                    </h4>
+                                    <p className="text-xs text-[#4F6C5B] leading-relaxed">
+                                        {isKa
+                                            ? 'ციფრული სასწორები (Yaohua / CAS), ავტომატური აწონვა, ტარის გამოკლება და QR იარლიყები. სასუქისა და წამლობის შეტანისას საწყობი ავტომატურად ჩამოიწერება.'
+                                            : 'Hardware scale bridge (Yaohua/CAS), auto-tare deduction, harvest QR codes, and zero-error stock deduction when chemical or fertilizer runs are executed.'}
+                                    </p>
+                                    <div className="pt-2 flex items-center gap-1.5 text-xs font-bold text-[#1E3B2B] group-hover:underline">
+                                        <span>{isKa ? 'მოსავლის აღრიცხვა' : 'Harvest Intake'}</span>
+                                        <ArrowUpRight className="w-3.5 h-3.5" />
+                                    </div>
+                                </div>
 
                             </div>
+                        </section>
+
+                    </div>
+
+                    {/* Clean Website Footer Bar */}
+                    <footer className="px-6 md:px-10 py-4 bg-[#EDF2E8] border-t border-[#DCE4D6] flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0 z-30">
+                        <div className="flex items-center gap-3 text-xs text-[#456852]">
+                            <span className="font-bold text-[#163022]">AgriMap Pro</span>
+                            <span>•</span>
+                            <span>{isKa ? 'საქართველოს ციფრული აგრონომიული ინფრასტრუქტურა' : 'Georgian Precision Agriculture Digital Platform'}</span>
                         </div>
-                    </motion.div>
-                </div>
-            )}
+
+                        <div className="flex items-center gap-3">
+                            <a
+                                href="https://agrimappro.com"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white hover:bg-[#F2F7EF] border border-[#CBD8C6] text-xs font-bold text-[#1E3B2B] transition-colors shadow-2xs"
+                            >
+                                <ExternalLink className="w-3.5 h-3.5 text-[#2B6843]" />
+                                <span>AGRIMAPPRO.COM</span>
+                            </a>
+
+                            <button
+                                type="button"
+                                onClick={onExplore}
+                                className="inline-flex items-center gap-2 px-6 py-2 rounded-xl bg-[#1E3B2B] hover:bg-[#142A1E] text-white text-xs font-bold tracking-wide transition-all shadow-xs cursor-pointer active:scale-95"
+                            >
+                                <span>{isKa ? 'აპლიკაციის დაშბორდზე გადასვლა' : 'Launch Dashboard'}</span>
+                                <ArrowRight className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                    </footer>
+                </motion.div>
+            </div>
         </AnimatePresence>
     );
 };

@@ -109,6 +109,32 @@ app.post('/api/sync', (req, res) => {
     }
 });
 
+// 2b. Offline Local AI Knowledge Repository (God AI Sync for LAN tablets)
+const localGodAiStore = {
+    version: 'GodAI_Local_Node_v2.0',
+    lastSync: new Date().toISOString(),
+    records: []
+};
+
+app.get('/api/god-ai/knowledge', (req, res) => {
+    res.json({
+        status: 'ok',
+        service: 'Offline Local AI - Farm Knowledge Node',
+        knowledge: localGodAiStore
+    });
+});
+
+app.post('/api/god-ai/sync', (req, res) => {
+    const { record } = req.body || {};
+    if (record) {
+        localGodAiStore.records.unshift(record);
+        localGodAiStore.records = localGodAiStore.records.slice(0, 500);
+        localGodAiStore.lastSync = new Date().toISOString();
+        console.log(`🧠 [Offline Local AI] Saved module event from LAN tablet: [${record.module}]`);
+    }
+    res.json({ status: 'success', synced: true, totalRecords: localGodAiStore.records.length });
+});
+
 // 3. Local Server AI Proxy & Status Gateway
 app.get('/api/gemini/status', (req, res) => {
     const hasKey = !!(process.env.GEMINI_API_KEY || process.env.API_KEY || process.env.VITE_GEMINI_API_KEY);

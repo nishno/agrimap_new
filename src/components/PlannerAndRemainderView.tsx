@@ -303,6 +303,15 @@ const PlannerAndRemainderView: React.FC<PlannerAndRemainderViewProps> = (props) 
     });
 
     const [view, setView] = useState<'list' | 'calendar' | 'map'>('list');
+    const [isDesktop, setIsDesktop] = useState<boolean>(() => typeof window !== 'undefined' && window.innerWidth >= 1024);
+
+    useEffect(() => {
+        const handleResize = () => {
+            setIsDesktop(window.innerWidth >= 1024);
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
     const [dateFilter, setDateFilter] = useState<'today' | 'past' | 'future' | 'all'>('all');
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [mapFilterDate, setMapFilterDate] = useState<string | null>(null);
@@ -640,9 +649,9 @@ const PlannerAndRemainderView: React.FC<PlannerAndRemainderViewProps> = (props) 
     }, [mapProps.plantationFeatures, workAssignments, mapFilterDate, mapTheme]);
 
     return (
-        <main className="flex-1 bg-slate-50 overflow-hidden flex flex-col h-full w-full relative">
-            {/* Switcher Button: 100% Map vs 100% Panel */}
-            <div className="absolute top-3 right-3 z-[1005] flex items-center gap-1.5">
+        <main className="flex-1 bg-slate-50 overflow-hidden flex flex-col lg:flex-row h-full w-full relative">
+            {/* Switcher Button: 100% Map vs 100% Panel (Mobile & Tablet only) */}
+            <div className="lg:hidden absolute top-3 right-3 z-[1005] flex items-center gap-1.5">
                 <button 
                     type="button"
                     onClick={() => setView(view === 'map' ? 'list' : 'map')}
@@ -663,10 +672,11 @@ const PlannerAndRemainderView: React.FC<PlannerAndRemainderViewProps> = (props) 
                 </button>
             </div>
 
-            {/* Sidebar: Tasks & Controls - 100% width and height when on panel */}
-            {view !== 'map' && (
+            {/* Sidebar: Tasks & Controls - side-by-side on PC, toggle on mobile/tablet */}
+            {(isDesktop || view !== 'map') && (
                 <div 
-                    className="w-full h-full bg-white flex flex-col shadow-xl z-10"
+                    className={`h-full bg-white flex flex-col shadow-xl z-10 flex-shrink-0 ${isDesktop ? 'border-r border-slate-200' : 'w-full'}`}
+                    style={{ width: isDesktop ? `${sidebarWidth}px` : undefined }}
                 >
                 <div className="p-6 sm:p-8 border-b border-slate-100 bg-slate-50/50 flex flex-col gap-4">
                     <div className="flex justify-between items-center">
@@ -991,11 +1001,23 @@ const PlannerAndRemainderView: React.FC<PlannerAndRemainderViewProps> = (props) 
             </div>
             )}
 
-            {/* Main Content: Map - 100% width and height when in map mode */}
-            {view === 'map' && (
-                <div className="w-full h-full flex-1 relative bg-slate-200">
-                    {/* Floating Return to Panel Button when in Map View */}
-                    <div className="absolute top-4 left-4 z-[1005]">
+            {/* Resizable Divider on PC Desktop */}
+            <ResizableDivider 
+                direction="horizontal" 
+                currentSize={sidebarWidth} 
+                onResize={setSidebarWidth} 
+                minSize={320} 
+                maxSize={typeof window !== 'undefined' ? Math.max(window.innerWidth - 300, 750) : 850} 
+                storageKey="planner_sidebar_width" 
+                isKa={isKa} 
+                className="hidden lg:flex" 
+            />
+
+            {/* Main Content: Map - side-by-side on PC, full toggle on mobile/tablet */}
+            {(isDesktop || view === 'map') && (
+                <div className="w-full lg:w-auto h-full flex-1 relative bg-slate-200 min-w-0">
+                    {/* Floating Return to Panel Button when in Map View (Mobile / Tablet only) */}
+                    <div className="lg:hidden absolute top-4 left-4 z-[1005]">
                         <button
                             type="button"
                             onClick={() => setView('list')}

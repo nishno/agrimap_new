@@ -2213,6 +2213,16 @@ const HarvestDashboard: React.FC<HarvestDashboardProps> = (props) => {
     };
 
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+    const [isDesktop, setIsDesktop] = useState<boolean>(() => typeof window !== 'undefined' && window.innerWidth >= 1024);
+
+    useEffect(() => {
+        const handleResize = () => {
+            setIsDesktop(window.innerWidth >= 1024);
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
     const [panelWidth, setPanelWidth] = useState<number>(() => {
         const saved = safeStorage.getItem('harvest_monitoring_panel_width');
         const parsed = saved ? parseInt(saved, 10) : 450;
@@ -2634,8 +2644,8 @@ const HarvestDashboard: React.FC<HarvestDashboardProps> = (props) => {
     ]);
 
     return (
-        <div className="flex flex-col h-full w-full bg-slate-50 relative overflow-hidden">
-            {/* Sidebar Toggle (Quick switch) */}
+        <div className="flex flex-col lg:flex-row h-full w-full bg-slate-50 relative overflow-hidden">
+            {/* Sidebar Toggle (Quick switch on mobile) */}
             <button 
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)}
                 className="md:hidden absolute top-4 right-4 z-[2005] p-3 bg-white border border-slate-200 rounded-2xl shadow-xl text-slate-800"
@@ -2643,9 +2653,11 @@ const HarvestDashboard: React.FC<HarvestDashboardProps> = (props) => {
                 {isSidebarOpen ? <XIcon size={20} /> : <ListFilter size={20} />}
             </button>
 
-            {isSidebarOpen && (
+            {/* Panel Area - side-by-side on PC, toggle on mobile/tablet */}
+            {(isDesktop || isSidebarOpen) && (
                 <div 
-                    className="w-full h-full flex flex-col bg-white border-r border-slate-200 z-10"
+                    className={`h-full flex flex-col bg-white border-r border-slate-200 z-10 flex-shrink-0 ${isDesktop ? 'shadow-xs' : 'w-full'}`}
+                    style={{ width: isDesktop ? `${panelWidth}px` : undefined }}
                 >
                 <div className="p-4 border-b flex-shrink-0 flex items-center gap-3">
                     <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition-all">
@@ -2675,10 +2687,11 @@ const HarvestDashboard: React.FC<HarvestDashboardProps> = (props) => {
                         )}
                     </div>
                     <div className="flex items-center gap-1.5">
+                        {/* Only Map button: shown on tablets & mobile, hidden on PC */}
                         <button 
                             type="button" 
                             onClick={() => setIsSidebarOpen(false)}
-                            className="px-2.5 py-1.5 bg-slate-900 hover:bg-black text-white rounded-lg text-[10px] font-black uppercase flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95 border border-slate-700"
+                            className="lg:hidden px-2.5 py-1.5 bg-slate-900 hover:bg-black text-white rounded-lg text-[10px] font-black uppercase flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-95 border border-slate-700"
                             title={t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka' ? 'მხოლოდ რუკა' : 'Only Map'}
                         >
                             <MapPin size={13} className="text-emerald-400" />
@@ -3275,9 +3288,23 @@ const HarvestDashboard: React.FC<HarvestDashboardProps> = (props) => {
             </div>
             )}
 
-            {!isSidebarOpen && (
-                <div className="w-full h-full flex-1 flex flex-col relative overflow-hidden bg-slate-200">
-                    <div className="absolute top-4 left-4 z-[2005]">
+            {/* Resizable Divider on PC Desktop */}
+            <ResizableDivider 
+                direction="horizontal" 
+                currentSize={panelWidth} 
+                onResize={setPanelWidth} 
+                minSize={340} 
+                maxSize={typeof window !== 'undefined' ? Math.max(window.innerWidth - 300, 700) : 800} 
+                storageKey="harvest_monitoring_panel_width" 
+                isKa={t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka'} 
+                className="hidden lg:flex" 
+            />
+
+            {/* Map Area - side-by-side on PC, full toggle on mobile/tablet */}
+            {(isDesktop || !isSidebarOpen) && (
+                <div className="w-full lg:w-auto h-full flex-1 flex flex-col relative overflow-hidden bg-slate-200 min-w-0">
+                    {/* Floating Return to Panel Button when in Map View (Mobile / Tablet only) */}
+                    <div className="lg:hidden absolute top-4 left-4 z-[2005]">
                         <button
                             type="button"
                             onClick={() => setIsSidebarOpen(true)}

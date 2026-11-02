@@ -127,6 +127,30 @@ export interface UserAiQuota {
     hasPaymentMethodLinked?: boolean;
     autoRechargeThreshold?: number;
     autoRechargeAmountGel?: number;
+    subscriptionTier?: 'none' | 'standard' | 'premium_unlimited';
+    subscriptionRenewalDate?: string;
+    subscriptionPriceGel?: number;
+    isUnlimited?: boolean;
+    grantedByAdmin?: {
+        grantedAt: string;
+        grantedBy: string;
+        amount: number;
+        reason?: string;
+    };
+}
+
+export interface AiSubscriptionPlan {
+    id: string;
+    name: string;
+    tier: 'standard' | 'premium_unlimited';
+    priceGel: number;
+    priceUsd: number;
+    billingCycle: 'monthly';
+    isUnlimited: boolean;
+    tokenAllowance: number | 'unlimited';
+    description: string;
+    features: string[];
+    isPopular?: boolean;
 }
 
 export interface AiUsageRecord {

@@ -1,6 +1,5 @@
 import pptxgen from 'pptxgenjs';
 import { jsPDF } from 'jspdf';
-import { GoogleGenAI, Type } from '@google/genai';
 import { getActiveGeminiApiKey, PRIMARY_GEMINI_MODEL, executeGeminiCall } from './geminiService';
 import type { PlatformModuleDefinition, ModuleConnection, AiArchitectureReport } from './architectureGuideService';
 

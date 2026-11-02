@@ -1,4 +1,3 @@
-import { Type } from "@google/genai";
 import { executeGeminiCall, getActiveGeminiApiKey } from "./geminiService";
 import { 
     InventoryItem, StockTransaction, NutritionPlan, PlanExecution, 

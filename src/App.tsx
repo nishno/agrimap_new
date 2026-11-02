@@ -41,11 +41,6 @@ import { initGlobalHardwareScannerListener } from './utils/hardwareScannerBus';
 import { checkModuleAccess, User, Organization, Membership, AppMode, SystemLog, InventoryItem, InventoryTransaction, HarvestEvent, HarvestEntry, Pallet, HarvestLog, Account, Transaction, Role, Employee, DailyLogEntry, WorkAssignment, Machinery, EmployeeGroup, ForumPost, Listing, Bid, Review, Alert, Project, ProjectData, PlantationFeature, Layer, AreaPlantationFeature, NutritionPlan, PlanExecution, DashboardWidget, ActiveDrawingTool, FeatureType, LinePlantationFeature, SeedlingPlantationFeature, VarietyRule, AiReport, SoilAnalysisResult, UploadedDocument, PlantDiseaseAnalysis, SoilData, AnalysisResult, GroundingSource, AssistantMessage, NotePlantationFeature, Permission, ALL_PERMISSIONS, Supplier, PurchaseOrder, OperationalLog, Note, UserRole, OrganizationTicket, WorkExperience, Crop, isValidCoordinate, LocalServerConfig, MaterialUsed, AssignedVehicle, StockTransaction, HarvestedProduce } from './types';
 import { useLanguage } from './contexts/LanguageContext';
 import { Toaster, toast } from 'sonner';
-import { 
-    GoogleGenAI, 
-    GenerateContentResponse,
-    Type
-} from "@google/genai";
 import { db, auth, doc, getDocFromServer, onSnapshot, collection, query, where, setDoc, updateDoc, deleteDoc, addDoc, getDocs, writeBatch, enableNetwork, disableNetwork, getSyncQueueSize, clearSyncQueue, testFirestoreConnection, resetFirestorePersistence, setConnectionState, trackModification } from './firebase';
 import { syncManager } from './services/SyncManager';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
@@ -223,11 +218,25 @@ const App: React.FC = () => {
         const handleOpenLogin = () => setIsLoginModalOpen(true);
         window.addEventListener('open-registration-modal', handleOpenReg);
         window.addEventListener('open-login-modal', handleOpenLogin);
+
+        try {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('login') === '1') setIsLoginModalOpen(true);
+            if (params.get('register') === '1') setIsRegisterModalOpen(true);
+        } catch (e) {}
+
+        const handleModeEvent = (e: any) => {
+            if (e.detail?.mode) setAppMode(e.detail.mode);
+        };
+        window.addEventListener('agrimap-mode-changed', handleModeEvent);
+
         return () => {
             window.removeEventListener('open-registration-modal', handleOpenReg);
             window.removeEventListener('open-login-modal', handleOpenLogin);
+            window.removeEventListener('agrimap-mode-changed', handleModeEvent);
         };
     }, []);
+
 
     // Force-close auth modals when user becomes non-guest
     useEffect(() => {
@@ -7152,6 +7161,7 @@ const App: React.FC = () => {
                 onUpdateUser={handleUpdateUser}
                 reasonNotice={aiTopUpReason}
                 isKa={language === 'ka'}
+                allUsers={users}
             />
         </div>
         </FirebaseDataProvider>

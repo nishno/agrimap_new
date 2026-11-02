@@ -113,7 +113,9 @@ interface GlobalSpotlightSearchProps {
     onSelectFeatureId?: (id: string) => void;
     onOpenVoiceNotes?: () => void;
     onStartMapDrawShowcase?: (shape: 'polygon' | 'circle' | 'line' | 'point') => void;
+    onOpenAiTopUp?: () => void;
 }
+
 
 // Highlight matching search query characters
 const HighlightMatch: React.FC<{ text: string; query: string }> = ({ text, query }) => {
@@ -196,7 +198,8 @@ export const GlobalSpotlightSearch: React.FC<GlobalSpotlightSearchProps> = ({
     onSetMapZoom,
     onSelectFeatureId,
     onOpenVoiceNotes,
-    onStartMapDrawShowcase
+    onStartMapDrawShowcase,
+    onOpenAiTopUp
 }) => {
     const [query, setQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<SearchCategory>('all');
@@ -724,6 +727,251 @@ export const GlobalSpotlightSearch: React.FC<GlobalSpotlightSearchProps> = ({
                 }
             });
         }
+
+        // -------------------------------------------------------------
+        // OPERATIONAL ACTIONS & SYSTEM FUNCTIONS (Instant 1-Click Execution)
+        // -------------------------------------------------------------
+        
+        // 1. Process Product Return & Refund
+        items.push({
+            id: 'action-product-return',
+            title: language === 'ka' ? 'პროდუქტის დაბრუნება & ანაზღაურება' : 'Process Product Return & Refund',
+            subtitle: language === 'ka' 
+                ? 'დაბრუნებული ყუთების აღრიცხვა, ხარისხის ინსპექცია და მყიდველის ბალანსის დაკორექტირება'
+                : 'Log returned produce boxes, inspect quality grade, update cold storage & credit buyer balance',
+            category: 'actions',
+            icon: <Scale className="w-4 h-4 text-rose-400" />,
+            badge: 'RETURN',
+            badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
+            keywords: [
+                'return', 'refund', 'product return', 'damaged', 'exchange', 'credit memo', 
+                'დაბრუნება', 'პროდუქტის დაბრუნება', 'დაზიანებული', 'რეკლამაცია', 'p', 'r'
+            ],
+            action: () => {
+                onSetAppMode('harvesting');
+                recordSearch('Product Return & Refund');
+                toast.info(language === 'ka' ? 'გახსნილია მოსავლის დაბრუნების მოდული' : 'Navigated to Harvest & Returns Management');
+                window.dispatchEvent(new CustomEvent('agrimap_open_product_return'));
+                onClose();
+            }
+        });
+
+        // 2. Record Harvest Weigh-In (Digital Scale)
+        items.push({
+            id: 'action-harvest-weigh-in',
+            title: language === 'ka' ? 'მოსავლის აწონვა (ციფრული სასწორი)' : 'Record Harvest Weigh-In (Digital Scale)',
+            subtitle: language === 'ka'
+                ? 'მკრეფავის ყუთის შტრიხკოდის დასკანერება, წმინდა/ბრუტო წონის ჩაწერა და ეტიკეტის ბეჭდვა'
+                : 'Scan picker crate barcode, capture net/gross digital scale weight & generate batch tag',
+            category: 'actions',
+            icon: <Wheat className="w-4 h-4 text-amber-400" />,
+            badge: 'SCALE',
+            badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+            keywords: [
+                'weigh', 'scale', 'harvest weigh in', 'crate', 'tare', 'gross', 'net weight', 'scale session',
+                'აწონვა', 'სასწორი', 'წონა', 'მოსავალი', 'ყუთი', 'w', 's'
+            ],
+            action: () => {
+                onSetAppMode('harvesting');
+                recordSearch('Record Harvest Weigh-In');
+                toast.success(language === 'ka' ? 'გააქტიურდა მოსავლის აწონვის რეჟიმი' : 'Activated Harvest Weigh-In Station');
+                window.dispatchEvent(new CustomEvent('agrimap_open_scale_session'));
+                onClose();
+            }
+        });
+
+        // 3. Worker Productivity & Top Picker Leaderboard
+        items.push({
+            id: 'action-hr-picker-leaderboard',
+            title: language === 'ka' ? 'მკრეფავების რეიტინგი & ხელფასების ანალიტიკა' : 'Worker Productivity & Top Picker Leaderboard',
+            subtitle: language === 'ka'
+                ? 'საუკეთესო მკრეფავები რეგიონების მიხედვით, თანმიმდევრულობის ანალიზი და გამომუშავებული ხელფასი'
+                : 'Top pickers by region, picking consistency analysis, GPS workload tracking & earned wage rankings',
+            category: 'actions',
+            icon: <Users className="w-4 h-4 text-emerald-400" />,
+            badge: 'HR & PAYROLL',
+            badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+            keywords: [
+                'picker', 'top picker', 'best picker', 'payroll', 'wage', 'workers', 'labor', 'productivity',
+                'consistency', 'gps cards', 'workload', 'მკრეფავი', 'საუკეთესო მკრეფავი', 'ხელფასი', 'რეიტინგი', 't', 'p', 'h'
+            ],
+            action: () => {
+                onSetAppMode('accounting');
+                recordSearch('Top Picker Leaderboard');
+                toast.success(language === 'ka' ? 'გახსნილია მკრეფავებისა და ხელფასების ანალიტიკა' : 'Opened Worker Productivity & Wage Analytics');
+                window.dispatchEvent(new CustomEvent('agrimap_open_hr_picker_leaderboard'));
+                onClose();
+            }
+        });
+
+        // 4. AI Leaf Disease Diagnostic Scan
+        items.push({
+            id: 'action-ai-disease-scan',
+            title: language === 'ka' ? 'AI მცენარის დაავადების დიაგნოსტიკა' : 'AI Crop Leaf Disease Diagnostic Scan',
+            subtitle: language === 'ka'
+                ? 'ფოთლის ლაქების, მავნებლებისა და სიმპტომების AI ანალიზი მკურნალობის რეცეპტით'
+                : 'Scan leaf lesions, spot symptoms, pest damage & receive immediate treatment protocols',
+            category: 'actions',
+            icon: <Sparkles className="w-4 h-4 text-teal-400" />,
+            badge: 'AI CLINIC',
+            badgeColor: 'bg-teal-500/20 text-teal-300 border-teal-500/30',
+            keywords: [
+                'disease', 'leaf', 'ai disease', 'pathology', 'pest', 'fungus', 'spray', 'diagnostic',
+                'დაავადება', 'დიაგნოსტიკა', 'ფოთოლი', 'მავნებელი', 'სოკო', 'd', 'l', 'a'
+            ],
+            action: () => {
+                onSetAppMode('agronomy');
+                recordSearch('AI Leaf Disease Diagnostic');
+                toast.success(language === 'ka' ? 'გააქტიურდა AI დაავადებების კლინიკა' : 'Opened AI Disease Diagnostic Clinic');
+                window.dispatchEvent(new CustomEvent('agrimap_open_disease_clinic'));
+                onClose();
+            }
+        });
+
+        // 5. Soil Chemistry & N-P-K Nutrient Analysis
+        items.push({
+            id: 'action-soil-lab-test',
+            title: language === 'ka' ? 'ნიადაგის N-P-K & pH ლაბორატორიული ანალიზი' : 'Soil Chemistry & N-P-K Nutrient Analysis',
+            subtitle: language === 'ka'
+                ? 'pH, აზოტის, ფოსფორის, კალიუმის მაჩვენებლები და სასუქების გამოთვლა'
+                : 'Input pH, Nitrogen, Phosphorus, Potassium levels and generate balanced fertilizer plans',
+            category: 'actions',
+            icon: <Sprout className="w-4 h-4 text-emerald-400" />,
+            badge: 'SOIL LAB',
+            badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+            keywords: [
+                'soil', 'npk', 'ph', 'chemistry', 'nutrient', 'fertilizer plan', 'lab',
+                'ნიადაგი', 'სასუქი', 'ანალიზი', 'ლაბორატორია', 's', 'n'
+            ],
+            action: () => {
+                onSetAppMode('agronomy');
+                recordSearch('Soil Chemistry Analysis');
+                toast.success(language === 'ka' ? 'გახსნილია ნიადაგის ანალიზის მოდული' : 'Opened Soil Nutrition Clinic');
+                window.dispatchEvent(new CustomEvent('agrimap_open_soil_clinic'));
+                onClose();
+            }
+        });
+
+        // 6. Top Up AI Tokens & Manage Subscriptions
+        items.push({
+            id: 'action-ai-tokens-topup',
+            title: language === 'ka' ? 'AI ტოკენების შევსება & გამოწერა' : 'Top Up AI Tokens & Billing Subscriptions',
+            subtitle: language === 'ka'
+                ? 'საბანკო ბარათით გადახდა, 30/100/500 ტოკენის პაკეტები ან 300₾/თვე შეუზღუდავი Premium'
+                : 'Card payment checkout, 30/100/500 query packs, or 300 GEL/mo Unlimited Enterprise subscription',
+            category: 'actions',
+            icon: <Zap className="w-4 h-4 text-amber-400" />,
+            badge: 'AI BILLING',
+            badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+            keywords: [
+                'ai', 'tokens', 'credits', 'top up', 'billing', 'subscription', 'card payment', 'stripe', 'checkout', '300',
+                'ტოკენები', 'შევსება', 'ბარათი', 'გამოწერა', 'ბილინგი', 't', 'c', 'b'
+            ],
+            action: () => {
+                if (onOpenAiTopUp) {
+                    onOpenAiTopUp();
+                } else {
+                    window.dispatchEvent(new CustomEvent('agrimap:open_ai_topup_modal'));
+                }
+                recordSearch('AI Tokens Top Up');
+                toast.success(language === 'ka' ? 'გახსნილია AI ტოკენების შევსების ფანჯარა' : 'Opened AI Balance & Subscription Modal');
+                onClose();
+            }
+        });
+
+        // 7. God AI Unified Agro Console & LAN Node
+        items.push({
+            id: 'action-god-ai-console',
+            title: language === 'ka' ? 'God AI ცენტრალური აგრო-კონსოლი (Admin & Root)' : 'God AI Unified Agro Console (Admin & Root)',
+            subtitle: language === 'ka'
+                ? 'ოფლაინ ცოდნის ბაზა, კომპანიის შიდა მონაცემთა ინტეგრაცია და LAN ქსელის კვანძი'
+                : 'Offline autonomous knowledge sink, cross-module data harvester & local LAN company AI node',
+            category: 'actions',
+            icon: <Cpu className="w-4 h-4 text-purple-400" />,
+            badge: 'GOD AI',
+            badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+            keywords: [
+                'god ai', 'god file', 'local ai', 'offline ai', 'lan', 'console', 'root', 'knowledge engine',
+                'ადმინი', 'კონსოლი', 'ოფლაინ ai', 'ცოდნის ბაზა', 'g', 'c'
+            ],
+            action: () => {
+                if (onOpenLocalServerConfig) {
+                    onOpenLocalServerConfig();
+                }
+                recordSearch('God AI Console');
+                toast.success(language === 'ka' ? 'გახსნილია God AI კონსოლი და ლოკალური კვანძი' : 'Opened God AI Console & Local Node');
+                onClose();
+            }
+        });
+
+        // 8. Issue Warehouse Material Reorder
+        items.push({
+            id: 'action-stock-reorder',
+            title: language === 'ka' ? 'საწყობის მარაგების შეკვეთა' : 'Issue Warehouse Material Reorder',
+            subtitle: language === 'ka'
+                ? 'სასუქების, საირიგაციო მილების, ყუთებისა და ქიმიკატების შესყიდვის ორდერი'
+                : 'Generate purchase orders for fertilizers, drip fittings, packaging crates & pesticides',
+            category: 'actions',
+            icon: <Truck className="w-4 h-4 text-indigo-400" />,
+            badge: 'STOCK',
+            badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
+            keywords: [
+                'reorder', 'purchase order', 'stock order', 'inventory reorder', 'supplies', 'fertilizer order',
+                'შეკვეთა', 'საწყობი', 'მარაგი', 'შესყიდვა', 'r', 'p', 's'
+            ],
+            action: () => {
+                onSetAppMode('stock');
+                recordSearch('Warehouse Reorder');
+                toast.info(language === 'ka' ? 'გახსნილია საწყობის მართვის მოდული' : 'Opened Warehouse Inventory Management');
+                onClose();
+            }
+        });
+
+        // 9. Hardware Barcode & QR Code Scanner
+        items.push({
+            id: 'action-qr-scanner',
+            title: language === 'ka' ? 'აპარატურული QR & შტრიხკოდის სკანერი' : 'Open Hardware Barcode & QR Scanner',
+            subtitle: language === 'ka'
+                ? 'მკრეფავის ბარათების, ყუთების სერიული ნომრებისა და პალეტების დასკანერება'
+                : 'Scan worker identity cards, crate serials, seedling trays & cold storage pallets',
+            category: 'actions',
+            icon: <QrCode className="w-4 h-4 text-cyan-400" />,
+            badge: 'SCANNER',
+            badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+            keywords: [
+                'scanner', 'barcode', 'qr', 'hardware', 'scan', 'rfid', 'camera scan',
+                'სკანერი', 'შტრიხკოდი', 'qr კოდი', 'სკანირება', 'b', 'q'
+            ],
+            action: () => {
+                recordSearch('Barcode Scanner');
+                toast.success(language === 'ka' ? 'სკანერი აქტიურია (მზადაა შეყვანისთვის)' : 'Hardware Barcode Scanner Listener Active');
+                window.dispatchEvent(new CustomEvent('agrimap_focus_scanner'));
+                onClose();
+            }
+        });
+
+        // 10. Export Operational Ledger to Excel (.xlsx)
+        items.push({
+            id: 'action-export-excel',
+            title: language === 'ka' ? 'მონაცემების ექსპორტი Excel-ში (.xlsx)' : 'Export Operational Ledger to Excel (.xlsx)',
+            subtitle: language === 'ka'
+                ? 'მოსავლის პარტიების, ხელფასების, საწყობის მარაგებისა და გაყიდვების რეპორტი'
+                : 'Generate comprehensive spreadsheets of harvest weigh-ins, payroll, stock & buyer invoices',
+            category: 'actions',
+            icon: <FileText className="w-4 h-4 text-emerald-400" />,
+            badge: 'EXCEL',
+            badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+            keywords: [
+                'export', 'excel', 'xlsx', 'spreadsheet', 'csv', 'report', 'download',
+                'ექსპორტი', 'რეპორტი', 'გადმოწერა', 'e', 'x'
+            ],
+            action: () => {
+                recordSearch('Export to Excel');
+                window.dispatchEvent(new CustomEvent('agrimap_trigger_export_excel'));
+                toast.success(language === 'ka' ? 'გენერირდება Excel-ის რეპორტი...' : 'Generating Excel spreadsheet report...');
+                onClose();
+            }
+        });
 
         // -------------------------------------------------------------
         // 3. GIS MAP FEATURES & PLANTATION PARCELS

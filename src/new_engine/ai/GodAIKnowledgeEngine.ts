@@ -639,6 +639,77 @@ export class GodAIKnowledgeEngine {
         };
     }
 
+    public recordModuleAiEvent(event: {
+        module: 'agro_analysis' | 'communicator' | 'individual_analysis' | 'labs' | 'harvest' | 'agronomy' | 'stock' | 'help' | 'hr_labor';
+        summary: string;
+        metrics?: Record<string, any>;
+        recommendation?: string;
+        orgId?: string;
+    }): void {
+        try {
+            const stored = safeStorage.getItem('agrimap_god_ai_module_records_v1');
+            const records: any[] = stored ? JSON.parse(stored) : [];
+            const newRecord = {
+                id: `rec_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                timestamp: new Date().toISOString(),
+                ...event
+            };
+            records.unshift(newRecord);
+            // Keep latest 250 records
+            const trimmed = records.slice(0, 250);
+            safeStorage.setItem('agrimap_god_ai_module_records_v1', JSON.stringify(trimmed));
+
+            // Sync with local server if on LAN
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('agrimap:god_ai_event_recorded', { detail: newRecord }));
+                
+                // If local server is configured, attempt non-blocking sync
+                const localConfigRaw = localStorage.getItem('agrimap-local-config');
+                if (localConfigRaw) {
+                    try {
+                        const localConfig = JSON.parse(localConfigRaw);
+                        if (localConfig?.isLocalMode && localConfig?.serverIp) {
+                            fetch(`http://${localConfig.serverIp}:${localConfig.serverPort || 3000}/api/god-ai/sync`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ record: newRecord })
+                            }).catch(() => {});
+                        }
+                    } catch (_) {}
+                }
+            }
+        } catch (e) {
+            console.warn('[GodAIKnowledgeEngine] Failed to record module AI event:', e);
+        }
+    }
+
+    public getModuleAiRecords(): any[] {
+        try {
+            const stored = safeStorage.getItem('agrimap_god_ai_module_records_v1');
+            return stored ? JSON.parse(stored) : [];
+        } catch {
+            return [];
+        }
+    }
+
+    public getOfflineKnowledgePackage(): {
+        version: string;
+        generatedAt: string;
+        heuristicsCount: number;
+        heuristics: LearnedHeuristic[];
+        recentModuleInsights: any[];
+        companyMatrix: OmniscientGodAIMatrix | null;
+    } {
+        return {
+            version: 'GodAI_Offline_Knowledge_v2.0',
+            generatedAt: new Date().toISOString(),
+            heuristicsCount: this.heuristics.length,
+            heuristics: [...this.heuristics],
+            recentModuleInsights: this.getModuleAiRecords().slice(0, 50),
+            companyMatrix: this.lastMatrix
+        };
+    }
+
     public getHeuristics(): LearnedHeuristic[] {
         return [...this.heuristics];
     }

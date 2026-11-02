@@ -228,6 +228,34 @@ if (typeof window !== 'undefined') {
   console.debug = (...args) => { pushLog('Debug', ...args); originalDebug.apply(console, args); };
 }
 
+import { UiVersionMode, getUiVersionMode } from './utils/version';
+import { FullApplicationFrame } from './local/FullApplicationFrame';
+
+const ModernApp = React.lazy(() => import('./modern/ModernApp'));
+
+const MainAppRouter: React.FC = () => {
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+
+  if (pathname.startsWith('/modern-preview')) {
+    return (
+      <React.Suspense fallback={
+        <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#0d1527] text-white font-mono gap-3">
+          <div className="w-8 h-8 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin" />
+          <span className="text-sm tracking-wider text-slate-300">Loading sonik G2.0.1.4 Modern Preview...</span>
+        </div>
+      }>
+        <ModernApp />
+      </React.Suspense>
+    );
+  }
+
+  return (
+    <FullApplicationFrame>
+      <App />
+    </FullApplicationFrame>
+  );
+};
+
 const rootElement = document.getElementById('root');
 if (!rootElement) {
   throw new Error("Could not find root element to mount to");
@@ -238,11 +266,12 @@ try {
   root.render(
     <ErrorBoundary>
       <LanguageProvider>
-        <App />
+        <MainAppRouter />
       </LanguageProvider>
     </ErrorBoundary>
   );
   (window as any).__AGRIMAP_MOUNTED__ = true;
+
   if (typeof (window as any).__agrimapOnMounted === 'function') {
     (window as any).__agrimapOnMounted();
   }

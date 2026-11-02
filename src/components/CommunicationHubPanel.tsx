@@ -171,6 +171,16 @@ const CommunicationHubPanel: React.FC<CommunicationHubPanelProps> = (props) => {
 
     // Map vs Panel View State for Tablet & Mobile (and desktop)
     const [viewMode, setViewMode] = useState<'panel' | 'map'>('panel');
+    const [isDesktop, setIsDesktop] = useState<boolean>(() => typeof window !== 'undefined' && window.innerWidth >= 1024);
+
+    useEffect(() => {
+        const handleResize = () => {
+            setIsDesktop(window.innerWidth >= 1024);
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
     const isKa = typeof window !== 'undefined' && localStorage.getItem('agri-app-lang') === 'ka';
 
     // Google Chat & Meet States
@@ -640,9 +650,9 @@ const CommunicationHubPanel: React.FC<CommunicationHubPanelProps> = (props) => {
     }, [filteredPosts, currentUser, onMarkPostAsRead]);
 
     return (
-        <main className="w-full h-full bg-white overflow-hidden flex flex-col min-h-0 relative">
-            {/* Switcher Button: 100% Map vs 100% Panel */}
-            <div className="absolute top-3 right-3 z-[1005] flex items-center gap-1.5">
+        <main className="w-full h-full bg-white overflow-hidden flex flex-col lg:flex-row min-h-0 relative">
+            {/* Switcher Button: 100% Map vs 100% Panel (Mobile & Tablet only) */}
+            <div className="lg:hidden absolute top-3 right-3 z-[1005] flex items-center gap-1.5">
                 <button 
                     type="button"
                     onClick={() => setViewMode(viewMode === 'map' ? 'panel' : 'map')}
@@ -663,10 +673,11 @@ const CommunicationHubPanel: React.FC<CommunicationHubPanelProps> = (props) => {
                 </button>
             </div>
 
-            {/* Left Panel - 100% width when on panel */}
-            {viewMode !== 'map' && (
+            {/* Left Panel - side-by-side on PC, toggle on mobile/tablet */}
+            {(isDesktop || viewMode !== 'map') && (
                 <div 
-                    className="w-full h-full bg-white relative z-20 shadow-2xl min-h-0 flex flex-col flex-1"
+                    className={`h-full bg-white relative z-20 shadow-2xl min-h-0 flex flex-col flex-shrink-0 ${isDesktop ? 'border-r border-slate-200' : 'w-full flex-1'}`}
+                    style={{ width: isDesktop ? `${communicatorPanelWidth}px` : undefined }}
                 >
                 {/* Main Tabs */}
                 <div className="flex border-b border-slate-200 overflow-x-auto scrollbar-hide bg-slate-50/90 shrink-0 min-h-[52px] h-[52px] items-stretch pr-1">
@@ -698,12 +709,12 @@ const CommunicationHubPanel: React.FC<CommunicationHubPanelProps> = (props) => {
                         <SearchIcon size={16} className="shrink-0" />
                         <span>Partners Find</span>
                     </button>
-                    {/* Desktop Map / Panel Switcher Button */}
+                    {/* Tablet/Mobile Map / Panel Switcher Button - Hidden on PC */}
                     <button 
                         type="button"
                         onClick={() => setViewMode('map')}
-                        className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 my-2 mr-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-slate-900 hover:bg-black text-white border border-slate-700 active:scale-95 transition-all shrink-0 cursor-pointer"
-                        title={isKa ? "მხოლოდ რუკის ჩვენება" : "Switch to Full Map View"}
+                        className="flex lg:hidden items-center gap-1.5 px-3 py-1.5 my-2 mr-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-slate-900 hover:bg-black text-white border border-slate-700 active:scale-95 transition-all shrink-0 cursor-pointer"
+                        title={isKa ? "მხოლოდ რუკის ჩვენება" : "Switch to Map View"}
                     >
                         <MapIcon className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                         <span>{isKa ? 'მხოლოდ რუკა' : 'Only Map'}</span>
@@ -1635,11 +1646,23 @@ const CommunicationHubPanel: React.FC<CommunicationHubPanelProps> = (props) => {
             </div>
             )}
 
-            {/* Map Area - 100% width and height when in map mode */}
-            {viewMode === 'map' && (
-                <div className="w-full h-full flex-1 relative overflow-hidden bg-slate-200">
-                    {/* Floating Return to Panel Button when in Map View */}
-                    <div className="absolute top-4 left-4 z-[1005]">
+            {/* Resizable Divider on PC Desktop */}
+            <ResizableDivider 
+                direction="horizontal" 
+                currentSize={communicatorPanelWidth} 
+                onResize={setCommunicatorPanelWidth} 
+                minSize={360} 
+                maxSize={typeof window !== 'undefined' ? Math.max(window.innerWidth - 300, 750) : 850} 
+                storageKey="communicator_panel_width" 
+                isKa={isKa} 
+                className="hidden lg:flex" 
+            />
+
+            {/* Map Area - side-by-side flex-1 on PC, full toggle on tablet/mobile */}
+            {(isDesktop || viewMode === 'map') && (
+                <div className="w-full lg:w-auto h-full flex-1 relative overflow-hidden bg-slate-200 min-w-0">
+                    {/* Floating Return to Panel Button when in Map View (Mobile / Tablet only) */}
+                    <div className="lg:hidden absolute top-4 left-4 z-[1005]">
                         <button
                             type="button"
                             onClick={() => setViewMode('panel')}

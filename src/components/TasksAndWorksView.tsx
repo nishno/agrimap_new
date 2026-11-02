@@ -130,6 +130,16 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
     const [opLogPopup, setOpLogPopup] = useState<{ log: OperationalLog; latlng: L.LatLng; trenchCount: number; cropCount: number; } | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [viewMode, setViewMode] = useState<'panel' | 'map'>('panel');
+    const [isDesktop, setIsDesktop] = useState<boolean>(() => typeof window !== 'undefined' && window.innerWidth >= 1024);
+
+    useEffect(() => {
+        const handleResize = () => {
+            setIsDesktop(window.innerWidth >= 1024);
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
     const [isScannerOpen, setIsScannerOpen] = useState(false);
 
     // Resizable Edge Handle state
@@ -571,11 +581,12 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
     };
 
     return (
-        <main className="flex-1 flex flex-col overflow-hidden h-full w-full bg-[#f8fafc] relative">
-            {/* Panel View - 100% width and height when in panel mode */}
-            {viewMode === 'panel' && (
+        <main className="flex-1 flex flex-col lg:flex-row overflow-hidden h-full w-full bg-[#f8fafc] relative">
+            {/* Panel View - side-by-side on PC, toggle on mobile/tablet */}
+            {(isDesktop || viewMode === 'panel') && (
                 <div 
-                    className="w-full h-full flex-1 flex flex-col bg-white overflow-hidden"
+                    className={`h-full flex flex-col bg-white overflow-hidden flex-shrink-0 ${isDesktop ? 'border-r border-slate-200 shadow-xs' : 'w-full flex-1'}`}
+                    style={{ width: isDesktop ? `${terminalWidth}px` : undefined }}
                 >
                     {/* Fixed Header & Universal Economic & OPEX Summary */}
                     <div className="p-4 sm:p-5 border-b border-slate-200 bg-white flex-shrink-0 z-20 space-y-3.5 shadow-sm">
@@ -589,12 +600,12 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
                                 </p>
                             </div>
                             <div className="flex items-center gap-2">
-                                {/* Map vs Panel switcher toggle button */}
+                                {/* Map vs Panel switcher toggle button (Tablet & Mobile only) */}
                                 <button 
                                     type="button"
                                     onClick={() => setViewMode('map')}
-                                    className="px-3.5 py-2.5 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md flex items-center gap-2 transition-all active:scale-95 cursor-pointer border border-slate-700"
-                                    title={isKa ? "მხოლოდ რუკის ჩვენება" : "Switch to Full Map View"}
+                                    className="lg:hidden px-3.5 py-2.5 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md flex items-center gap-2 transition-all active:scale-95 cursor-pointer border border-slate-700"
+                                    title={isKa ? "მხოლოდ რუკის ჩვენება" : "Switch to Map View"}
                                 >
                                     <MapLucide className="w-4 h-4 text-emerald-400 shrink-0" />
                                     <span>{isKa ? "მხოლოდ რუკა" : "Only Map"}</span>
@@ -1063,11 +1074,23 @@ const TasksAndWorksView: React.FC<TasksAndWorksViewProps> = (props) => {
                 }}
             />
 
-            {/* Map Area - 100% width and height when in map mode */}
-            {viewMode === 'map' && (
-                <div className="w-full h-full flex-1 flex flex-col relative overflow-hidden bg-slate-200">
-                    {/* Floating Return to Panel Button when in Map View */}
-                    <div className="absolute top-4 left-4 z-[1005]">
+            {/* Resizable Divider on PC Desktop */}
+            <ResizableDivider 
+                direction="horizontal" 
+                currentSize={terminalWidth} 
+                onResize={setTerminalWidth} 
+                minSize={320} 
+                maxSize={typeof window !== 'undefined' ? Math.max(window.innerWidth - 300, 750) : 850} 
+                storageKey="tasks_terminal_width" 
+                isKa={isKa} 
+                className="hidden lg:flex" 
+            />
+
+            {/* Map Area - side-by-side on PC, full toggle on mobile/tablet */}
+            {(isDesktop || viewMode === 'map') && (
+                <div className="w-full lg:w-auto h-full flex-1 flex flex-col relative overflow-hidden bg-slate-200 min-w-0">
+                    {/* Floating Return to Panel Button when in Map View (Mobile / Tablet only) */}
+                    <div className="lg:hidden absolute top-4 left-4 z-[1005]">
                         <button
                             type="button"
                             onClick={() => setViewMode('panel')}
