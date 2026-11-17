@@ -1,3 +1,4 @@
+import { uiTranslationPlugin } from './scripts/ui-text.mjs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { defineConfig } from 'vite';
@@ -47,8 +48,11 @@ export default defineConfig(() => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        hmr: false,
+        ws: false,
       },
       plugins: [
+        uiTranslationPlugin(),
         firestorePatchPlugin(),
         react(),
         tailwindcss(),
@@ -58,8 +62,8 @@ export default defineConfig(() => {
             enabled: false
           },
           workbox: {
-            maximumFileSizeToCacheInBytes: 30 * 1024 * 1024,
-            globPatterns: ['**/*.{js,css,html,ico,png,svg,json}']
+            maximumFileSizeToCacheInBytes: 40 * 1024 * 1024,
+            globPatterns: ['**/*.{js,css,html,ico,png,svg}']
           },
           includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
           manifest: {
@@ -105,19 +109,17 @@ export default defineConfig(() => {
         ]
       },
       build: {
+        target: 'esnext',
         chunkSizeWarningLimit: 3000,
+        cssCodeSplit: true,
         rollupOptions: {
           output: {
             manualChunks(id) {
               if (id.includes('node_modules')) {
                 if (id.includes('three')) return 'vendor-three';
-                if (id.includes('@google/genai')) return 'vendor-genai';
-                if (id.includes('leaflet') || id.includes('turf')) return 'vendor-maps';
-                if (id.includes('pptxgenjs') || id.includes('jspdf') || id.includes('html2canvas')) return 'vendor-export';
+                if (id.includes('leaflet')) return 'vendor-maps';
                 if (id.includes('firebase')) return 'vendor-firebase';
-                if (id.includes('lucide-react')) return 'vendor-icons';
-                if (id.includes('d3')) return 'vendor-d3';
-                if (id.includes('react') || id.includes('react-dom') || id.includes('scheduler')) return 'vendor-react';
+                if (id.includes('react')) return 'vendor-react';
               }
             }
           }

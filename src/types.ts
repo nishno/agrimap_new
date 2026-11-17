@@ -508,6 +508,12 @@ export interface AssistantMessage {
     text: string;
     type: 'user' | 'bot' | 'error';
     timestamp?: string;
+    source?: 'cloud' | 'local';
+    isAutonomousFallback?: boolean;
+    fallbackReason?: string;
+    fallbackCode?: number | string;
+    upstreamNotice?: any;
+    modelUsed?: string;
 }
 
 export interface WeatherData {
@@ -651,6 +657,9 @@ export interface Note {
     isVoiceNote?: boolean;
     language?: 'ka-GE' | 'en-US' | string;
     audioTranscript?: string;
+    dailyAgroAnalysis?: boolean;
+    aiAnalyzedAt?: string;
+    aiAgroInsights?: string;
 }
 
 export interface Checkpoint {

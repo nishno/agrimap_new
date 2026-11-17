@@ -669,12 +669,12 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             .module-labs input:not([type="checkbox"]):not([type="radio"]), 
             .module-labs select, 
             .module-labs textarea {
-                color: #ffffff !important;
-                background-color: #090d16 !important;
-                border-color: #334155 !important;
+                color: #163022 !important;
+                background-color: #FAFBF8 !important;
+                border-color: #CFDCCB !important;
             }
             .module-labs label, .module-labs .field-label {
-                color: #e2e8f0 !important;
+                color: #244130 !important;
                 font-weight: 600;
             }
         `;

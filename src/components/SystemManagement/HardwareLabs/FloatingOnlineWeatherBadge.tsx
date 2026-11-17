@@ -3,7 +3,7 @@ import {
     CloudRain, Sun, Wind, Droplets, Thermometer, 
     X, ChevronDown, RefreshCw, BarChart2, Sparkles, 
     MapPin, Calendar, GripVertical, Search, Plus, Send,
-    ArrowRight
+    ArrowRight, Eye, EyeOff
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { safeStorage } from '../../../services/storageService';
@@ -46,6 +46,30 @@ export const FloatingOnlineWeatherBadge: React.FC<FloatingOnlineWeatherBadgeProp
     
     const [selectedLocationId, setSelectedLocationId] = useState<string>(primaryDefault.id || 'loc-anaseuli');
     const [isExpanded, setIsExpanded] = useState<boolean>(defaultExpanded);
+    const hiddenStorageKey = `${storageKey}_hidden`;
+    const [isHidden, setIsHidden] = useState<boolean>(() => {
+        try {
+            return safeStorage.getItem(`${storageKey}_hidden`) === 'true';
+        } catch (_) {
+            return false;
+        }
+    });
+
+    const toggleWeatherHidden = (explicit?: boolean) => {
+        setIsHidden(prev => {
+            const next = typeof explicit === 'boolean' ? explicit : !prev;
+            try {
+                safeStorage.setItem(hiddenStorageKey, String(next));
+            } catch (_) {}
+            toast.info(
+                next
+                    ? (isKa ? 'ამინდის პანელი დამალულია' : 'Weather tools hidden')
+                    : (isKa ? 'ამინდის პანელი ჩართულია' : 'Weather tools visible')
+            );
+            return next;
+        });
+    };
+
     const [weather, setWeather] = useState<CurrentWeatherReport | null>(null);
     const [forecast, setForecast] = useState<DailyForecastItem[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -199,11 +223,34 @@ export const FloatingOnlineWeatherBadge: React.FC<FloatingOnlineWeatherBadgeProp
         window.addEventListener('pointerup', onPointerUp, { passive: false });
     };
 
+    if (isHidden) {
+        return (
+            <button
+                type="button"
+                onClick={() => toggleWeatherHidden(false)}
+                className="group bg-[#FAFBF8]/95 hover:bg-white text-[#1E3B2B] hover:text-sky-700 px-2.5 py-1.5 rounded-full border border-[#D8E3D4] hover:border-sky-400 shadow-lg backdrop-blur-md text-[10px] font-bold flex items-center gap-1.5 pointer-events-auto cursor-pointer transition-all"
+                title={isKa ? 'ამინდის პანელის ჩვენება' : 'Show Weather Tools'}
+            >
+                <CloudRain size={13} className="text-sky-600 shrink-0" />
+                {weather && <span className="font-black text-[#163022]">{weather.tempC}°C</span>}
+                <Eye size={11} className="text-[#5F7A69] group-hover:text-sky-600 transition-colors" />
+            </button>
+        );
+    }
+
     if (!weather) {
         return (
-            <div className="bg-slate-900/90 text-white px-2.5 py-1.5 rounded-2xl border border-sky-500/40 shadow-xl backdrop-blur-md text-[10px] flex items-center gap-1.5 font-bold pointer-events-auto">
-                <CloudRain size={13} className="text-sky-400 animate-pulse" />
+            <div className="bg-[#FAFBF8]/95 text-[#163022] px-2.5 py-1.5 rounded-2xl border border-[#D8E3D4] shadow-xl backdrop-blur-md text-[10px] flex items-center gap-1.5 font-bold pointer-events-auto">
+                <CloudRain size={13} className="text-sky-600 animate-pulse" />
                 <span>{isKa ? 'ამინდის სინქრონიზაცია...' : 'Syncing weather...'}</span>
+                <button
+                    type="button"
+                    onClick={() => toggleWeatherHidden(true)}
+                    className="ml-1 p-1 text-[#6A8272] hover:text-rose-600 hover:bg-rose-50 rounded-full transition-colors cursor-pointer"
+                    title={isKa ? 'ამინდის პანელის დამალვა' : 'Hide Weather Tools'}
+                >
+                    <EyeOff size={11} />
+                </button>
             </div>
         );
     }
@@ -217,14 +264,14 @@ export const FloatingOnlineWeatherBadge: React.FC<FloatingOnlineWeatherBadgeProp
                 top: `${badgePos.y}px`,
                 zIndex: 3200
             } : undefined}
-            className={`bg-slate-950/95 border border-sky-500/50 text-white rounded-2xl shadow-2xl backdrop-blur-xl transition-all select-none w-[310px] sm:w-[350px] pointer-events-auto ${badgePos ? '' : 'relative'}`}
+            className={`bg-[#FAFBF8]/95 border border-[#D8E3D4] text-[#163022] rounded-2xl shadow-2xl backdrop-blur-xl transition-all select-none w-[310px] sm:w-[350px] pointer-events-auto ${badgePos ? '' : 'relative'}`}
         >
-            {/* Top Bar with Drag Handle & Collapsed Header */}
-            <div className="p-2 flex items-center justify-between gap-1.5 text-xs border-b border-slate-800/80">
+            {/* Top Bar with Drag Handle, Collapsed Header, & Hide Control */}
+            <div className="p-2 flex items-center justify-between gap-1.5 text-xs border-b border-[#D8E3D4] bg-[#EEF3EA] rounded-t-2xl">
                 {/* Drag Handle */}
                 <div
                     onPointerDown={handlePointerDown}
-                    className="p-2 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white cursor-grab active:cursor-grabbing transition-colors shrink-0 touch-none min-w-[36px] min-h-[36px] flex items-center justify-center"
+                    className="p-2 rounded-xl hover:bg-white text-[#6A8272] hover:text-[#1E3B2B] cursor-grab active:cursor-grabbing transition-colors shrink-0 touch-none min-w-[36px] min-h-[36px] flex items-center justify-center"
                     title={isKa ? 'გადაათრიეთ ამინდის პანელი ეკრანზე' : 'Drag to move weather widget anywhere'}
                 >
                     <GripVertical size={16} />
@@ -237,46 +284,46 @@ export const FloatingOnlineWeatherBadge: React.FC<FloatingOnlineWeatherBadgeProp
                     className="flex-1 flex items-center gap-2 text-left cursor-pointer hover:opacity-90 transition-opacity min-w-0"
                     title={isKa ? 'დააწკაპუნეთ გასაშლელად/ჩასაკეცად' : 'Click to expand/collapse'}
                 >
-                    <div className="p-1.5 bg-sky-950 text-sky-400 border border-sky-700/60 rounded-xl shrink-0">
+                    <div className="p-1.5 bg-white text-sky-600 border border-[#D8E3D4] rounded-xl shrink-0 shadow-2xs">
                         <CloudRain size={14} />
                     </div>
                     <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
-                            <span className="font-black text-sky-300 text-xs">
+                            <span className="font-black text-[#163022] text-xs">
                                 {weather.tempC}°C
                             </span>
-                            <span className="text-[10px] text-slate-400 font-bold">
+                            <span className="text-[10px] text-[#3B5B47] font-bold">
                                 {weather.humidityPct}% 💧
                             </span>
                             <span className={`px-1 py-0.2 rounded text-[8px] font-black uppercase ${
-                                weather.frostRisk === 'CRITICAL' ? 'bg-rose-950 text-rose-300 border border-rose-800' :
-                                weather.frostRisk === 'HIGH' ? 'bg-orange-950 text-orange-300 border border-orange-800' :
-                                weather.frostRisk === 'MEDIUM' ? 'bg-amber-950 text-amber-300 border border-amber-800' :
-                                'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                                weather.frostRisk === 'CRITICAL' ? 'bg-rose-100 text-rose-800 border border-rose-300' :
+                                weather.frostRisk === 'HIGH' ? 'bg-orange-100 text-orange-800 border border-orange-300' :
+                                weather.frostRisk === 'MEDIUM' ? 'bg-amber-100 text-amber-800 border border-amber-300' :
+                                'bg-emerald-100 text-emerald-800 border border-emerald-300'
                             }`}>
                                 {weather.frostRisk}
                             </span>
                         </div>
-                        <span className="text-[9px] text-slate-400 font-bold block truncate">
+                        <span className="text-[9px] text-[#4F6C5B] font-bold block truncate">
                             📍 {currentLocation.name}
                         </span>
                     </div>
                 </button>
 
-                {/* Location Selector & Expand Arrow */}
+                {/* Location Selector, Expand Arrow, Position Reset & Hide */}
                 <div className="flex items-center gap-1 shrink-0">
                     <select
                         value={selectedLocationId}
                         onChange={(e) => handleSelectLocation(e.target.value)}
-                        className="bg-slate-900 border border-slate-700 hover:border-sky-400 rounded-xl px-1.5 py-1 text-[10px] font-bold text-sky-200 outline-none cursor-pointer max-w-[100px] truncate"
+                        className="bg-white border border-[#CFDCCB] hover:border-sky-500 rounded-xl px-1.5 py-1 text-[10px] font-bold text-[#1E3B2B] outline-none cursor-pointer max-w-[90px] truncate shadow-2xs"
                         title={isKa ? 'ლოკაციის არჩევა' : 'Choose location'}
                     >
                         {locations.map(loc => (
-                            <option key={loc.id} value={loc.id} className="bg-slate-950 text-white">
+                            <option key={loc.id} value={loc.id} className="bg-white text-[#163022]">
                                 {loc.name}
                             </option>
                         ))}
-                        <option value="__add_new__" className="bg-slate-950 text-sky-400 font-bold">
+                        <option value="__add_new__" className="bg-white text-sky-700 font-bold">
                             ➕ {isKa ? 'სხვა ქალაქი / ლოკაცია...' : 'Add Location...'}
                         </option>
                     </select>
@@ -284,25 +331,49 @@ export const FloatingOnlineWeatherBadge: React.FC<FloatingOnlineWeatherBadgeProp
                     <button
                         type="button"
                         onClick={() => setIsExpanded(!isExpanded)}
-                        className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
-                        title={isExpanded ? 'Collapse' : 'Expand'}
+                        className="p-1 text-[#5F7A69] hover:text-[#1E3B2B] rounded-lg hover:bg-white transition-colors cursor-pointer"
+                        title={isExpanded ? (isKa ? 'ჩაკეცვა' : 'Collapse') : (isKa ? 'გაშლა' : 'Expand')}
                     >
                         <ChevronDown size={14} className={isExpanded ? 'rotate-180 transition-transform' : 'transition-transform'} />
+                    </button>
+
+                    {badgePos && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setBadgePos(null);
+                                try { safeStorage.removeItem(storageKey); } catch (_) {}
+                                toast.success(isKa ? 'ამინდის პანელის პოზიცია აღდგენილია' : 'Weather widget position reset');
+                            }}
+                            className="p-1 text-teal-600 hover:text-teal-800 hover:bg-white rounded-lg transition-colors cursor-pointer"
+                            title={isKa ? 'პოზიციის აღდგენა' : 'Reset Position'}
+                        >
+                            <RefreshCw size={12} />
+                        </button>
+                    )}
+
+                    <button
+                        type="button"
+                        onClick={() => toggleWeatherHidden(true)}
+                        className="p-1 text-[#6A8272] hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                        title={isKa ? 'ამინდის პანელის დამალვა' : 'Hide Weather Tools'}
+                    >
+                        <EyeOff size={13} />
                     </button>
                 </div>
             </div>
 
             {/* Quick Location Search Modal / Drawer */}
             {showLocationSearch && (
-                <div className="p-2.5 bg-slate-900 border-b border-slate-800 space-y-2 animate-in fade-in duration-150">
-                    <div className="flex items-center justify-between text-[11px] font-bold text-sky-300">
+                <div className="p-2.5 bg-white border-b border-[#D8E3D4] space-y-2 animate-in fade-in duration-150 text-[#163022]">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-[#1E3B2B]">
                         <span className="flex items-center gap-1">
-                            <Search size={12} /> {isKa ? 'მოძებნეთ ქალაქი ან რეგიონი:' : 'Search City / Region:'}
+                            <Search size={12} className="text-sky-600" /> {isKa ? 'მოძებნეთ ქალაქი ან რეგიონი:' : 'Search City / Region:'}
                         </span>
                         <button
                             type="button"
                             onClick={() => setShowLocationSearch(false)}
-                            className="text-slate-400 hover:text-white p-0.5"
+                            className="text-[#5F7A69] hover:text-rose-600 p-0.5 cursor-pointer"
                         >
                             ✕
                         </button>
@@ -314,14 +385,14 @@ export const FloatingOnlineWeatherBadge: React.FC<FloatingOnlineWeatherBadgeProp
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             placeholder={isKa ? 'მაგ. Batumi, Kobuleti, Kutaisi...' : 'e.g. Batumi, Kobuleti, Tbilisi...'}
-                            className="w-full pl-7 pr-2.5 py-1 bg-slate-950 border border-slate-700 focus:border-sky-400 rounded-xl text-xs text-white placeholder-slate-500 outline-none"
+                            className="w-full pl-7 pr-2.5 py-1 bg-[#F7FAF5] border border-[#CFDCCB] focus:border-sky-500 rounded-xl text-xs text-[#163022] placeholder-[#7B9585] outline-none"
                             autoFocus
                         />
-                        <Search size={12} className="absolute left-2.5 top-2 text-slate-400 pointer-events-none" />
+                        <Search size={12} className="absolute left-2.5 top-2 text-[#6A8272] pointer-events-none" />
                     </div>
 
                     {isSearching && (
-                        <div className="text-[10px] text-sky-400 animate-pulse text-center py-1 font-bold">
+                        <div className="text-[10px] text-sky-700 animate-pulse text-center py-1 font-bold">
                             {isKa ? 'ძიება Open-Meteo ბაზაში...' : 'Searching Open-Meteo...'}
                         </div>
                     )}
@@ -333,13 +404,13 @@ export const FloatingOnlineWeatherBadge: React.FC<FloatingOnlineWeatherBadgeProp
                                     key={res.id}
                                     type="button"
                                     onClick={() => handleSelectSearchedLocation(res)}
-                                    className="w-full p-1.5 bg-slate-950 hover:bg-sky-950/60 border border-slate-800 hover:border-sky-500/60 rounded-xl text-left text-xs flex items-center justify-between transition-colors group cursor-pointer"
+                                    className="w-full p-1.5 bg-[#FAFBF8] hover:bg-sky-50 border border-[#E2EBE0] hover:border-sky-400 rounded-xl text-left text-xs flex items-center justify-between transition-colors group cursor-pointer shadow-2xs"
                                 >
                                     <div className="truncate mr-2">
-                                        <span className="font-bold text-white block text-[11px] truncate">{res.name}</span>
-                                        <span className="text-[9px] text-slate-400 font-mono">[{res.lat.toFixed(3)}, {res.lng.toFixed(3)}]</span>
+                                        <span className="font-bold text-[#163022] block text-[11px] truncate">{res.name}</span>
+                                        <span className="text-[9px] text-[#5F7A69] font-mono">[{res.lat.toFixed(3)}, {res.lng.toFixed(3)}]</span>
                                     </div>
-                                    <Plus size={12} className="text-sky-400 shrink-0 group-hover:scale-125 transition-transform" />
+                                    <Plus size={12} className="text-sky-600 shrink-0 group-hover:scale-125 transition-transform" />
                                 </button>
                             ))}
                         </div>
@@ -349,43 +420,43 @@ export const FloatingOnlineWeatherBadge: React.FC<FloatingOnlineWeatherBadgeProp
 
             {/* Expanded Microclimate & Forecast Body */}
             {isExpanded && (
-                <div className="p-3 space-y-2.5 text-xs animate-in slide-in-from-top-2 duration-150">
+                <div className="p-3 space-y-2.5 text-xs animate-in slide-in-from-top-2 duration-150 text-[#163022]">
                     {/* Key Metrics Grid */}
                     <div className="grid grid-cols-3 gap-1.5 text-center text-[10px]">
-                        <div className="p-1.5 bg-slate-900/90 rounded-xl border border-slate-800">
-                            <span className="text-slate-400 block text-[9px] uppercase font-bold">გრძნობა</span>
-                            <span className="font-black text-sky-200">{weather.feelsLikeC}°C</span>
+                        <div className="p-1.5 bg-white rounded-xl border border-[#E2EBE0] shadow-2xs">
+                            <span className="text-[#5F7A69] block text-[9px] uppercase font-bold">გრძნობა</span>
+                            <span className="font-black text-[#163022]">{weather.feelsLikeC}°C</span>
                         </div>
-                        <div className="p-1.5 bg-slate-900/90 rounded-xl border border-slate-800">
-                            <span className="text-slate-400 block text-[9px] uppercase font-bold">ნალექი</span>
-                            <span className="font-black text-blue-300">{weather.dailyRainTotalMm} მმ</span>
+                        <div className="p-1.5 bg-white rounded-xl border border-[#E2EBE0] shadow-2xs">
+                            <span className="text-[#5F7A69] block text-[9px] uppercase font-bold">ნალექი</span>
+                            <span className="font-black text-sky-700">{weather.dailyRainTotalMm} მმ</span>
                         </div>
-                        <div className="p-1.5 bg-slate-900/90 rounded-xl border border-slate-800">
-                            <span className="text-slate-400 block text-[9px] uppercase font-bold">ქარი</span>
-                            <span className="font-black text-amber-200">{weather.windSpeedKmh} კმ/სთ</span>
+                        <div className="p-1.5 bg-white rounded-xl border border-[#E2EBE0] shadow-2xs">
+                            <span className="text-[#5F7A69] block text-[9px] uppercase font-bold">ქარი</span>
+                            <span className="font-black text-amber-800">{weather.windSpeedKmh} კმ/სთ</span>
                         </div>
                     </div>
 
                     {/* 5-Day Forecast Strip */}
                     {forecast.length > 0 && (
                         <div className="space-y-1">
-                            <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">
+                            <span className="text-[9px] font-black uppercase text-[#4F6C5B] tracking-wider block">
                                 7-დღიანი პროგნოზი (Open-Meteo):
                             </span>
                             <div className="grid grid-cols-5 gap-1 text-center">
                                 {forecast.slice(0, 5).map((f, idx) => (
-                                    <div key={`badge-fc-${f.date}-${idx}`} className="p-1 bg-slate-900/80 rounded-lg border border-slate-800">
-                                        <span className="text-[8px] text-slate-400 block uppercase font-bold">
+                                    <div key={`badge-fc-${f.date}-${idx}`} className="p-1 bg-white rounded-lg border border-[#E2EBE0] shadow-2xs">
+                                        <span className="text-[8px] text-[#5F7A69] block uppercase font-bold">
                                             {f.dayOfWeek.slice(0, 3)}
                                         </span>
-                                        <span className="text-[9px] font-black text-white">
+                                        <span className="text-[9px] font-black text-[#163022]">
                                             {f.maxTempC}°
                                         </span>
-                                        <span className="text-[8px] text-slate-400 block font-normal">
+                                        <span className="text-[8px] text-[#5F7A69] block font-normal">
                                             {f.minTempC}°
                                         </span>
                                         {f.rainMm > 0 && (
-                                            <span className="text-[7px] text-blue-400 font-bold block font-mono">
+                                            <span className="text-[7px] text-sky-700 font-bold block font-mono">
                                                 {f.rainMm}მმ
                                             </span>
                                         )}
@@ -396,9 +467,9 @@ export const FloatingOnlineWeatherBadge: React.FC<FloatingOnlineWeatherBadgeProp
                     )}
 
                     {/* Custom Question to AI Field */}
-                    <div className="p-2 bg-slate-900 rounded-xl border border-slate-800 space-y-1.5">
-                        <span className="text-[9px] font-black uppercase text-indigo-300 flex items-center gap-1">
-                            <Sparkles size={11} className="text-indigo-400" />
+                    <div className="p-2 bg-[#F6F8F4] rounded-xl border border-[#D8E3D4] space-y-1.5">
+                        <span className="text-[9px] font-black uppercase text-indigo-900 flex items-center gap-1">
+                            <Sparkles size={11} className="text-indigo-600" />
                             {isKa ? 'ჰკითხეთ AI-ს კონკრეტული ანალიზი:' : 'Ask AI specific question on weather:'}
                         </span>
                         <div className="flex items-center gap-1">
@@ -410,13 +481,13 @@ export const FloatingOnlineWeatherBadge: React.FC<FloatingOnlineWeatherBadgeProp
                                     if (e.key === 'Enter') handleRunAiAnalysis();
                                 }}
                                 placeholder={isKa ? 'მაგ. მოცვისთვის ყინვის რისკი ან D20S-LB...' : 'e.g. frost impact on blueberries or D20S-LB...'}
-                                className="flex-1 px-2.5 py-1 bg-slate-950 border border-slate-700 focus:border-indigo-500 rounded-lg text-[10px] text-white placeholder-slate-500 outline-none"
+                                className="flex-1 px-2.5 py-1 bg-white border border-[#CFDCCB] focus:border-indigo-500 rounded-lg text-[10px] text-[#163022] placeholder-[#7B9585] outline-none"
                             />
                             <button
                                 type="button"
                                 onClick={() => handleRunAiAnalysis()}
                                 disabled={isAiLoading}
-                                className="p-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg cursor-pointer transition-colors shrink-0 disabled:opacity-50"
+                                className="p-1.5 bg-white border border-[#CFDCCB] text-[#1E3B2B] hover:bg-indigo-600 hover:text-white hover:border-indigo-600 rounded-lg cursor-pointer transition-all duration-200 shrink-0 disabled:opacity-50 shadow-2xs"
                                 title="Run AI Analysis"
                             >
                                 <Send size={11} className={isAiLoading ? 'animate-spin' : ''} />
@@ -426,35 +497,35 @@ export const FloatingOnlineWeatherBadge: React.FC<FloatingOnlineWeatherBadgeProp
 
                     {/* AI Advisory Drawer */}
                     {aiAdvisory && (
-                        <div className="p-2.5 bg-indigo-950/70 border border-indigo-700/60 rounded-xl space-y-1 text-[10px]">
-                            <div className="flex items-center justify-between text-indigo-300 font-bold">
+                        <div className="p-2.5 bg-[#F2F6FE] border border-[#C6D7F9] rounded-xl space-y-1 text-[10px] text-[#1E3A6D]">
+                            <div className="flex items-center justify-between text-indigo-900 font-bold">
                                 <span className="flex items-center gap-1">
-                                    <Sparkles size={11} /> AI აგრო-რეკომენდაცია:
+                                    <Sparkles size={11} className="text-indigo-600" /> AI აგრო-რეკომენდაცია:
                                 </span>
-                                <button type="button" onClick={() => setAiAdvisory(null)} className="text-slate-400 hover:text-white">✕</button>
+                                <button type="button" onClick={() => setAiAdvisory(null)} className="text-[#5F7A69] hover:text-rose-600">✕</button>
                             </div>
-                            <p className="text-slate-200 leading-relaxed max-h-36 overflow-y-auto whitespace-pre-line pr-1 font-medium text-[10px]">
+                            <p className="text-[#1E3A6D] leading-relaxed max-h-36 overflow-y-auto whitespace-pre-line pr-1 font-medium text-[10px]">
                                 {aiAdvisory}
                             </p>
                         </div>
                     )}
 
                     {/* Bottom Action Strip */}
-                    <div className="flex items-center justify-between gap-1 pt-1 border-t border-slate-800">
+                    <div className="flex items-center justify-between gap-1 pt-1 border-t border-[#D8E3D4]">
                         <button
                             type="button"
                             onClick={() => handleRunAiAnalysis()}
                             disabled={isAiLoading}
-                            className="py-1 px-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                            className="py-1 px-2.5 bg-white text-[#1E3B2B] border border-[#CFDCCB] hover:bg-[#4f46e5] hover:text-white hover:border-[#4f46e5] rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-2xs transition-all duration-200 cursor-pointer disabled:opacity-50"
                         >
-                            <Sparkles size={11} className={isAiLoading ? 'animate-spin' : ''} />
+                            <Sparkles size={11} className={isAiLoading ? 'animate-spin text-white' : 'text-indigo-600'} />
                             <span>{isAiLoading ? 'ანალიზი...' : 'AI აგრო-ანალიზი'}</span>
                         </button>
 
                         <button
                             type="button"
                             onClick={() => setShowLocationSearch(true)}
-                            className="py-1 px-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-sky-300 rounded-xl text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                            className="py-1 px-2 bg-white text-[#1E3B2B] border border-[#CFDCCB] hover:bg-[#0284c7] hover:text-white hover:border-[#0284c7] rounded-xl text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all duration-200 shadow-2xs"
                         >
                             <Plus size={11} />
                             <span>{isKa ? 'ლოკაცია' : 'Location'}</span>
@@ -464,7 +535,7 @@ export const FloatingOnlineWeatherBadge: React.FC<FloatingOnlineWeatherBadgeProp
                             type="button"
                             onClick={() => loadWeather(currentLocation)}
                             disabled={isLoading}
-                            className="p-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 rounded-xl cursor-pointer transition-colors shrink-0"
+                            className="p-1.5 bg-white text-[#1E3B2B] border border-[#CFDCCB] hover:bg-[#0284c7] hover:text-white hover:border-[#0284c7] rounded-xl cursor-pointer transition-all duration-200 shrink-0 shadow-2xs"
                             title="Refresh weather data"
                         >
                             <RefreshCw size={12} className={isLoading ? 'animate-spin' : ''} />

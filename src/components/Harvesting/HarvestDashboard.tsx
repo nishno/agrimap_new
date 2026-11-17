@@ -148,19 +148,19 @@ const HarvestLocalSyncPanel: React.FC<{
     const relevantLogs = syncQueue.filter(log => log.path.includes(event.id) || log.data?.harvestEventId === event.id);
 
     return (
-        <div className="bg-slate-900 border border-slate-800 rounded-[20px] overflow-hidden shadow-xl transition-all duration-500">
+        <div className="bg-[#FAFBF8] border border-[#D8E3D4] rounded-[20px] overflow-hidden shadow-2xs transition-all duration-500 text-[#163022]">
             <div className="p-4 space-y-3">
                 <div className="flex justify-between items-center">
                     <div className="flex items-center gap-2">
-                        <div className={`p-2 rounded-xl ${isOnline ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-500'}`}>
+                        <div className={`p-2 rounded-xl ${isOnline ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
                             {isOnline ? <Wifi size={16} /> : <WifiOff size={16} />}
                         </div>
                         <div>
-                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-500 leading-none mb-1">{t('harvest.system_topology')}</p>
-                            <p className="text-xs font-black text-white flex items-center gap-1.5 flex-wrap">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-[#5C7867] leading-none mb-1">{t('harvest.system_topology')}</p>
+                            <p className="text-xs font-black text-[#163022] flex items-center gap-1.5 flex-wrap">
                                 {isOnline ? t('harvest.triple_layer_synced') : t('harvest.offline_vault')}
                                 {isSimulationMode && (
-                                    <span className="inline-flex items-center gap-1 bg-amber-500/15 border border-amber-500/30 text-[#f59e0b] text-[8px] font-black uppercase tracking-wider px-1.5 py-[0.5px] rounded-md">
+                                    <span className="inline-flex items-center gap-1 bg-amber-100 border border-amber-300 text-amber-800 text-[8px] font-black uppercase tracking-wider px-1.5 py-[0.5px] rounded-md">
                                         {t('harvest.sandbox')}
                                     </span>
                                 )}
@@ -168,22 +168,22 @@ const HarvestLocalSyncPanel: React.FC<{
                         </div>
                     </div>
                     <div className="text-right">
-                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-500 leading-none mb-1">{t('harvest.local_node')}</p>
-                        <p className="text-xs font-black text-indigo-400">192.168.10.152</p>
+                        <p className="text-[9px] font-black uppercase tracking-widest text-[#5C7867] leading-none mb-1">{t('harvest.local_node')}</p>
+                        <p className="text-xs font-black text-indigo-700">192.168.10.152</p>
                     </div>
                 </div>
 
                 {/* Simulation Sandbox Engine Section */}
-                <div className="p-3 bg-slate-800/40 border border-slate-850 rounded-xl space-y-2">
+                <div className="p-3 bg-white border border-[#D8E3D4] rounded-xl space-y-2 shadow-2xs">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                            <span className={`relative flex h-2 w-2 ${isSimulationMode ? 'text-amber-500' : 'text-slate-600'}`}>
+                            <span className={`relative flex h-2 w-2 ${isSimulationMode ? 'text-amber-500' : 'text-slate-400'}`}>
                                 {isSimulationMode && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>}
-                                <span className={`relative inline-flex rounded-full h-2 w-2 ${isSimulationMode ? 'bg-amber-500' : 'bg-slate-600'}`}></span>
+                                <span className={`relative inline-flex rounded-full h-2 w-2 ${isSimulationMode ? 'bg-amber-500' : 'bg-slate-400'}`}></span>
                             </span>
                              <div>
-                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 leading-none mb-1">{t('harvest.simulation_sandbox')}</p>
-                                <p className="text-[10px] font-bold text-slate-300">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-[#5C7867] leading-none mb-1">{t('harvest.simulation_sandbox')}</p>
+                                <p className="text-[10px] font-bold text-[#163022]">
                                     {isSimulationMode ? t('harvest.offline_sandbox_logging') : t('harvest.normal_live_logging')}
                                 </p>
                             </div>
@@ -191,17 +191,17 @@ const HarvestLocalSyncPanel: React.FC<{
                         <button
                             onClick={() => onToggleSimulation(!isSimulationMode)}
                             className={`w-9 h-5 flex items-center rounded-full p-0.5 transition-all duration-300 cursor-pointer ${
-                                isSimulationMode ? 'bg-amber-500 justify-end' : 'bg-slate-700 justify-start'
+                                isSimulationMode ? 'bg-amber-500 justify-end' : 'bg-slate-300 justify-start'
                             }`}
                         >
                             <div className="bg-white w-4 h-4 rounded-full shadow-md transition-all"></div>
                         </button>
                     </div>
-                    <p className="text-[8px] font-medium text-slate-500 leading-normal">
+                    <p className="text-[8px] font-medium text-[#5C7867] leading-normal">
                         {isSimulationMode ? (
-                            <span className="text-amber-500/90 font-bold flex flex-col gap-1">
+                            <span className="text-amber-700 font-bold flex flex-col gap-1">
                                 <span>{t('harvest.deduplication_enabled_desc')}</span>
-                                {isOnline && <span className="text-[7.5px] text-slate-400 uppercase tracking-wide">{t('harvest.online_sandbox_warning')}</span>}
+                                {isOnline && <span className="text-[7.5px] text-[#5C7867] uppercase tracking-wide">{t('harvest.online_sandbox_warning')}</span>}
                             </span>
                         ) : (
                             t('harvest.live_logging_desc')
@@ -210,24 +210,23 @@ const HarvestLocalSyncPanel: React.FC<{
 
                     {/* Simulation Queue controls */}
                     {(isSimulationMode || simulatedCount > 0) && (
-                        <div className="mt-2 pt-2 border-t border-slate-800/60 space-y-2">
+                        <div className="mt-2 pt-2 border-t border-[#EEF3EA] space-y-2">
                             <div className="flex justify-between items-center text-[10px]">
-                                <span className="font-extrabold text-amber-500 uppercase tracking-wider text-[8px]">{t('harvest.device_drafts_queue')}</span>
-                                <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-extrabold text-[9px] border border-amber-500/20">
+                                <span className="font-extrabold text-amber-700 uppercase tracking-wider text-[8px]">{t('harvest.device_drafts_queue')}</span>
+                                <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 font-extrabold text-[9px] border border-amber-200">
                                     {simulatedCount} {t('harvest.pending_status')}
                                 </span>
                             </div>
                             {simulatedCount > 0 ? (
                                 <button
                                     onClick={onCommitSimulation}
-                                    className="w-full py-1.5 bg-amber-550 hover:bg-amber-500 text-slate-950 font-black text-[9px] uppercase tracking-wider rounded-lg flex items-center justify-center gap-1.5 shadow-lg active:scale-95 transition-all cursor-pointer"
-                                    style={{ backgroundColor: '#f59e0b' }}
+                                    className="w-full py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-black text-[9px] uppercase tracking-wider rounded-lg flex items-center justify-center gap-1.5 shadow-2xs active:scale-95 transition-all cursor-pointer"
                                 >
-                                    <Database size={11} className="text-slate-950" />
+                                    <Database size={11} className="text-white" />
                                     {t('harvest.commit_deduplicate')} ({simulatedCount})
                                 </button>
                             ) : (
-                                <p className="text-[8px] text-center text-slate-500 font-bold uppercase py-1">
+                                <p className="text-[8px] text-center text-[#5C7867] font-bold uppercase py-1">
                                     {t('harvest.no_simulated_entries')}
                                 </p>
                             )}
@@ -238,24 +237,24 @@ const HarvestLocalSyncPanel: React.FC<{
                 <div className="grid grid-cols-2 gap-2">
                     <button 
                         onClick={onSyncToLAN}
-                        className="group relative flex flex-col items-center justify-center p-2.5 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 hover:border-slate-600 rounded-xl transition-all"
+                        className="group relative flex flex-col items-center justify-center p-2.5 bg-white hover:bg-[#163022] hover:text-white border border-[#CFDCCB] rounded-xl transition-all shadow-2xs cursor-pointer"
                     >
-                        <HardDrive size={16} className="text-indigo-400 mb-1 transition-transform group-hover:scale-110" />
-                        <span className="text-[9px] font-black uppercase tracking-tighter text-slate-400 group-hover:text-white">{t('harvest.push_to_lan')}</span>
+                        <HardDrive size={16} className="text-[#2D5A27] group-hover:text-white mb-1 transition-transform group-hover:scale-110" />
+                        <span className="text-[9px] font-black uppercase tracking-tighter text-[#244130] group-hover:text-white">{t('harvest.push_to_lan')}</span>
                     </button>
                     <button 
                         onClick={onPushToCloud}
                         disabled={!isOnline}
-                        className="group relative flex flex-col items-center justify-center p-2.5 bg-indigo-600/10 hover:bg-indigo-600 border border-indigo-500/30 hover:border-indigo-500 rounded-xl transition-all disabled:opacity-30 disabled:grayscale"
+                        className="group relative flex flex-col items-center justify-center p-2.5 bg-white hover:bg-[#2D5A27] hover:text-white border border-[#2D5A27] rounded-xl transition-all shadow-2xs cursor-pointer disabled:opacity-40 disabled:grayscale"
                     >
-                        <CloudUpload size={16} className="text-indigo-400 group-hover:text-white mb-1 transition-transform group-hover:scale-110" />
-                        <span className="text-[9px] font-black uppercase tracking-tighter text-indigo-400 group-hover:text-white">{t('harvest.cloud_sync')}</span>
+                        <CloudUpload size={16} className="text-[#2D5A27] group-hover:text-white mb-1 transition-transform group-hover:scale-110" />
+                        <span className="text-[9px] font-black uppercase tracking-tighter text-[#2D5A27] group-hover:text-white">{t('harvest.cloud_sync')}</span>
                     </button>
                 </div>
 
                 <button 
                     onClick={() => setShowLog(!showLog)}
-                    className="w-full py-1.5 flex items-center justify-center gap-1.5 text-[9px] font-black text-slate-500 uppercase tracking-widest hover:text-slate-300 transition-colors"
+                    className="w-full py-1.5 flex items-center justify-center gap-1.5 text-[9px] font-black text-[#5C7867] uppercase tracking-widest hover:text-[#163022] transition-colors cursor-pointer"
                 >
                     <Database size={10} />
                     {t('harvest.view_detailed_sync_log')} ({relevantLogs.length})
@@ -264,25 +263,25 @@ const HarvestLocalSyncPanel: React.FC<{
             </div>
 
             {showLog && (
-                <div className="border-t border-slate-800 bg-slate-950/50 max-h-48 overflow-y-auto scrollbar-hide">
+                <div className="border-t border-[#D8E3D4] bg-[#EEF3EA]/50 max-h-48 overflow-y-auto scrollbar-hide">
                     <div className="p-4 space-y-2">
                         {relevantLogs.length === 0 ? (
-                            <p className="text-[9px] text-center text-slate-600 font-bold uppercase py-4">{t('harvest.no_pending_ops')}</p>
+                            <p className="text-[9px] text-center text-[#5C7867] font-bold uppercase py-4">{t('harvest.no_pending_ops')}</p>
                         ) : (
                             relevantLogs.slice().reverse().map(log => (
-                                <div key={log.id} className="flex items-center justify-between p-2 bg-slate-900/50 rounded-lg border border-slate-800/50">
+                                <div key={log.id} className="flex items-center justify-between p-2 bg-white rounded-lg border border-[#D8E3D4] shadow-2xs">
                                     <div className="flex items-center gap-2">
                                         <div className={`w-1.5 h-1.5 rounded-full ${
                                             log.status === 'cloud_synced' ? 'bg-emerald-500' : 
                                             log.status === 'local_synced' ? 'bg-indigo-500' : 'bg-amber-500 animate-pulse'
                                         }`} />
                                         <div>
-                                            <p className="text-[9px] font-black text-white uppercase leading-none">{log.type} • {log.path.split('/').pop()}</p>
-                                            <p className="text-[8px] font-bold text-slate-500 mt-0.5">{new Date(log.timestamp).toLocaleTimeString()}</p>
+                                            <p className="text-[9px] font-black text-[#163022] uppercase leading-none">{log.type} • {log.path.split('/').pop()}</p>
+                                            <p className="text-[8px] font-bold text-[#5C7867] mt-0.5">{new Date(log.timestamp).toLocaleTimeString()}</p>
                                         </div>
                                     </div>
-                                    <div className="px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700">
-                                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">
+                                    <div className="px-2 py-0.5 rounded-full bg-[#FAFBF8] border border-[#D8E3D4]">
+                                        <p className="text-[8px] font-black text-[#5C7867] uppercase tracking-tighter">
                                             {log.status === 'pending' ? 'Tablet Memory' : log.status === 'local_synced' ? 'Office LAN' : 'Global Cloud'}
                                         </p>
                                     </div>
@@ -293,9 +292,9 @@ const HarvestLocalSyncPanel: React.FC<{
                 </div>
             )}
             
-            <div className="px-4 py-2 bg-slate-800/30 flex justify-between items-center text-[8px] font-bold text-slate-500">
+            <div className="px-4 py-2 bg-[#EEF3EA] border-t border-[#D8E3D4] flex justify-between items-center text-[8px] font-bold text-[#5C7867]">
                 <span className="flex items-center gap-1.5">
-                    <ShieldCheck size={10} className="text-emerald-500" />
+                    <ShieldCheck size={10} className="text-emerald-600" />
                     Data Redundancy Active
                 </span>
                 <span className="uppercase tracking-widest">{renderSafeString(event.syncStatus) || 'Local Only'}</span>

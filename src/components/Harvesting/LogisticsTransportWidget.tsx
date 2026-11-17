@@ -188,30 +188,30 @@ const LogisticsTransportWidget: React.FC<LogisticsTransportWidgetProps> = ({ eve
     // Collapsed summary mode for live monitoring window
     if (isCollapsedSummary) {
         return (
-            <div className="bg-slate-900 text-white p-4 rounded-2xl border border-slate-800 space-y-3 shadow-md">
+            <div className="bg-[#FAFBF8] text-[#163022] p-4 rounded-2xl border border-[#D8E3D4] space-y-3 shadow-2xs">
                 <div className="flex justify-between items-center">
                     <div className="flex items-center gap-2">
                         <span className="text-base">🚜</span>
-                        <h3 className="font-extrabold text-[11px] uppercase tracking-wider text-indigo-200">
-                            Foreman Logistics & Transport
+                        <h3 className="font-extrabold text-[11px] uppercase tracking-wider text-[#2D5A27]">
+                            {isKa ? 'ბრიგადირის ლოგისტიკა & ტრანსპორტი' : 'Foreman Logistics & Transport'}
                         </h3>
                     </div>
                     {onOpenLogisticsModal && (
                         <button 
                             onClick={onOpenLogisticsModal}
-                            className="text-[9px] font-black text-emerald-300 hover:text-white bg-emerald-800/60 hover:bg-emerald-700/80 px-2.5 py-1 rounded-lg transition-colors uppercase border border-emerald-700/50 flex items-center gap-1 cursor-pointer"
+                            className="text-[9px] font-black text-[#244130] bg-white hover:bg-[#163022] hover:text-white px-2.5 py-1 rounded-lg transition-all uppercase border border-[#CFDCCB] flex items-center gap-1 cursor-pointer shadow-2xs"
                         >
-                            Manage Details &rarr;
+                            {isKa ? 'მართვა' : 'Manage Details'} &rarr;
                         </button>
                     )}
                 </div>
-                <div className="text-2xl font-black text-emerald-400 tracking-tight">
+                <div className="text-2xl font-black text-emerald-700 tracking-tight">
                     {formatCurrency(totalLogisticsCost)}
                 </div>
-                <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
+                <p className="text-[10px] text-[#5C7867] font-semibold uppercase tracking-wider">
                     {(event.logisticsRecords || []).length > 0 
-                        ? `${(event.logisticsRecords || []).length} registered transport/foreman logs.` 
-                        : 'No transport logs saved yet.'}
+                        ? `${(event.logisticsRecords || []).length} ${isKa ? 'რეგისტრირებული ჩანაწერი.' : 'registered transport/foreman logs.'}` 
+                        : (isKa ? 'ჩანაწერები არ არის.' : 'No transport logs saved yet.')}
                 </p>
             </div>
         );

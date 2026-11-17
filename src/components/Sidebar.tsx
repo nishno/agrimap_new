@@ -184,7 +184,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           type="button"
           onClick={onOpenHomepage} 
           className="flex flex-col text-left hover:opacity-85 transition-opacity cursor-pointer group"
-          title="Go to Homepage / Startup Showcase"
+          title="Go to Dashboard"
         >
           <h1 className="text-xl font-black tracking-tighter uppercase leading-none transition-colors flex items-center gap-1.5">
             <span className={isDark ? 'text-white' : 'text-slate-800'}>AgriMap</span>

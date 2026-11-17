@@ -135,24 +135,52 @@ app.post('/api/god-ai/sync', (req, res) => {
     res.json({ status: 'success', synced: true, totalRecords: localGodAiStore.records.length });
 });
 
+function cleanApiKey(input) {
+    if (!input || typeof input !== 'string') return '';
+    let k = input.trim();
+    k = k.replace(/^["'`]+|["'`]+$/g, '').trim();
+    k = k.replace(/^(?:GEMINI_API_KEY|VITE_GEMINI_API_KEY|API_KEY|KEY)\s*[:=]\s*/i, '').trim();
+    k = k.replace(/^Bearer\s+/i, '').trim();
+    k = k.replace(/^["'`]+|["'`]+$/g, '').trim();
+    return k;
+}
+
+let localCustomKeyOverride = '';
+
 // 3. Local Server AI Proxy & Status Gateway
 app.get('/api/gemini/status', (req, res) => {
-    const hasKey = !!(process.env.GEMINI_API_KEY || process.env.API_KEY || process.env.VITE_GEMINI_API_KEY);
+    const key = localCustomKeyOverride || cleanApiKey(process.env.GEMINI_API_KEY) || cleanApiKey(process.env.API_KEY) || cleanApiKey(process.env.VITE_GEMINI_API_KEY);
     res.json({
         ok: true,
-        hasServerKey: hasKey,
+        hasServerKey: Boolean(key && key.length >= 15),
+        source: localCustomKeyOverride ? 'custom_runtime' : (process.env.GEMINI_API_KEY ? 'environment' : 'none'),
+        maskedKey: key && key.length >= 10 ? `${key.slice(0, 6)}...${key.slice(-4)}` : null,
         service: 'AgriMap Local Server Node AI Gateway',
         nodeTime: new Date().toISOString()
     });
 });
 
+app.post('/api/gemini/key', (req, res) => {
+    const raw = req.body?.apiKey;
+    const cleaned = cleanApiKey(raw);
+    localCustomKeyOverride = cleaned;
+    res.json({
+        ok: true,
+        hasKey: Boolean(cleaned),
+        masked: cleaned ? `${cleaned.slice(0, 6)}...${cleaned.slice(-4)}` : null,
+        message: cleaned ? 'Gemini API key set on local server node.' : 'Local server API key cleared.'
+    });
+});
+
 app.post('/api/gemini/test', async (req, res) => {
-    const customKey = (req.headers['x-gemini-api-key']) || req.body?.customApiKey;
-    const key = (customKey || process.env.GEMINI_API_KEY || process.env.API_KEY || '').trim();
-    if (!key) {
+    const customKey = cleanApiKey((req.headers['x-gemini-api-key']) || req.body?.customApiKey);
+    const key = customKey || localCustomKeyOverride || cleanApiKey(process.env.GEMINI_API_KEY) || cleanApiKey(process.env.API_KEY) || '';
+    if (!key || key.length < 15) {
         return res.json({
             success: false,
             ok: false,
+            statusCode: 401,
+            errorType: 'KEY_MISSING',
             message: 'No Gemini API key found on local server or request.'
         });
     }
@@ -167,36 +195,58 @@ app.post('/api/gemini/test', async (req, res) => {
         });
         const data = await testRes.json();
         const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        
+        if (!testRes.ok) {
+            const errMsg = data.error?.message || 'Gemini test failed';
+            const isPrepayment = errMsg.includes('402') || errMsg.includes('prepayment credits');
+            return res.json({
+                success: false,
+                ok: false,
+                statusCode: isPrepayment ? 402 : testRes.status,
+                errorType: isPrepayment ? 'PREPAYMENT_DEPLETED' : 'API_ERROR',
+                title: isPrepayment ? 'Prepayment Credits Depleted (Code 402)' : 'Gemini Error',
+                message: isPrepayment
+                    ? 'Google AI Studio prepayment credits depleted ($0). Add credits at https://ai.studio/projects or enter a fresh key.'
+                    : errMsg,
+                billingUrl: 'https://ai.studio/projects',
+                apiKeyUrl: 'https://aistudio.google.com/apikey'
+            });
+        }
+
         return res.json({
-            success: testRes.ok,
-            ok: testRes.ok,
-            message: testRes.ok ? `Connection successful! Model responded: "${text.trim() || 'OK'}"` : (data.error?.message || 'Gemini test failed')
+            success: true,
+            ok: true,
+            statusCode: 200,
+            message: `Connection successful! Model responded: "${text.trim() || 'OK'}"`,
+            modelUsed: 'gemini-3.8-flash'
         });
     } catch (e) {
-        return res.json({ success: false, ok: false, message: e.message });
+        return res.json({ success: false, ok: false, statusCode: 500, message: e.message });
     }
 });
 
 app.post('/api/gemini/call', async (req, res) => {
     const { contents, config, model } = req.body || {};
-    const customKey = (req.headers['x-gemini-api-key']) || req.body?.customApiKey;
-    const key = (customKey || process.env.GEMINI_API_KEY || process.env.API_KEY || '').trim();
+    const customKey = cleanApiKey((req.headers['x-gemini-api-key']) || req.body?.customApiKey);
+    const key = customKey || localCustomKeyOverride || cleanApiKey(process.env.GEMINI_API_KEY) || cleanApiKey(process.env.API_KEY) || '';
     const targetModel = model || 'gemini-3.8-flash';
 
-    const getAutonomousResponse = (cnts, cfg) => {
+    const getAutonomousResponse = (cnts, cfg, notice) => {
         const schemaProps = cfg?.responseSchema?.properties || {};
 
         // 1. Plant Disease Diagnostic schema
         if (schemaProps.diseaseName || schemaProps.treatmentSuggestions) {
             return JSON.stringify({
-                diseaseName: "Anthracnose & Foliar Blight (Colletotrichum spp.)",
+                diseaseName: "Interveinal Foliar Chlorosis & Anthracnose Complex",
                 confidence: 0.94,
-                description: "Visual signs indicate necrotic foliar lesions with concentric rings and marginal chlorosis characteristic of fungal sporulation.",
+                description: "Visual signs indicate necrotic foliar lesions with concentric rings and marginal chlorosis characteristic of high pH (>5.5) iron lockout and fungal sporulation.",
                 treatmentSuggestions: [
+                    "Apply chelated iron (Fe-EDDHA 15-20 g/bush) to correct interveinal chlorosis.",
                     "Apply Bacillus subtilis bio-fungicide spray in late afternoon.",
                     "Copper hydroxide protective barrier (2.0 - 2.5 kg/ha) at 10-day intervals.",
-                    "Prune dense lower canopies to elevate air circulation."
-                ]
+                    "Elemental sulfur (200 kg/ha) to lower soil pH to optimal 4.5 - 5.2."
+                ],
+                isAutonomousFallback: true
             });
         }
 
@@ -204,13 +254,14 @@ app.post('/api/gemini/call', async (req, res) => {
         if (schemaProps.subject && schemaProps.condition) {
             return JSON.stringify({
                 subject: "Blueberry Orchard Canopy (Vaccinium corymbosum)",
-                condition: "Vigorous vegetative flush with optimal shoot elongation. Soil surface shows uniform mulch cover and calibrated drip line alignment.",
-                metrics: "Canopy coverage ~82%; weed incidence < 5%; drip spacing 30cm consistent.",
+                condition: "Vegetative canopy shows active shoot extension with calibrated drip fertigation alignment. Mulch surface buffers root temperatures.",
+                metrics: "Canopy coverage ~84%; weed incidence < 5%; drip spacing 30cm consistent.",
                 recommendations: [
                     "Maintain drip fertigation balance; monitor EC between 1.2 - 1.6 dS/m.",
                     "Schedule biological bio-stimulant (seaweed extract + chelated zinc) during active bloom.",
                     "Verify tare calibration on field weigh stations in advance of harvest picking."
-                ]
+                ],
+                isAutonomousFallback: true
             });
         }
 
@@ -222,7 +273,8 @@ app.post('/api/gemini/call', async (req, res) => {
                     "Apply potassium sulfate (K2SO4) via fertigation to balance potassium-to-magnesium ratio.",
                     "Incorporate humic/fulvic acids at 15 L/ha to stimulate root cation exchange capacity.",
                     "Maintain mulch depth at 8-10 cm to buffer root temperatures during summer peaks."
-                ]
+                ],
+                isAutonomousFallback: true
             });
         }
 
@@ -232,12 +284,13 @@ app.post('/api/gemini/call', async (req, res) => {
                 eventName: "Main Field Harvest - Local Node",
                 date: new Date().toISOString().split('T')[0],
                 pickers: [
-                    { name: "Worker 101", weightKg: 28.5, boxes: 6, hoursWorked: 4.5, totalPay: 22.8, variety: "Duke" },
-                    { name: "Worker 102", weightKg: 34.2, boxes: 7, hoursWorked: 4.5, totalPay: 27.36, variety: "Duke" }
+                    { name: "Picker 101", weightKg: 28.5, boxes: 6, hoursWorked: 4.5, totalPay: 22.8, variety: "Duke" },
+                    { name: "Picker 102", weightKg: 34.2, boxes: 7, hoursWorked: 4.5, totalPay: 27.36, variety: "Duke" }
                 ],
                 variety: "Duke",
                 totalWeightKg: 62.7,
-                totalBoxes: 13
+                totalBoxes: 13,
+                isAutonomousFallback: true
             });
         }
 
@@ -269,7 +322,7 @@ app.post('/api/gemini/call', async (req, res) => {
             const sectorNameMatch = userQuery.match(/(?:sector|field|სექტორი|სექტორს)\s*[:"']?([^"'\n]+)/i);
             const sectorName = sectorNameMatch ? sectorNameMatch[1].trim() : (isKa ? 'შერჩეული სექტორი' : 'selected sector');
             responseText = isKa 
-                ? `🗑️ **სექტორის წაშლის ბრძანება**: მოთხოვნა სექტორის ("${sectorName}") წაშლის შესახებ მიღებულია. რუკის დაგეგმვის მოდულში შესაბამისი გეომეტრია გაუქმდება.`
+                ? `🗑️ **სექტორის წაშლის ბრძანება**: მოთხოვნა სექტორის ("${sectorName}") წაშლის შესახებ მიღებულია.`
                 : `🗑️ **Sector Removal**: Command to remove sector "${sectorName}" has been received and processed.`;
             action = { type: 'none', title: `Remove Sector ${sectorName}` };
         } else if (queryLower.startsWith('add task') || queryLower.startsWith('create task') || queryLower.includes('დავალებ')) {
@@ -284,10 +337,19 @@ app.post('/api/gemini/call', async (req, res) => {
             const noteText = userQuery.replace(/^(note:|add note|ჩანიშვნა)\s*/i, '').trim() || userQuery;
             responseText = isKa ? `📝 **საველე ჩანაწერი შენახულია**: **"${noteText}"**.` : `📝 **Field Note Saved**: **"${noteText}"**.`;
             action = { type: 'note', title: noteText };
-        } else {
+        } else if (queryLower.includes('yellow') || queryLower.includes('ყვითელ') || queryLower.includes('disease') || queryLower.includes('დაავადებ') || queryLower.includes('spray') || queryLower.includes('წამლობ')) {
             responseText = isKa
-                ? `🌾 **AgriMap Pro ლოკალური სერვერის ავტონომიური ბირთვი**:\n- **სასწორის პროტოკოლები**: 0.35 კგ ტარის გამოკლება და QR ბეჯების სკანირება აქტიურია.\n- **საწყობის FIFO & GIS**: მონაცემთა ლოკალური სინქრონიზაცია მუშაობს შეუფერხებლად.\nრით შემიძლია დაგეხმაროთ?`
-                : `🌾 **AgriMap Pro Local Server Node Autonomous Knowledge Core**:\n- **Scale Protocols**: 0.35kg container tare deduction and QR badge scanning active.\n- **Inventory & GIS**: Local offline persistence operational.\nHow can I assist your farm today?`;
+                ? `🌿 **აგრონომიული დიაგნოსტიკა და სამკურნალო სქემა**:\n- **ფოთლების გაყვითლება**: რკინის (Fe) ქლოროზი (ნიადაგის pH > 5.5). შეიტანეთ Fe-EDDHA (15-20 გ/ბუჩქზე) და გოგირდი (200 კგ/ჰა).\n- **ანთრაქნოზი**: სპილენძის ჰიდროქსიდი (2.0-2.5 კგ/ჰა) ყოველ 10 დღეში.\n- **Bt ბიოპრეპარატები**: შეიტანეთ საღამოს საათებში UV დაშლის ასარიდებლად.`
+                : `🌿 **Agronomic Diagnostic & Treatment Protocol**:\n- **Foliar Chlorosis (Yellowing)**: Iron deficiency lockout due to soil pH > 5.5. Apply Fe-EDDHA (15-20 g/bush) and elemental sulfur (200 kg/ha).\n- **Anthracnose & Blight**: Protective copper hydroxide (2.0-2.5 kg/ha) at 10-day intervals.\n- **Bt Bio-Pesticides**: Apply in late afternoon to protect against UV degradation.`;
+        } else if (queryLower.includes('scale') || queryLower.includes('weigh') || queryLower.includes('სასწორ') || queryLower.includes('harvest') || queryLower.includes('ტარა')) {
+            responseText = isKa
+                ? `⚖️ **რთველის მიღება & სასწორის პროტოკოლები**:\n- **პროტოკოლი 3**: 0.35 კგ ტარის ავტო-გამოკლება უზრუნველყოფს 100%-ით ზუსტ ნეტო წონას.\n- **მკრეფავის QR ბეჯი**: სკანირება წამში, ნეტო წონა ავტომატურად ირიცხება ტარიფზე.\n- **ცივი ჯაჭვი**: 45-წუთიანი ლიმიტი კრეფიდან სამაცივრეში მოხვედრამდე.`
+                : `⚖️ **Harvest Weigh Station & Scale Protocols**:\n- **Protocol 3 (Auto-Tare)**: 0.35kg automatic crate deduction for 100% net weight accuracy.\n- **Worker QR Badging**: Instant scanning credits piece-rate compensation.\n- **Cold Chain**: 45-minute window from harvest to chiller.`;
+        } else {
+            const topic = userQuery.slice(0, 80);
+            responseText = isKa
+                ? `🌾 **AgriMap Pro ლოკალური სერვერის აგრო-ინტელექტი**: ანალიზი მოთხოვნაზე: **"${topic}"**.\n- **სასწორის პროტოკოლები**: 0.35 კგ ტარის გამოკლება და QR ბეჯების სკანირება აქტიურია.\n- **საწყობის FIFO & GIS**: მონაცემთა ლოკალური სინქრონიზაცია მუშაობს შეუფერხებლად.\n- **AI კრედიტების შევსება**: ეწვიეთ https://ai.studio/projects ღრუბლოვანი მოდელების გასააქტიურებლად.`
+                : `🌾 **AgriMap Pro Local Server Node Agronomic Core**: Analysis for: **"${topic}"**.\n- **Scale Protocols**: 0.35kg container tare deduction and QR badge scanning active.\n- **Inventory & GIS**: Local offline persistence operational.\n- **Cloud Token Notice**: Add credits at https://ai.studio/projects for live cloud model reasoning.`;
         }
 
         if (isAssistantSchema) {
@@ -296,13 +358,14 @@ app.post('/api/gemini/call', async (req, res) => {
         return responseText;
     };
 
-    if (!key) {
+    if (!key || key.length < 15) {
         const fallbackText = getAutonomousResponse(contents, config);
         return res.json({
             success: true,
             text: fallbackText,
             candidates: [{ content: { parts: [{ text: fallbackText }] } }],
-            modelUsed: 'autonomous-local-core'
+            modelUsed: 'autonomous-local-core',
+            isAutonomousFallback: true
         });
     }
 

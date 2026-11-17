@@ -307,7 +307,7 @@ export const GodAIIntelligenceHubModal: React.FC<GodAIIntelligenceHubModalProps>
 
     return (
         <div 
-            className="fixed inset-0 z-[6000] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-1.5 sm:p-4 animate-in fade-in duration-200 select-none overflow-hidden"
+            className="fixed inset-0 z-[6000] flex items-center justify-center bg-black/50 backdrop-blur-md p-1.5 sm:p-4 animate-in fade-in duration-200 select-none overflow-hidden"
             onClick={(e) => {
                 if (e.target === e.currentTarget) onClose();
             }}
@@ -320,35 +320,33 @@ export const GodAIIntelligenceHubModal: React.FC<GodAIIntelligenceHubModalProps>
                     maxWidth: 'calc(100vw - 16px)',
                     maxHeight: 'calc(100vh - 16px)',
                 } : undefined}
-                className={`bg-slate-900 border border-slate-700/80 rounded-xl sm:rounded-2xl flex flex-col shadow-2xl overflow-hidden text-slate-100 relative transition-[box-shadow,border-color] duration-150 ${
+                className={`bg-[#FAFBF8] border border-[#D8E3D4] rounded-xl sm:rounded-2xl flex flex-col shadow-2xl overflow-hidden text-[#163022] relative transition-[box-shadow,border-color] duration-150 ${
                     isFullscreen ? 'w-full h-full rounded-none sm:rounded-none' : ''
                 }`}
                 onClick={(e) => e.stopPropagation()}
             >
                 
                 {/* Header */}
-                <div className="p-3 sm:p-4 border-b border-slate-800 flex items-center justify-between bg-gradient-to-r from-slate-950 via-slate-900 to-emerald-950/40 shrink-0 gap-2 select-none">
+                <div className="p-3 sm:p-4 border-b border-[#D8E3D4] flex items-center justify-between bg-[#EEF3EA] shrink-0 gap-2 select-none">
                     <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 p-0.5 flex items-center justify-center shadow-lg shadow-emerald-950/50 shrink-0">
-                            <div className="w-full h-full bg-slate-900 rounded-[10px] flex items-center justify-center">
-                                <Sparkles className="w-5 h-5 text-emerald-400" />
-                            </div>
+                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white border border-[#CFDCCB] p-0.5 flex items-center justify-center shadow-2xs shrink-0">
+                            <Sparkles className="w-5 h-5 text-emerald-700" />
                         </div>
                         <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                                <h2 className="text-sm sm:text-base font-black tracking-tight text-white uppercase flex items-center gap-1.5 truncate">
+                                <h2 className="text-sm sm:text-base font-black tracking-tight text-[#163022] uppercase flex items-center gap-1.5 truncate">
                                     {isKa ? 'God AI ინტელექტი & აგრონომიის PM კონსოლი' : 'God AI Intelligence & PM Agronomy Console'}
                                 </h2>
-                                <span className="hidden sm:inline-flex text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-700/50 font-bold">
+                                <span className="hidden sm:inline-flex text-[10px] font-mono px-2 py-0.5 rounded-full bg-white text-emerald-800 border border-[#CFDCCB] font-bold shadow-2xs">
                                     v3.8
                                 </span>
                             </div>
-                            <p className="text-[10px] sm:text-xs text-slate-400 flex items-center gap-2 truncate">
+                            <p className="text-[10px] sm:text-xs text-[#4A6753] flex items-center gap-2 truncate">
                                 <span className="truncate">{isKa ? 'მრავალწლიანი ევოლუციური აგრონომი & პროექტების მენეჯერი' : 'Multi-Year Evolutionary Agronomist & Project Manager'}</span>
                                 {activeOrgName && (
                                     <>
-                                        <span className="text-slate-600">•</span>
-                                        <span className="text-emerald-400 font-semibold truncate">{activeOrgName}</span>
+                                        <span className="text-[#8FA597]">•</span>
+                                        <span className="text-emerald-800 font-bold truncate">{activeOrgName}</span>
                                     </>
                                 )}
                             </p>
@@ -357,16 +355,16 @@ export const GodAIIntelligenceHubModal: React.FC<GodAIIntelligenceHubModalProps>
 
                     <div className="flex items-center gap-1.5 shrink-0 pl-1">
                         {/* Mode Switcher Pill */}
-                        <div className="hidden md:flex items-center bg-slate-950/90 p-1 rounded-xl border border-slate-800 text-xs mr-1">
+                        <div className="hidden md:flex items-center bg-white p-1 rounded-xl border border-[#CFDCCB] text-xs mr-1 shadow-2xs">
                             <button
                                 onClick={() => onSetAiMode('standard')}
-                                className={`px-2.5 py-1 rounded-lg font-bold transition-all ${currentAiMode === 'standard' ? 'bg-slate-800 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
+                                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${currentAiMode === 'standard' ? 'bg-[#163022] text-white shadow-xs' : 'text-[#4A6753] hover:text-[#163022]'}`}
                             >
                                 {isKa ? 'სტანდარტული' : 'Standard'}
                             </button>
                             <button
                                 onClick={() => onSetAiMode('expert')}
-                                className={`px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1.5 ${currentAiMode === 'expert' ? 'bg-emerald-700 text-white shadow' : 'text-slate-400 hover:text-emerald-300'}`}
+                                className={`px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${currentAiMode === 'expert' ? 'bg-emerald-700 text-white shadow-xs' : 'text-[#4A6753] hover:text-emerald-800'}`}
                             >
                                 <Leaf className="w-3 h-3" />
                                 <span>{isKa ? 'ექსპერტი PM' : 'Expert Farm PM'}</span>
@@ -374,10 +372,10 @@ export const GodAIIntelligenceHubModal: React.FC<GodAIIntelligenceHubModalProps>
                             {isSystemAdmin && (
                                 <button
                                     onClick={() => onSetAiMode('god_ai')}
-                                    className={`px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1.5 ${currentAiMode === 'god_ai' ? 'bg-amber-600 text-white shadow' : 'text-slate-400 hover:text-amber-300'}`}
+                                    className={`px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${currentAiMode === 'god_ai' ? 'bg-amber-600 text-white shadow-xs' : 'text-[#4A6753] hover:text-amber-800'}`}
                                     title={isKa ? 'სუპერ ადმინი: ყველა რეგისტრირებული მეურნეობის სინთეზი' : 'Super Admin Exclusive: Synthesize all registered companies'}
                                 >
-                                    <Crown className="w-3 h-3 text-amber-300" />
+                                    <Crown className="w-3 h-3 text-amber-500" />
                                     <span>{isKa ? 'Omniscient God AI' : 'Omniscient God AI'}</span>
                                 </button>
                             )}
@@ -387,17 +385,17 @@ export const GodAIIntelligenceHubModal: React.FC<GodAIIntelligenceHubModalProps>
                         <button
                             onClick={runAnalysis}
                             disabled={isAnalyzing}
-                            className="w-7 h-7 sm:w-8 sm:h-8 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg flex items-center justify-center transition-colors cursor-pointer"
+                            className="w-7 h-7 sm:w-8 sm:h-8 text-[#244130] hover:text-white bg-white hover:bg-emerald-600 border border-[#CFDCCB] rounded-lg flex items-center justify-center transition-all cursor-pointer shadow-2xs"
                             title={isKa ? 'მონაცემების განახლება' : 'Refresh Analysis'}
                         >
-                            <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin text-emerald-400' : ''}`} />
+                            <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin text-emerald-600' : ''}`} />
                         </button>
 
                         {/* Collapse (-) Button */}
                         <button
                             type="button"
                             onClick={onClose}
-                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 border border-amber-400/40 flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white text-[#244130] hover:bg-amber-500 hover:text-white border border-[#CFDCCB] flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
                             title={isKa ? 'ჩაკეცვა (-)' : 'Collapse (-)'}
                         >
                             <Minus size={15} strokeWidth={2.5} />
@@ -407,7 +405,7 @@ export const GodAIIntelligenceHubModal: React.FC<GodAIIntelligenceHubModalProps>
                         <button
                             type="button"
                             onClick={() => setIsFullscreen(!isFullscreen)}
-                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white text-[#244130] hover:bg-blue-600 hover:text-white border border-[#CFDCCB] flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
                             title={isFullscreen ? (isKa ? 'სტანდარტული ზომა' : 'Exit Fullscreen') : (isKa ? 'მთელ ეკრანზე გაშლა' : 'Fullscreen')}
                         >
                             {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
@@ -417,7 +415,7 @@ export const GodAIIntelligenceHubModal: React.FC<GodAIIntelligenceHubModalProps>
                         <button
                             type="button"
                             onClick={onClose}
-                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-rose-500/25 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/50 flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white text-[#244130] hover:bg-rose-600 hover:text-white border border-[#CFDCCB] flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
                             title={isKa ? 'დახურვა (X)' : 'Close (X)'}
                         >
                             <X size={16} strokeWidth={2.5} />
@@ -426,25 +424,25 @@ export const GodAIIntelligenceHubModal: React.FC<GodAIIntelligenceHubModalProps>
                 </div>
 
                 {/* Mobile Mode Switcher Bar */}
-                <div className="md:hidden px-3 py-1.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between text-xs shrink-0">
-                    <span className="text-slate-400 text-[11px] font-bold">{isKa ? 'აქტიური ძრავი:' : 'Active Engine:'}</span>
-                    <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-lg border border-slate-800">
+                <div className="md:hidden px-3 py-1.5 bg-[#EEF3EA] border-b border-[#D8E3D4] flex items-center justify-between text-xs shrink-0">
+                    <span className="text-[#4A6753] text-[11px] font-bold">{isKa ? 'აქტიური ძრავი:' : 'Active Engine:'}</span>
+                    <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-[#CFDCCB] shadow-2xs">
                         <button
                             onClick={() => onSetAiMode('standard')}
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${currentAiMode === 'standard' ? 'bg-slate-800 text-white' : 'text-slate-400'}`}
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${currentAiMode === 'standard' ? 'bg-[#163022] text-white' : 'text-[#4A6753]'}`}
                         >
                             {isKa ? 'სტანდარტული' : 'Standard'}
                         </button>
                         <button
                             onClick={() => onSetAiMode('expert')}
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${currentAiMode === 'expert' ? 'bg-emerald-700 text-white' : 'text-slate-400'}`}
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${currentAiMode === 'expert' ? 'bg-emerald-700 text-white' : 'text-[#4A6753]'}`}
                         >
                             {isKa ? 'ექსპერტი PM' : 'Expert PM'}
                         </button>
                         {isSystemAdmin && (
                             <button
                                 onClick={() => onSetAiMode('god_ai')}
-                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${currentAiMode === 'god_ai' ? 'bg-amber-600 text-white' : 'text-slate-400'}`}
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${currentAiMode === 'god_ai' ? 'bg-amber-600 text-white' : 'text-[#4A6753]'}`}
                             >
                                 God AI
                             </button>
@@ -453,15 +451,15 @@ export const GodAIIntelligenceHubModal: React.FC<GodAIIntelligenceHubModalProps>
                 </div>
 
                 {/* Navigation Tabs */}
-                <div className="flex border-b border-slate-800 px-4 sm:px-6 bg-slate-950/70 overflow-x-auto no-scrollbar gap-2 sm:gap-4 shrink-0 min-h-[50px] items-stretch">
+                <div className="flex border-b border-[#D8E3D4] px-4 sm:px-6 bg-[#FAFBF8] overflow-x-auto no-scrollbar gap-2 sm:gap-4 shrink-0 min-h-[50px] items-stretch">
                     <button
                         onClick={() => setActiveTab('pm')}
-                        className={`py-3 px-2 border-b-2 font-bold text-xs sm:text-sm flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer shrink-0 ${activeTab === 'pm' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+                        className={`py-3 px-2 border-b-2 font-bold text-xs sm:text-sm flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer shrink-0 ${activeTab === 'pm' ? 'border-emerald-600 text-emerald-800' : 'border-transparent text-[#4A6753] hover:text-[#163022]'}`}
                     >
                         <Briefcase className="w-4 h-4" />
                         <span>{isKa ? 'სამუშაოები & ამოცანები PM' : 'Works & Tasks PM'}</span>
                         {analysisResult?.criticalBottlenecks?.length ? (
-                            <span className="px-1.5 py-0.2 rounded-full bg-rose-900/60 text-rose-300 border border-rose-700/50 text-[10px]">
+                            <span className="px-1.5 py-0.2 rounded-full bg-rose-100 text-rose-800 border border-rose-300 text-[10px] font-bold">
                                 {analysisResult.criticalBottlenecks.length}
                             </span>
                         ) : null}
@@ -469,7 +467,7 @@ export const GodAIIntelligenceHubModal: React.FC<GodAIIntelligenceHubModalProps>
 
                     <button
                         onClick={() => setActiveTab('agronomy')}
-                        className={`py-3 px-2 border-b-2 font-bold text-xs sm:text-sm flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer shrink-0 ${activeTab === 'agronomy' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+                        className={`py-3 px-2 border-b-2 font-bold text-xs sm:text-sm flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer shrink-0 ${activeTab === 'agronomy' ? 'border-emerald-600 text-emerald-800' : 'border-transparent text-[#4A6753] hover:text-[#163022]'}`}
                     >
                         <Leaf className="w-4 h-4" />
                         <span>{isKa ? 'აგრონომია & მოსავლის სინერგია' : 'Agronomy & Harvest Synergy'}</span>

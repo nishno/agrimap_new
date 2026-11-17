@@ -588,7 +588,7 @@ export const OrdersSection: React.FC<OrdersSectionProps> = ({
                                 setSupTaxId('');
                                 setIsSupplierModalOpen(true);
                             }}
-                            className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer hover:scale-[1.02] active:scale-95"
+                            className="px-4 py-2.5 bg-white text-[#244130] border border-[#2D5A27] hover:bg-[#2D5A27] hover:text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer hover:scale-[1.02] active:scale-95"
                         >
                             <Plus className="w-4 h-4" />
                             <span>{isKa ? '+ მომწოდებელი' : '+ New Supplier'}</span>
@@ -600,7 +600,7 @@ export const OrdersSection: React.FC<OrdersSectionProps> = ({
                                 setEditingOrder(null);
                                 setIsOrderModalOpen(true);
                             }}
-                            className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer hover:scale-[1.02] active:scale-95"
+                            className="px-4 py-2.5 bg-white text-[#244130] border border-[#2D5A27] hover:bg-[#2D5A27] hover:text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer hover:scale-[1.02] active:scale-95"
                         >
                             <Plus className="w-4 h-4" />
                             <span>{isKa ? '+ ახალი შეკვეთა / ჯავშანი' : '+ New Order / Pre-order'}</span>
@@ -617,10 +617,10 @@ export const OrdersSection: React.FC<OrdersSectionProps> = ({
                         <button
                             type="button"
                             onClick={() => setOrderStatusFilter('all')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                                 orderStatusFilter === 'all' 
-                                    ? 'bg-slate-900 text-white' 
-                                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                                    ? 'bg-[#163022] text-white shadow-2xs' 
+                                    : 'bg-white border border-[#D8E3D4] text-[#5C7867] hover:bg-[#FAFBF8]'
                             }`}
                         >
                             {isKa ? 'ყველა შეკვეთა' : 'All Orders'} ({purchaseOrders.length})
@@ -857,10 +857,10 @@ export const OrdersSection: React.FC<OrdersSectionProps> = ({
                         <button
                             type="button"
                             onClick={() => setLedgerFilterType('all')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                                 ledgerFilterType === 'all' 
-                                    ? 'bg-slate-900 text-white' 
-                                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                                    ? 'bg-[#163022] text-white shadow-2xs' 
+                                    : 'bg-white border border-[#D8E3D4] text-[#5C7867] hover:bg-[#FAFBF8]'
                             }`}
                         >
                             {isKa ? 'ყველა ტრანზაქცია' : 'All Transactions'} ({comprehensiveLedger.length})

@@ -22,10 +22,11 @@ import ProfileView from './components/ProfileView';
 import HelpAndGuideView from './components/HelpAndGuideView';
 import LoginModal from './components/LoginModal';
 import RegistrationModal from './components/RegistrationModal';
-import WelcomeModal from './components/WelcomeModal';
 import PostRegistrationChoiceModal from './components/PostRegistrationChoiceModal';
 import LocalServerModal from './components/LocalServerModal';
 import AiBalanceTopUpModal from './components/AiBalanceTopUpModal';
+import { AiKeyDiagnosticsModal } from './components/AiKeyDiagnosticsModal';
+import { AiManagementConsoleModal } from './components/AiManagementConsoleModal';
 import { SmartOfflineDisconnectModal, ReSyncNotificationPrompt } from './components/SmartOfflineDisconnectModal';
 import TicketManager from './components/TicketManager';
 import { generateAgriBusinessAnalysis, analyzePlantDisease, generateDocumentComparison, generateSoilAnalysis } from './services/geminiService';
@@ -243,7 +244,6 @@ const App: React.FC = () => {
         if (currentUser && !currentUser.isGuest) {
             setIsLoginModalOpen(false);
             setIsRegisterModalOpen(false);
-            setShowWelcomeModal(false);
         }
     }, [currentUser]);
 
@@ -866,15 +866,73 @@ const App: React.FC = () => {
     const [isTicketManagerOpen, setIsTicketManagerOpen] = useState(false);
     const [isAiTopUpModalOpen, setIsAiTopUpModalOpen] = useState(false);
     const [aiTopUpReason, setAiTopUpReason] = useState<string | undefined>(undefined);
+    const [isAiDiagnosticsModalOpen, setIsAiDiagnosticsModalOpen] = useState(false);
+    const [aiDiagnosticsNotice, setAiDiagnosticsNotice] = useState<any>(null);
+
+    // Master AI Management Console State
+    const [isAiConsoleOpen, setIsAiConsoleOpen] = useState(false);
+    const [aiConsoleTab, setAiConsoleTab] = useState<'diagnostics' | 'billing' | 'keys' | 'engine'>('diagnostics');
+    const [aiConsoleNotice, setAiConsoleNotice] = useState<any>(null);
+    const [aiConsoleReason, setAiConsoleReason] = useState<string | undefined>(undefined);
 
     useEffect(() => {
-        const handleOpenAiTopUp = (e: any) => {
-            setAiTopUpReason(e.detail?.reasonNotice);
-            setIsAiTopUpModalOpen(true);
+        const handleOpenAiConsole = (e: any) => {
+            setAiConsoleTab(e.detail?.tab || 'diagnostics');
+            setAiConsoleNotice(e.detail?.notice || null);
+            setAiConsoleReason(e.detail?.reason);
+            setIsAiConsoleOpen(true);
         };
+        const handleOpenAiTopUp = (e: any) => {
+            const reason = e.detail?.reasonNotice || e.detail?.reason;
+            setAiConsoleReason(reason);
+            setAiConsoleTab('billing');
+            setIsAiConsoleOpen(true);
+            setAiTopUpReason(reason);
+        };
+        const handleOpenAiDiagnostics = (e: any) => {
+            const notice = e.detail || null;
+            setAiConsoleNotice(notice);
+            setAiConsoleReason(e.detail?.reason);
+            setAiConsoleTab('diagnostics');
+            setIsAiConsoleOpen(true);
+            setAiDiagnosticsNotice(notice);
+        };
+        const handleUpstreamNotice = (e: any) => {
+            const notice = e.detail;
+            if (notice) {
+                setAiDiagnosticsNotice(notice);
+                setAiConsoleNotice(notice);
+                if (notice.code === 402) {
+                    toast.warning(
+                        language === 'ka' 
+                            ? 'Google AI Studio: პროექტს (WMDA) ამოეწურა კრედიტები (Code 402).'
+                            : 'Google AI Studio: Project prepayment credits depleted (Code 402).',
+                        {
+                            action: {
+                                label: language === 'ka' ? 'AI მართვის კონსოლი' : 'AI Console',
+                                onClick: () => {
+                                    setAiConsoleTab('diagnostics');
+                                    setAiConsoleNotice(notice);
+                                    setIsAiConsoleOpen(true);
+                                }
+                            },
+                            duration: 9000
+                        }
+                    );
+                }
+            }
+        };
+        window.addEventListener('agrimap:open_ai_management_console', handleOpenAiConsole);
         window.addEventListener('agrimap:open_ai_topup_modal', handleOpenAiTopUp);
-        return () => window.removeEventListener('agrimap:open_ai_topup_modal', handleOpenAiTopUp);
-    }, []);
+        window.addEventListener('agrimap:open_ai_diagnostics_modal', handleOpenAiDiagnostics);
+        window.addEventListener('agrimap_gemini_upstream_notice', handleUpstreamNotice);
+        return () => {
+            window.removeEventListener('agrimap:open_ai_management_console', handleOpenAiConsole);
+            window.removeEventListener('agrimap:open_ai_topup_modal', handleOpenAiTopUp);
+            window.removeEventListener('agrimap:open_ai_diagnostics_modal', handleOpenAiDiagnostics);
+            window.removeEventListener('agrimap_gemini_upstream_notice', handleUpstreamNotice);
+        };
+    }, [language]);
     const [showPostRegChoice, setShowPostRegChoice] = useState(false);
     const [autoOpenHRModal, setAutoOpenHRModal] = useState(false);
     const [aiTab, setAiTab] = useState<'agro' | 'global' | 'market' | 'cross_module' | 'diagnostics'>('agro');
@@ -1545,16 +1603,6 @@ const App: React.FC = () => {
     // Modals
     const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
     const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
-    const [showWelcomeModal, setShowWelcomeModal] = useState(false);
-
-    useEffect(() => {
-        if (isAuthReady && currentUser?.id === 'guest') {
-            const hasSeenWelcome = sessionStorage.getItem('agri-planter-welcome-seen');
-            if (!hasSeenWelcome) {
-                setShowWelcomeModal(true);
-            }
-        }
-    }, [isAuthReady, currentUser]);
 
     // Persist session
     useEffect(() => {
@@ -5111,7 +5159,8 @@ const App: React.FC = () => {
         moduleName?: string,
         tags?: string[],
         isVoiceNote?: boolean,
-        language?: string
+        language?: string,
+        dailyAgroAnalysis?: boolean
     ) => {
         if (!activeOrgId) return;
         const id = `note-${Date.now()}`;
@@ -5129,7 +5178,8 @@ const App: React.FC = () => {
             tags: tags || [],
             isVoiceNote: !!isVoiceNote,
             language: language || (localStorage.getItem('agri-app-lang') === 'ka' ? 'ka-GE' : 'en-US'),
-            status: 'active'
+            status: 'active',
+            dailyAgroAnalysis: Boolean(dailyAgroAnalysis)
         };
 
         if (USE_FIREBASE && auth.currentUser && currentUser?.id !== 'root-system') {
@@ -5144,6 +5194,19 @@ const App: React.FC = () => {
             setNotes(prev => [...prev, newNote]);
             toast.success("Voice note added (Local)");
         }
+    };
+
+    const handleUpdateNote = async (updatedNote: Note) => {
+        if (!updatedNote?.id) return;
+        if (USE_FIREBASE && auth.currentUser && currentUser?.id !== 'root-system') {
+            try {
+                trackModification(`notes/${updatedNote.id}`, 'update', updatedNote);
+                await setDoc(doc(db, 'notes', updatedNote.id), sanitizeObject(updatedNote), { merge: true });
+            } catch (error) {
+                handleFirestoreError(error, 'write', 'notes');
+            }
+        }
+        setNotes(prev => prev.map(n => n.id === updatedNote.id ? updatedNote : n));
     };
 
     const handleDeleteNote = async (noteId: string) => {
@@ -5189,9 +5252,18 @@ const App: React.FC = () => {
                 handleDeleteNote(e.detail.id);
             }
         };
+        const handleVoiceNoteUpdateEvent = (e: any) => {
+            if (e.detail?.id) {
+                handleUpdateNote(e.detail);
+            }
+        };
         window.addEventListener('agrimap_delete_note', handleVoiceNoteDeleteEvent);
-        return () => window.removeEventListener('agrimap_delete_note', handleVoiceNoteDeleteEvent);
-    }, [handleDeleteNote, handleDeleteMultipleNotes]);
+        window.addEventListener('agrimap_update_note', handleVoiceNoteUpdateEvent);
+        return () => {
+            window.removeEventListener('agrimap_delete_note', handleVoiceNoteDeleteEvent);
+            window.removeEventListener('agrimap_update_note', handleVoiceNoteUpdateEvent);
+        };
+    }, [handleDeleteNote, handleDeleteMultipleNotes, handleUpdateNote]);
 
     // Handle Map & Context Menu events: Work assignments, Planner tasks, Field notes, and Feature deletions
     useEffect(() => {
@@ -5914,7 +5986,7 @@ const App: React.FC = () => {
                     memberships={userMemberships} 
                     onAddOrg={handleAddOrg} 
                     onSetAppMode={setAppMode} 
-                    onOpenHomepage={() => setShowWelcomeModal(true)}
+                    onOpenHomepage={() => setAppMode('dashboard')}
                     allEmployees={employees} 
                     reviews={reviews} 
                     currentOrganizationContext={activeOrgId || 'personal'}
@@ -6482,7 +6554,7 @@ const App: React.FC = () => {
             case 'labs':
                 if (labTab === 'devices_map') {
                     return (
-                        <main className="flex-1 relative w-full h-full overflow-hidden flex flex-col" style={{ backgroundColor: 'var(--bg-canvas, #090e17)', color: 'var(--text-main, #f1f5f9)' }}>
+                        <main className="flex-1 relative w-full h-full overflow-hidden flex flex-col" style={{ backgroundColor: 'var(--bg-canvas, #FAFBF8)', color: 'var(--text-main, #163022)' }}>
                             {/* Floating Top Labs Switcher Bar (Movable & Minimizable) */}
                             <FloatingLabsSwitcher 
                                 labTab={labTab} 
@@ -6498,37 +6570,37 @@ const App: React.FC = () => {
                     );
                 }
                 return (
-                    <main className="flex-1 overflow-y-auto p-4 md:p-8 transition-colors" style={{ backgroundColor: 'var(--bg-canvas, #090e17)', color: 'var(--text-main, #f1f5f9)' }}>
+                    <main className="flex-1 overflow-y-auto p-4 md:p-8 transition-colors bg-[#FAFBF8] text-[#163022]" style={{ backgroundColor: 'var(--bg-canvas, #FAFBF8)', color: 'var(--text-main, #163022)' }}>
                         <div className="max-w-7xl mx-auto space-y-8">
-                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-[#D8E3D4]">
                                 <div>
                                     <div className="flex items-center gap-3">
-                                        <h1 className="text-3xl sm:text-4xl font-black uppercase tracking-tighter">Experimental Labs</h1>
-                                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                        <h1 className="text-3xl sm:text-4xl font-black uppercase tracking-tighter text-[#163022]">Experimental Labs</h1>
+                                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-50 text-emerald-800 border border-emerald-300 shadow-2xs">
                                             v2.4 Labs
                                         </span>
                                     </div>
-                                    <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] mt-1">
+                                    <p className="text-[#4A6753] font-bold uppercase tracking-widest text-[10px] mt-1">
                                         Custom design themes, hardware peripheral device lists, low-level drivers, and next-generation engines.
                                     </p>
                                 </div>
 
                                 {/* Labs Tab Switcher */}
-                                <div className="flex flex-wrap items-center p-1.5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-inner gap-1">
+                                <div className="flex flex-wrap items-center p-1.5 rounded-2xl bg-[#FAFBF8] border border-[#D8E3D4] shadow-sm gap-1.5">
                                     <button
                                         onClick={() => setLabTab('devices_map')}
                                         data-active="false"
-                                        className="px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all standing-light standing-beam cursor-pointer text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+                                        className="px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer bg-white text-[#244130] border border-[#CFDCCB] hover:bg-blue-600 hover:text-white hover:border-blue-700 shadow-2xs"
                                     >
                                         🗺️ Devices Map
                                     </button>
                                     <button
                                         onClick={() => setLabTab('hardware')}
                                         data-active={labTab === 'hardware' ? "true" : "false"}
-                                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all standing-light standing-beam cursor-pointer ${
+                                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer border ${
                                             labTab === 'hardware'
-                                                ? 'bg-blue-600 text-white shadow-md underglow-box-active active'
-                                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                                                ? 'bg-blue-600 text-white border-blue-700 shadow-xs'
+                                                : 'bg-white text-[#244130] border-[#CFDCCB] hover:bg-blue-600 hover:text-white shadow-2xs'
                                         }`}
                                     >
                                         🔌 Hardware & Devices
@@ -6536,10 +6608,10 @@ const App: React.FC = () => {
                                     <button
                                         onClick={() => setLabTab('theme')}
                                         data-active={labTab === 'theme' ? "true" : "false"}
-                                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all standing-light standing-beam cursor-pointer ${
+                                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer border ${
                                             labTab === 'theme'
-                                                ? 'bg-emerald-600 text-white shadow-md underglow-box-active active'
-                                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                                                ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
+                                                : 'bg-white text-[#244130] border-[#CFDCCB] hover:bg-emerald-600 hover:text-white shadow-2xs'
                                         }`}
                                     >
                                         🎨 Theme & Colors Studio
@@ -6547,10 +6619,10 @@ const App: React.FC = () => {
                                     <button
                                         onClick={() => setLabTab('letters')}
                                         data-active={labTab === 'letters' ? "true" : "false"}
-                                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all standing-light standing-beam flex items-center gap-1.5 cursor-pointer ${
+                                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer border ${
                                             labTab === 'letters'
-                                                ? 'bg-amber-500 text-slate-950 shadow-md underglow-box-active active font-black'
-                                                : 'text-amber-400 hover:text-amber-300 hover:bg-amber-500/10'
+                                                ? 'bg-amber-500 text-slate-950 border-amber-600 shadow-xs font-black'
+                                                : 'bg-white text-[#244130] border-[#CFDCCB] hover:bg-amber-500 hover:text-slate-950 shadow-2xs'
                                         }`}
                                     >
                                         🔤 All Letters & Menubars Color
@@ -6558,10 +6630,10 @@ const App: React.FC = () => {
                                     <button
                                         onClick={() => setLabTab('analytics')}
                                         data-active={labTab === 'analytics' ? "true" : "false"}
-                                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all standing-light standing-beam cursor-pointer ${
+                                        className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer border ${
                                             labTab === 'analytics'
-                                                ? 'bg-indigo-600 text-white shadow-md underglow-box-active active'
-                                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                                                ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs'
+                                                : 'bg-white text-[#244130] border-[#CFDCCB] hover:bg-indigo-600 hover:text-white shadow-2xs'
                                         }`}
                                     >
                                         🧠 Intelligence
@@ -6594,8 +6666,13 @@ const App: React.FC = () => {
 
                             {labTab === 'analytics' && (
                                 <div className="pt-2">
-                                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">Advanced Intelligence Engine</h3>
-                                    <AdvancedAnalytics />
+                                    <AdvancedAnalytics 
+                                        currentUser={currentUser}
+                                        onUpdateUser={handleUpdateUser}
+                                        notes={notes}
+                                        onUpdateNote={handleUpdateNote}
+                                        activeOrgId={activeOrgId}
+                                    />
                                 </div>
                             )}
                         </div>
@@ -6744,7 +6821,7 @@ const App: React.FC = () => {
                 activeOrg={activeOrg || null}
                 memberships={memberships}
                 isConnectionHealthy={isConnectionHealthy}
-                onOpenHomepage={() => setShowWelcomeModal(true)}
+                onOpenHomepage={() => setAppMode('dashboard')}
             />
             <div className="flex flex-col flex-1 min-w-0 relative pb-20 lg:pb-0">
                 <Header 
@@ -6768,7 +6845,7 @@ const App: React.FC = () => {
                     onPushToCloud={handlePushToCloud}
                     pendingSyncCount={pendingSyncCount}
                     onOpenDataAuditor={() => setIsDataStateAuditorOpen(true)}
-                    onOpenHomepage={() => setShowWelcomeModal(true)}
+                    onOpenHomepage={() => setAppMode('dashboard')}
                     onOpenHelp={() => setAppMode('guide')}
                     onOpenChat={handleOpenChatHub}
                     onOpenMeet={handleOpenMeetHub}
@@ -6781,8 +6858,9 @@ const App: React.FC = () => {
                     }}
                     onOpenGlobalSearch={() => setIsSpotlightOpen(true)}
                     onOpenAiTopUp={() => {
-                        setAiTopUpReason(undefined);
-                        setIsAiTopUpModalOpen(true);
+                        setAiConsoleReason(undefined);
+                        setAiConsoleTab('billing');
+                        setIsAiConsoleOpen(true);
                     }}
                 />
                 <div className="flex-1 flex flex-col min-h-0 overflow-auto">
@@ -6833,6 +6911,9 @@ const App: React.FC = () => {
                             activeOrgId={activeOrgId}
                             activeOrgName={activeOrg?.name}
                             currentUser={currentUser}
+                            isSystemAdmin={isSystemAdmin}
+                            isRoot={isRoot}
+                            activeOrgRole={memberships.find(m => m.organizationId === activeOrgId)?.role}
                             onOpenChat={handleOpenChatHub}
                             onOpenMeet={handleOpenMeetHub}
                             currentAiMode={assistantMode}
@@ -7014,24 +7095,6 @@ const App: React.FC = () => {
                 currentUser={currentUser}
                 onAddOrg={handleAddOrg}
             />
-            <WelcomeModal 
-                isOpen={showWelcomeModal} 
-                onClose={() => {
-                    setShowWelcomeModal(false);
-                    sessionStorage.setItem('agri-planter-welcome-seen', 'true');
-                    setAppMode('dashboard');
-                }} 
-                onRegister={() => {
-                    setShowWelcomeModal(false);
-                    setIsRegisterModalOpen(true);
-                }}
-                onExplore={() => {
-                    setShowWelcomeModal(false);
-                    sessionStorage.setItem('agri-planter-welcome-seen', 'true');
-                    setAppMode('dashboard');
-                }}
-                onLogin={handleEmailLogin}
-            />
             
             <TicketManager 
                 isOpen={isTicketManagerOpen}
@@ -7132,7 +7195,7 @@ const App: React.FC = () => {
                 onPushToCloud={handlePushToFirestore}
                 pendingSyncCount={pendingSyncCount}
                 onOpenDataAuditor={() => setIsDataStateAuditorOpen(true)}
-                onOpenHomepage={() => setShowWelcomeModal(true)}
+                onOpenHomepage={() => setAppMode('dashboard')}
                 onSetMapCenter={(center) => setMapCenter(center)}
                 onSetMapZoom={(zoom) => setMapZoom(zoom)}
                 onSelectFeatureId={(id) => {
@@ -7154,15 +7217,38 @@ const App: React.FC = () => {
                 onExport={handleExportProjects} 
                 onShare={(project) => handleShareProject(project.id)} 
             />
-            <AiBalanceTopUpModal 
-                isOpen={isAiTopUpModalOpen}
-                onClose={() => setIsAiTopUpModalOpen(false)}
-                currentUser={currentUser}
-                onUpdateUser={handleUpdateUser}
-                reasonNotice={aiTopUpReason}
-                isKa={language === 'ka'}
-                allUsers={users}
-            />
+            {isAiConsoleOpen && (
+                <AiManagementConsoleModal 
+                    isOpen={isAiConsoleOpen}
+                    onClose={() => setIsAiConsoleOpen(false)}
+                    currentUser={currentUser}
+                    onUpdateUser={handleUpdateUser}
+                    initialTab={aiConsoleTab}
+                    initialNotice={aiConsoleNotice}
+                    reasonNotice={aiConsoleReason}
+                    isKa={language === 'ka'}
+                    allUsers={users}
+                />
+            )}
+            {isAiTopUpModalOpen && (
+                <AiBalanceTopUpModal 
+                    isOpen={isAiTopUpModalOpen}
+                    onClose={() => setIsAiTopUpModalOpen(false)}
+                    currentUser={currentUser}
+                    onUpdateUser={handleUpdateUser}
+                    reasonNotice={aiTopUpReason}
+                    isKa={language === 'ka'}
+                    allUsers={users}
+                />
+            )}
+            {isAiDiagnosticsModalOpen && (
+                <AiKeyDiagnosticsModal
+                    isOpen={isAiDiagnosticsModalOpen}
+                    onClose={() => setIsAiDiagnosticsModalOpen(false)}
+                    isKa={language === 'ka'}
+                    initialNotice={aiDiagnosticsNotice}
+                />
+            )}
         </div>
         </FirebaseDataProvider>
         </GlobalDataInterceptorProvider>

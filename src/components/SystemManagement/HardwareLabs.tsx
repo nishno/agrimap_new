@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import { safeStorage } from '../../services/storageService';
 import { initGlobalHardwareScannerListener, dispatchHardwareScan, getActiveAdoptedScanner } from '../../utils/hardwareScannerBus';
 import QRCode from 'qrcode';
@@ -53,7 +53,9 @@ import { HardwareTestingSandboxMap } from './HardwareLabs/HardwareTestingSandbox
 import { UsbScannerLab } from './HardwareLabs/UsbScannerLab';
 import { GpsTrackerLab } from './HardwareLabs/GpsTrackerLab';
 import { CameraNvrLab } from './HardwareLabs/CameraNvrLab';
-import { DroneHardwareLab } from './HardwareLabs/DroneHardwareLab';
+const DroneHardwareLab = React.lazy(() => 
+    import('./HardwareLabs/DroneHardwareLab').then(m => ({ default: m.DroneHardwareLab }))
+);
 import { WeatherStationLab } from './HardwareLabs/WeatherStationLab';
 import { SoilSensorsLab } from './HardwareLabs/SoilSensorsLab';
 import { getMainPlantation, resolvePlantationCenter } from '../../utils/plantationHelper';
@@ -98,6 +100,23 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({
         initialTab ? initialTab : (fullScreenMap ? 'sandbox_map' : 'bluetooth')
     );
     const [isScanning, setIsScanning] = useState(false);
+
+    // Drone Standalone External Tool Connection State (Disconnected by default for speed & Zero RAM)
+    const [isDroneConnected, setIsDroneConnected] = useState<boolean>(() => {
+        return safeStorage.getItem('agrimap_drone_tool_connected') === 'true';
+    });
+
+    const handleConnectDrone = () => {
+        setIsDroneConnected(true);
+        safeStorage.setItem('agrimap_drone_tool_connected', 'true');
+        toast.success('Real Drone Telemetry & Mission Lab connected to project!');
+    };
+
+    const handleDisconnectDrone = () => {
+        setIsDroneConnected(false);
+        safeStorage.setItem('agrimap_drone_tool_connected', 'false');
+        toast.info('Drone module disconnected back to external standby');
+    };
 
     useEffect(() => {
         if (initialTab) {
@@ -1333,14 +1352,14 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({
     }
 
     return (
-        <div className="module-labs bg-white dark:bg-slate-950 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden min-h-[700px] flex flex-col">
-            <div className="p-6 sm:p-8 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex flex-wrap items-center justify-between gap-4">
+        <div className="module-labs bg-[#FAFBF8] text-[#163022] rounded-[2.5rem] border border-[#D8E3D4] shadow-xl overflow-hidden min-h-[700px] flex flex-col">
+            <div className="p-6 sm:p-8 border-b border-[#D8E3D4] bg-[#EEF3EA] flex flex-wrap items-center justify-between gap-4">
                 <div>
-                    <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter flex items-center gap-2">
-                        <Cpu className="text-blue-600" /> Hardware Peripheral Labs
+                    <h2 className="text-2xl font-black text-[#163022] uppercase tracking-tighter flex items-center gap-2">
+                        <Cpu className="text-emerald-700" /> Hardware Peripheral Labs
                     </h2>
-                    <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest flex items-center gap-2">
-                        <Wifi size={12} className="text-emerald-500" /> Active Local Mesh • Low-level driver management
+                    <p className="text-xs font-bold text-[#4A6753] mt-1 uppercase tracking-widest flex items-center gap-2">
+                        <Wifi size={12} className="text-emerald-600" /> Active Local Mesh • Low-level driver management
                     </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2.5">
@@ -1356,10 +1375,10 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({
                             }
                             toast.success(`Opening map on: ${mainPlantation.name}`);
                         }}
-                        className="px-3.5 py-2 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-600/50 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer"
+                        className="px-3.5 py-2 bg-white text-[#244130] border border-[#CFDCCB] hover:bg-emerald-600 hover:text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer"
                         title="Open device testing map on Main Plantation"
                     >
-                        <MapPin size={13} className="text-emerald-400" />
+                        <MapPin size={13} className="text-emerald-600 group-hover:text-white" />
                         <span className="truncate max-w-[160px]">🌿 {mainPlantation.name}</span>
                     </button>
 
@@ -1373,7 +1392,7 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({
                                 setActiveTab('sandbox_map');
                             }
                         }}
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-blue-900/40 transition-all active:scale-95 cursor-pointer"
+                        className="px-4 py-2 bg-white text-[#244130] border border-[#CFDCCB] hover:bg-blue-600 hover:text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer"
                     >
                         <MapPin size={13} /> 🗺️ Full Screen Testing Map
                     </button>
@@ -1382,23 +1401,23 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({
                             resetToDefault();
                             toast.success('Restored default theme & crisp high-contrast colors!');
                         }}
-                        className="px-3.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:hover:bg-amber-900/50 dark:text-amber-300 rounded-xl text-[9px] font-black uppercase tracking-widest border border-amber-300 dark:border-amber-700 flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
+                        className="px-3.5 py-1.5 bg-white text-[#244130] border border-[#CFDCCB] hover:bg-amber-500 hover:text-slate-950 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 transition-all shadow-2xs active:scale-95 cursor-pointer"
                         title="Reset default theme and high-contrast letter colors to clean original state"
                     >
-                        <RotateCcw size={11} className="text-amber-600 dark:text-amber-400" /> Reset Default Theme
+                        <RotateCcw size={11} className="text-amber-600" /> Reset Default Theme
                     </button>
-                    <div className="px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-xl text-[9px] font-black uppercase tracking-widest border border-indigo-100 flex items-center gap-1.5">
-                        <Activity size={10} /> Auditor Linked
+                    <div className="px-3 py-1.5 bg-white text-emerald-800 rounded-xl text-[9px] font-black uppercase tracking-widest border border-[#CFDCCB] flex items-center gap-1.5 shadow-2xs">
+                        <Activity size={10} className="text-emerald-600" /> Auditor Linked
                     </div>
-                    <div className="px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-xl text-[9px] font-black uppercase tracking-widest border border-emerald-100 flex items-center gap-1.5">
-                        <Zap size={10} className="animate-pulse" /> Drivers OK
+                    <div className="px-3 py-1.5 bg-white text-emerald-800 rounded-xl text-[9px] font-black uppercase tracking-widest border border-[#CFDCCB] flex items-center gap-1.5 shadow-2xs">
+                        <Zap size={10} className="animate-pulse text-emerald-600" /> Drivers OK
                     </div>
                 </div>
             </div>
 
-            <div className="flex-1 flex overflow-hidden">
+            <div className="flex-1 flex overflow-hidden bg-[#FAFBF8]">
                 {/* Navigation Sidebar */}
-                <div className="w-64 border-r border-slate-200 dark:border-slate-800 p-4 space-y-2 bg-slate-50/60 dark:bg-slate-900/40">
+                <div className="w-64 border-r border-[#D8E3D4] p-4 space-y-2 bg-[#FAFBF8]">
                     {tabs.map(tab => {
                         const isActive = activeTab === tab.id;
                         return (
@@ -1418,16 +1437,16 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({
                                     setActiveTab(tab.id as any);
                                 }}
                                 data-active={isActive ? "true" : "false"}
-                                className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all relative cursor-pointer ${
+                                className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all relative cursor-pointer border ${
                                     isActive 
-                                        ? 'bg-blue-600 text-white font-black scale-[1.02] shadow-md shadow-blue-500/20' 
-                                        : 'text-slate-600 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white border border-transparent'
+                                        ? 'bg-emerald-700 text-white font-black scale-[1.02] shadow-sm border-emerald-800' 
+                                        : 'bg-white text-[#244130] border-[#CFDCCB] hover:bg-emerald-600 hover:text-white shadow-2xs'
                                 }`}
                             >
-                                <tab.icon size={18} className={isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400'} />
+                                <tab.icon size={18} className={isActive ? 'text-white' : 'text-emerald-700'} />
                                 <span className="text-xs font-black uppercase tracking-widest leading-none flex-grow text-left">{tab.label}</span>
                                 {isActive && (
-                                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-300 animate-pulse shadow-sm" />
+                                    <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse shadow-xs" />
                                 )}
                             </button>
                         );
@@ -1474,9 +1493,84 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({
                         )}
 
                         {activeTab === 'drone' && (
-                            <DroneHardwareLab 
-                                mapCenter={resolvedPlantationCenter}
-                            />
+                            <div className="space-y-4">
+                                {!isDroneConnected ? (
+                                    <div className="p-8 sm:p-12 bg-white rounded-3xl border border-[#D8E3D4] shadow-sm flex flex-col items-center justify-center text-center max-w-2xl mx-auto my-6 select-none">
+                                        <div className="w-16 h-16 rounded-3xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 mb-4 shadow-sm">
+                                            <Radio className="w-8 h-8 animate-pulse" />
+                                        </div>
+                                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#EEF3EA] border border-[#D8E3D4] text-[11px] font-mono text-[#244130] mb-3">
+                                            <span className="w-2 h-2 rounded-full bg-slate-400" />
+                                            <span>External Standby Tool (Disconnected / Zero RAM)</span>
+                                        </div>
+                                        <h3 className="text-xl font-black text-[#163022] tracking-tight mb-2">
+                                            Real Drone MAVLink & RTK Flight Controller
+                                        </h3>
+                                        <p className="text-xs text-slate-500 max-w-lg leading-relaxed mb-6">
+                                            This tool stands outside the main application to keep your project ultra-fast. 
+                                            Click below only when you need to establish live telemetry, RTK centimeter satellite lock, or autonomous plantation flight missions.
+                                        </p>
+
+                                        {/* Capabilities quick preview */}
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 w-full mb-6 text-left">
+                                            <div className="p-2.5 rounded-xl bg-[#FAFBF8] border border-[#D8E3D4]">
+                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Radio Link</div>
+                                                <div className="text-xs font-black text-[#163022] mt-0.5">MAVLink 433MHz</div>
+                                            </div>
+                                            <div className="p-2.5 rounded-xl bg-[#FAFBF8] border border-[#D8E3D4]">
+                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">GNSS Precision</div>
+                                                <div className="text-xs font-black text-[#163022] mt-0.5">RTK Fixed (28 Sats)</div>
+                                            </div>
+                                            <div className="p-2.5 rounded-xl bg-[#FAFBF8] border border-[#D8E3D4]">
+                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Terrain AGL</div>
+                                                <div className="text-xs font-black text-[#163022] mt-0.5">DEM Auto-Contour</div>
+                                            </div>
+                                            <div className="p-2.5 rounded-xl bg-[#FAFBF8] border border-[#D8E3D4]">
+                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Video Feed</div>
+                                                <div className="text-xs font-black text-[#163022] mt-0.5">RTSP Live Gimbal</div>
+                                            </div>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={handleConnectDrone}
+                                            className="px-6 py-3 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-bold rounded-2xl text-sm flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-700/20 transition-all hover:scale-105 active:scale-95"
+                                        >
+                                            <Zap className="w-4 h-4" />
+                                            <span>Connect Drone Tool to Project</span>
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {/* Connected Bar with Disconnect button */}
+                                        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between gap-4 text-xs">
+                                            <div className="flex items-center gap-2 text-emerald-900 font-bold">
+                                                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                                                <span>Real Drone Link Connected to Active Plantation Project</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={handleDisconnectDrone}
+                                                className="px-3 py-1.5 bg-white hover:bg-red-50 text-red-700 border border-red-200 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                                                title="Disconnect Drone tool back to external standby"
+                                            >
+                                                <span>🔌 Disconnect to Standby</span>
+                                            </button>
+                                        </div>
+
+                                        <Suspense fallback={
+                                            <div className="w-full p-16 bg-white rounded-3xl border border-[#D8E3D4] flex flex-col items-center justify-center text-slate-500 font-mono text-xs gap-3">
+                                                <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                                                <span>Loading Real Drone MAVLink Controller...</span>
+                                            </div>
+                                        }>
+                                            <DroneHardwareLab 
+                                                mapCenter={resolvedPlantationCenter}
+                                            />
+                                        </Suspense>
+                                    </>
+                                )}
+                            </div>
                         )}
 
                         {activeTab === 'weather' && (

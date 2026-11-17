@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
     MapPin, Camera, Navigation, Radio, Droplets, User, 
@@ -35,7 +35,10 @@ import {
 import { CameraLiveMonitorWindow } from './CameraLiveMonitorWindow';
 import { AllCamerasWideModal } from './AllCamerasWideModal';
 import { UniversalLanDeviceScannerModal } from './UniversalLanDeviceScannerModal';
-import { Sandbox3DTerrainCanvas } from './Sandbox3DTerrainCanvas';
+
+const Sandbox3DTerrainCanvas = React.lazy(() => 
+    import('./Sandbox3DTerrainCanvas').then(m => ({ default: m.Sandbox3DTerrainCanvas }))
+);
 import { 
     getElevationAtCoords, 
     getSlopeAndAspect,
@@ -1231,6 +1234,23 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
     const [is3dMinimized, setIs3dMinimized] = useState<boolean>(false);
     const [isSlopeSculptorOpen, setIsSlopeSculptorOpen] = useState<boolean>(false);
     const [sandbox3dMode, setSandbox3dMode] = useState<'orbit' | 'drone_cockpit' | 'camera_fov'>('orbit');
+    
+    // 3D Standalone External Tool Connection State (Disconnected by default for speed & Zero RAM)
+    const [is3dConnected, setIs3dConnected] = useState<boolean>(() => {
+        return safeStorage.getItem('agrimap_3d_tool_connected') === 'true';
+    });
+
+    const handleConnect3D = () => {
+        setIs3dConnected(true);
+        safeStorage.setItem('agrimap_3d_tool_connected', 'true');
+        toast.success(isKa ? '3D რელიეფის ინსტრუმენტი დაკავშირებულია პროექტთან!' : '3D Terrain DEM Studio connected to project!');
+    };
+
+    const handleDisconnect3D = () => {
+        setIs3dConnected(false);
+        safeStorage.setItem('agrimap_3d_tool_connected', 'false');
+        toast.info(isKa ? '3D ძრავა გაითიშა გარე Standby რეჟიმში (Zero-RAM)' : '3D Engine disconnected back to external standby');
+    };
 
     // Contextual Tools Panel (Camera Hub vs Drone Tools vs 3D vs Windows)
     const [activeContextMode, setActiveContextMode] = useState<'camera' | 'drone' | '3d' | 'windows'>('camera');
@@ -4088,7 +4108,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                         ? "absolute inset-0 z-0 w-full h-full"
                         : isPiPHidden
                             ? "w-0 h-0 overflow-hidden absolute pointer-events-none opacity-0"
-                            : "fixed bottom-4 right-4 z-[1150] w-[380px] sm:w-[460px] h-[280px] sm:h-[350px] rounded-2xl bg-slate-950/95 border border-cyan-500/50 shadow-2xl overflow-hidden backdrop-blur-xl flex flex-col transition-all"
+                            : "fixed bottom-4 right-4 z-[1150] w-[380px] sm:w-[460px] h-[280px] sm:h-[350px] rounded-2xl bg-[#FAFBF8]/95 border border-[#D8E3D4] shadow-2xl overflow-hidden backdrop-blur-xl flex flex-col transition-all text-[#163022]"
                 }
             >
                 {/* When in 3D Main View and 2D is PiP, show Header with Drag Handle, Swap and Close */}
@@ -4097,11 +4117,11 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                         onPointerDown={handlePipPointerDown}
                         onPointerMove={handlePipPointerMove}
                         onPointerUp={handlePipPointerUp}
-                        className="p-2 sm:p-2.5 bg-slate-900/95 border-b border-slate-800 flex items-center justify-between text-xs shrink-0 select-none cursor-grab active:cursor-grabbing z-10"
+                        className="p-2 sm:p-2.5 bg-[#EEF3EA] border-b border-[#D8E3D4] flex items-center justify-between text-xs shrink-0 select-none cursor-grab active:cursor-grabbing z-10 text-[#163022]"
                     >
                         <div className="flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                            <span className="font-black text-slate-100 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            <span className="font-black text-[#163022] uppercase tracking-wider text-[11px] flex items-center gap-1.5">
                                 🗺️ {isKa ? '2D ნავიგაციის რუკა' : '2D Navigation Map'}
                             </span>
                         </div>
@@ -4109,7 +4129,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                             <button
                                 type="button"
                                 onClick={() => setIs3dMainView(false)}
-                                className="px-2 py-0.5 bg-cyan-600/90 hover:bg-cyan-500 text-white font-bold rounded text-[10px] flex items-center gap-1 cursor-pointer transition-colors"
+                                className="px-2 py-0.5 bg-white text-[#1E3B2B] border border-[#CFDCCB] hover:bg-[#0284c7] hover:text-white hover:border-[#0284c7] font-bold rounded-lg text-[10px] flex items-center gap-1 cursor-pointer transition-all duration-200 shadow-2xs"
                                 title="Swap places: make 2D the full screen main window"
                             >
                                 <span>⇄ Swap</span>
@@ -4117,7 +4137,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                             <button
                                 type="button"
                                 onClick={() => setIsPiPHidden(true)}
-                                className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 cursor-pointer"
+                                className="p-1 text-[#5F7A69] hover:text-rose-600 rounded-lg hover:bg-white cursor-pointer transition-colors shadow-2xs"
                                 title="Close 2D MiniMap to run 3D Full Screen"
                             >
                                 <X size={13} />
@@ -5063,14 +5083,14 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
 
                     {/* FLOATING LIVE STREAM QUICK BAR & CAMERA SWITCHER DIRECTLY ON MAP */}
                     {testCameras.length > 0 && (
-                        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[1050] max-w-[94vw] bg-slate-950/95 border border-slate-700/80 rounded-2xl shadow-2xl backdrop-blur-xl px-3 py-2 flex flex-wrap items-center justify-between gap-2.5 text-xs text-white animate-in slide-in-from-bottom-2 duration-150">
+                        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[1050] max-w-[94vw] bg-[#FAFBF8]/95 border border-[#D8E3D4] rounded-2xl shadow-2xl backdrop-blur-xl px-3 py-2 flex flex-wrap items-center justify-between gap-2.5 text-xs text-[#163022] animate-in slide-in-from-bottom-2 duration-150">
                             <div className="flex items-center gap-2">
                                 <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" />
-                                <span className="font-black text-[11px] uppercase tracking-wider text-rose-300 flex items-center gap-1">
+                                <span className="font-black text-[11px] uppercase tracking-wider text-rose-600 flex items-center gap-1">
                                     <Video size={13} />
                                     {isKa ? 'ლაივ სტრიმი' : 'Live Stream'}
                                 </span>
-                                <span className="px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono text-[10px]">
+                                <span className="px-1.5 py-0.2 rounded bg-[#EEF3EA] text-[#4F6C5B] font-mono text-[10px] border border-[#D8E3D4] font-bold">
                                     {testCameras.length}
                                 </span>
                             </div>
@@ -5090,13 +5110,13 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                                                     setLiveStreamCamera(cam);
                                                 }
                                             }}
-                                            className={`px-2 py-1 rounded-lg font-mono text-[10px] font-bold flex items-center gap-1 transition-all shrink-0 cursor-pointer ${
+                                            className={`px-2 py-1 rounded-lg font-mono text-[10px] font-bold flex items-center gap-1 transition-all duration-200 shrink-0 cursor-pointer shadow-2xs ${
                                                 isSelected
-                                                    ? 'bg-blue-600 text-white shadow-md ring-1 ring-blue-300'
-                                                    : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                                                    ? 'bg-blue-600 text-white shadow-md ring-1 ring-blue-300 border border-blue-600'
+                                                    : 'bg-white hover:bg-[#2563eb] hover:text-white hover:border-[#2563eb] text-[#244130] border border-[#CFDCCB]'
                                             }`}
                                         >
-                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                                             <span>CH0{cam.channel}</span>
                                             <span className="max-w-[70px] truncate hidden sm:inline">{cam.name}</span>
                                         </button>
@@ -5109,24 +5129,24 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                                 <button
                                     type="button"
                                     onClick={() => setLiveStreamCamera(activeCamera)}
-                                    className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-black uppercase text-[10px] tracking-wider flex items-center gap-1 shadow cursor-pointer transition-all active:scale-95"
+                                    className="px-2.5 py-1 bg-white hover:bg-rose-600 hover:text-white hover:border-rose-600 text-[#244130] border border-[#CFDCCB] rounded-xl font-black uppercase text-[10px] tracking-wider flex items-center gap-1 shadow-2xs cursor-pointer transition-all duration-200 active:scale-95"
                                     title={isKa ? 'არჩეული კამერის პირდაპირი ეთერის ნახვა' : 'Watch active camera live RTSP stream'}
                                 >
-                                    <Video size={11} className="animate-pulse" />
+                                    <Video size={11} className="text-rose-500" />
                                     <span>{isKa ? 'ლაივ ეთერი' : 'Watch Live'}</span>
                                 </button>
 
                                 {/* Active Profile Plantation Quick Switcher & Fly Button */}
-                                <div className="flex items-center gap-1 bg-emerald-950/90 border border-emerald-600/60 rounded-xl px-2 py-0.5 shadow-sm">
-                                    <Navigation size={11} className="text-emerald-400 shrink-0" />
+                                <div className="flex items-center gap-1 bg-white border border-[#CFDCCB] rounded-xl px-2 py-0.5 shadow-2xs">
+                                    <Navigation size={11} className="text-[#16a34a] shrink-0" />
                                     <select
                                         value={selectedPlantationId}
                                         onChange={(e) => handleSelectPlantation(e.target.value)}
-                                        className="bg-transparent text-emerald-300 font-bold text-[10px] font-mono outline-none cursor-pointer max-w-[150px] truncate"
+                                        className="bg-transparent text-[#1E3B2B] font-bold text-[10px] font-mono outline-none cursor-pointer max-w-[150px] truncate"
                                         title={isKa ? 'პლანტაციის არჩევა & გადაფრენა' : 'Select Plantation & Fly Map'}
                                     >
                                         {REGISTERED_PLANTATIONS.map((p, pIdx) => (
-                                            <option key={`bottom-plant-${p.id}-${pIdx}`} value={p.id} className="bg-slate-950 text-slate-200">
+                                            <option key={`bottom-plant-${p.id}-${pIdx}`} value={p.id} className="bg-white text-[#163022]">
                                                 {p.name}
                                             </option>
                                         ))}
@@ -5134,7 +5154,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                                     <button
                                         type="button"
                                         onClick={() => handleSelectPlantation(selectedPlantationId)}
-                                        className="p-1 hover:bg-emerald-800 text-emerald-300 rounded cursor-pointer transition-colors"
+                                        className="p-1 hover:bg-[#16a34a] hover:text-white text-[#1E3B2B] rounded cursor-pointer transition-colors"
                                         title={isKa ? 'გადაფრენა' : 'Fly'}
                                     >
                                         <span className="text-[9px] font-black uppercase">FLY</span>
@@ -5149,17 +5169,17 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                                         setIsModalPopUp(true);
                                         setIsPopUpMinimized(false);
                                     }}
-                                    className="px-2.5 py-1 bg-blue-900/80 hover:bg-blue-800 text-blue-200 border border-blue-500/60 rounded-xl font-bold text-[10px] flex items-center gap-1 cursor-pointer transition-all shadow-sm"
+                                    className="px-2.5 py-1 bg-white hover:bg-blue-600 hover:text-white hover:border-blue-600 text-[#244130] border border-[#CFDCCB] rounded-xl font-bold text-[10px] flex items-center gap-1 cursor-pointer transition-all duration-200 shadow-2xs"
                                     title={isKa ? 'მოწყობილობის მართვის პანელი & გადაადგილება' : 'Device Control Panel & Move Active Camera'}
                                 >
-                                    <Move size={11} className="text-cyan-400" />
+                                    <Move size={11} className="text-blue-500" />
                                     <span>{isKa ? 'მართვა & გადატანა' : 'Device Control'}</span>
                                 </button>
 
                                 <button
                                     type="button"
                                     onClick={() => setIsAllCamerasWideOpen(true)}
-                                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded-xl font-bold text-[10px] flex items-center gap-1 cursor-pointer transition-all"
+                                    className="px-2.5 py-1 bg-white hover:bg-[#0891b2] hover:text-white hover:border-[#0891b2] text-[#244130] border border-[#CFDCCB] rounded-xl font-bold text-[10px] flex items-center gap-1 cursor-pointer transition-all duration-200 shadow-2xs"
                                     title={isKa ? 'ყველა კამერის სრული მატრიცა' : 'All Cameras Wide Matrix View'}
                                 >
                                     <Layers size={11} />
@@ -5169,7 +5189,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                                 <button
                                     type="button"
                                     onClick={() => setIsLanScannerModalOpen(true)}
-                                    className="px-2.5 py-1 bg-blue-900/60 hover:bg-blue-800 text-blue-300 border border-blue-700/60 rounded-xl font-bold text-[10px] flex items-center gap-1 cursor-pointer transition-all"
+                                    className="px-2.5 py-1 bg-white hover:bg-indigo-600 hover:text-white hover:border-indigo-600 text-[#244130] border border-[#CFDCCB] rounded-xl font-bold text-[10px] flex items-center gap-1 cursor-pointer transition-all duration-200 shadow-2xs"
                                     title={isKa ? 'LAN / NVR სკანერის გახსნა' : 'Open LAN / NVR Scanner'}
                                 >
                                     <Radio size={11} />
@@ -5197,32 +5217,32 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
 
             {/* FLOATING PERIMETER CONTROL CARD (When drawing or after drawing boundary) */}
             {(activeTool === 'draw_perimeter' || activeTool === 'draw_slope' || (customSlopePerimeter.length > 0 && selectedLayerId.startsWith('slope'))) && (
-                <div className="absolute top-24 left-4 z-[1140] p-3 bg-slate-900/95 border border-fuchsia-500/80 rounded-2xl shadow-2xl backdrop-blur-xl flex flex-col gap-2 text-xs text-white max-w-xs animate-in slide-in-from-left-2 duration-150">
+                <div className="absolute top-24 left-4 z-[1140] p-3 bg-[#FAFBF8]/95 border border-fuchsia-400 rounded-2xl shadow-2xl backdrop-blur-xl flex flex-col gap-2 text-xs text-[#163022] max-w-xs animate-in slide-in-from-left-2 duration-150">
                     <div className="flex items-center justify-between">
-                        <span className="font-black text-fuchsia-300 flex items-center gap-1.5 uppercase text-[11px]">
+                        <span className="font-black text-fuchsia-800 flex items-center gap-1.5 uppercase text-[11px]">
                             📐 {isKa ? 'პერიმეტრის დახაზვა' : 'Perimeter Boundary'}
                         </span>
-                        <span className="px-2 py-0.5 rounded-full bg-fuchsia-950 text-fuchsia-300 font-mono text-[10px] font-bold border border-fuchsia-700/60">
+                        <span className="px-2 py-0.5 rounded-full bg-fuchsia-100 text-fuchsia-800 font-mono text-[10px] font-bold border border-fuchsia-300">
                             {customSlopePerimeter.length} pts
                         </span>
                     </div>
-                    <p className="text-[11px] text-slate-300 leading-tight">
+                    <p className="text-[11px] text-[#4F6C5B] leading-tight">
                         {isKa 
                             ? 'დააწკაპუნეთ რუკაზე წერტილების დასასმელად. წერტილები შეგიძლიათ გადაადგილოთ თაგვით.'
                             : 'Click map to place perimeter vertices. Drag any point to resize/reshape freely.'}
                     </p>
                     {customSlopePerimeter.length >= 2 && (
-                        <div className="flex items-center justify-between text-[11px] font-mono text-slate-300 bg-slate-950/70 p-1.5 rounded-lg border border-slate-800">
+                        <div className="flex items-center justify-between text-[11px] font-mono text-[#163022] bg-white p-1.5 rounded-lg border border-[#E2EBE0] shadow-2xs">
                             <span>Perimeter: <b>{measuredCustomPerimeterM}m</b></span>
                             {customPerimeterArea.ha > 0 && <span>Area: <b>{customPerimeterArea.ha} ha</b></span>}
                         </div>
                     )}
-                    <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-800">
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-[#D8E3D4]">
                         {customSlopePerimeter.length >= 3 && (
                             <button
                                 type="button"
                                 onClick={handleConvertPerimeterToSlope}
-                                className="flex-1 py-1.5 px-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl text-[11px] flex items-center justify-center gap-1 shadow-lg cursor-pointer transition-all active:scale-95"
+                                className="flex-1 py-1.5 px-2.5 bg-white hover:bg-gradient-to-r hover:from-amber-500 hover:to-orange-500 hover:text-slate-950 text-[#1E3B2B] border border-[#CFDCCB] font-black rounded-xl text-[11px] flex items-center justify-center gap-1 shadow-2xs cursor-pointer transition-all duration-200 active:scale-95"
                                 title="Loft this perimeter into a 3D hill with central spine ridge & width cross-sections"
                             >
                                 🏔️ {isKa ? '3D რელიეფად გარდაქმნა' : 'Loft to 3D Slope'}
@@ -5232,7 +5252,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                             type="button"
                             onClick={handleDeleteLastEditedPoint}
                             disabled={customSlopePerimeter.length === 0}
-                            className="py-1.5 px-2 bg-rose-950/70 hover:bg-rose-900 text-rose-200 font-bold rounded-xl text-[11px] flex items-center justify-center gap-1 cursor-pointer border border-rose-700/50"
+                            className="py-1.5 px-2 bg-white hover:bg-rose-600 hover:text-white hover:border-rose-600 text-[#244130] font-bold rounded-xl text-[11px] flex items-center justify-center gap-1 cursor-pointer border border-[#CFDCCB] shadow-2xs transition-all duration-200"
                             title="Delete last perimeter vertex (Backspace / ⌫)"
                         >
                             <Undo2 size={12} /> {isKa ? 'უკან' : 'Back'} ⌫
@@ -5240,7 +5260,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                         <button
                             type="button"
                             onClick={handleClearPerimeter}
-                            className="py-1.5 px-2 bg-slate-800 hover:bg-red-900/50 text-slate-300 hover:text-red-300 font-bold rounded-xl text-[11px] flex items-center justify-center gap-1 cursor-pointer"
+                            className="py-1.5 px-2 bg-white hover:bg-red-600 hover:text-white hover:border-red-600 text-[#244130] font-bold rounded-xl text-[11px] flex items-center justify-center gap-1 cursor-pointer border border-[#CFDCCB] shadow-2xs transition-all duration-200"
                             title="Clear drawn perimeter"
                         >
                             <Trash2 size={12} /> {isKa ? 'გასუფთავება' : 'Clear'}
@@ -5248,7 +5268,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                         <button
                             type="button"
                             onClick={() => setActiveTool('select')}
-                            className="py-1.5 px-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl text-[11px] flex items-center justify-center gap-1 cursor-pointer"
+                            className="py-1.5 px-2 bg-white hover:bg-[#0284c7] hover:text-white hover:border-[#0284c7] text-[#244130] font-bold rounded-xl text-[11px] flex items-center justify-center gap-1 cursor-pointer border border-[#CFDCCB] shadow-2xs transition-all duration-200"
                         >
                             ✓ {isKa ? 'დასრულება' : 'Done'}
                         </button>
@@ -5258,34 +5278,34 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
 
             {/* FLOATING DRAW HILL RIDGE HELPER CARD */}
             {activeTool === 'draw_hill' && (
-                <div className="absolute top-24 left-4 z-[1140] p-3 bg-slate-900/95 border border-amber-500/80 rounded-2xl shadow-2xl backdrop-blur-xl flex flex-col gap-2 text-xs text-white max-w-xs animate-in slide-in-from-left-2 duration-150">
+                <div className="absolute top-24 left-4 z-[1140] p-3 bg-[#FAFBF8]/95 border border-amber-400 rounded-2xl shadow-2xl backdrop-blur-xl flex flex-col gap-2 text-xs text-[#163022] max-w-xs animate-in slide-in-from-left-2 duration-150">
                     <div className="flex items-center justify-between">
-                        <span className="font-black text-amber-300 flex items-center gap-1.5 uppercase text-[11px]">
+                        <span className="font-black text-amber-800 flex items-center gap-1.5 uppercase text-[11px]">
                             🏔️ {isKa ? 'ბორცვის ქედის დახატვა' : 'Drawing Hill Ridge Spine'}
                         </span>
-                        <span className="px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 font-mono text-[10px] font-bold border border-amber-700/60">
+                        <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-mono text-[10px] font-bold border border-amber-300">
                             {hillSpineProfile.points.length} pts
                         </span>
                     </div>
-                    <p className="text-[11px] text-slate-300 leading-tight">
+                    <p className="text-[11px] text-[#4F6C5B] leading-tight">
                         {isKa 
                             ? 'დააწკაპუნეთ რუკაზე წერტილების (A, B, C...) დასასმელად. წასაშლელად გამოიყენეთ Back ღილაკი ან Backspace.'
                             : 'Click on map to drop ridge points (A, B, C...). Press Back button or Backspace key to remove the last edited point.'}
                     </p>
                     {hillSpineProfile.points.length >= 2 && (
-                        <div className="flex items-center justify-between text-[11px] font-mono text-slate-300 bg-slate-950/70 p-1.5 rounded-lg border border-slate-800">
+                        <div className="flex items-center justify-between text-[11px] font-mono text-[#163022] bg-white p-1.5 rounded-lg border border-[#E2EBE0] shadow-2xs">
                             <span>Length: <b>{measuredHillLengthM}m</b></span>
                             <span>Apex: <b>+{activePoint.peakHeightM}m</b></span>
                         </div>
                     )}
 
                     {/* Pre-set Height for Next Point */}
-                    <div className="p-2 rounded-xl bg-slate-950/80 border border-amber-500/50 space-y-1.5 font-mono text-[11px]">
+                    <div className="p-2 rounded-xl bg-white border border-[#E2EBE0] space-y-1.5 font-mono text-[11px] shadow-2xs">
                         <div className="flex items-center justify-between">
-                            <span className="text-amber-300 font-bold flex items-center gap-1">
+                            <span className="text-amber-800 font-bold flex items-center gap-1">
                                 <Mountain size={12} /> {isKa ? 'წერტილის სიმაღლე (Z):' : 'Point Height (Z):'}
                             </span>
-                            <span className="text-white font-black text-xs">
+                            <span className="text-[#163022] font-black text-xs">
                                 +{drawingPointHeight}m
                             </span>
                         </div>
@@ -5296,7 +5316,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                                 max="60"
                                 value={drawingPointHeight}
                                 onChange={(e) => setDrawingPointHeight(Number(e.target.value))}
-                                className="flex-1 accent-amber-400 cursor-pointer"
+                                className="flex-1 accent-amber-500 cursor-pointer"
                             />
                             <div className="flex items-center gap-1">
                                 {[10, 20, 30, 45].map((h) => (
@@ -5304,10 +5324,10 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                                         key={`quick-h-${h}`}
                                         type="button"
                                         onClick={() => setDrawingPointHeight(h)}
-                                        className={`px-1.5 py-0.5 rounded text-[9px] font-bold cursor-pointer transition-colors ${
+                                        className={`px-1.5 py-0.5 rounded text-[9px] font-bold cursor-pointer transition-all duration-200 border border-[#CFDCCB] shadow-2xs ${
                                             drawingPointHeight === h 
-                                                ? 'bg-amber-500 text-slate-950' 
-                                                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                                                ? 'bg-amber-500 text-slate-950 border-amber-500 font-black' 
+                                                : 'bg-[#EEF3EA] text-[#244130] hover:bg-amber-500 hover:text-slate-900'
                                         }`}
                                     >
                                         +{h}m
@@ -5317,12 +5337,12 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                         </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-800">
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-[#D8E3D4]">
                         <button
                             type="button"
                             onClick={handleDeleteLastEditedPoint}
                             disabled={hillSpineProfile.points.length === 0}
-                            className="flex-1 py-1.5 px-2 bg-rose-950/80 hover:bg-rose-900 text-rose-200 font-bold rounded-xl text-[11px] flex items-center justify-center gap-1 cursor-pointer border border-rose-700/50"
+                            className="flex-1 py-1.5 px-2 bg-white hover:bg-rose-600 hover:text-white hover:border-rose-600 text-[#244130] font-bold rounded-xl text-[11px] flex items-center justify-center gap-1 cursor-pointer border border-[#CFDCCB] shadow-2xs transition-all duration-200"
                             title="Delete last edited point (Backspace / ⌫)"
                         >
                             <Undo2 size={12} /> {isKa ? 'უკან წაშლა' : 'Back'} ⌫
@@ -5330,7 +5350,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                         <button
                             type="button"
                             onClick={handleDeleteWholeSlope}
-                            className="py-1.5 px-2 bg-slate-800 hover:bg-red-900/60 text-slate-300 hover:text-red-200 font-bold rounded-xl text-[11px] flex items-center justify-center gap-1 cursor-pointer"
+                            className="py-1.5 px-2 bg-white hover:bg-red-600 hover:text-white hover:border-red-600 text-[#244130] font-bold rounded-xl text-[11px] flex items-center justify-center gap-1 cursor-pointer border border-[#CFDCCB] shadow-2xs transition-all duration-200"
                             title="Delete whole slope"
                         >
                             <Trash2 size={12} /> {isKa ? 'წაშლა' : 'Delete Slope'}
@@ -5338,7 +5358,7 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                         <button
                             type="button"
                             onClick={() => setActiveTool('select')}
-                            className="py-1.5 px-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl text-[11px] flex items-center justify-center gap-1 cursor-pointer"
+                            className="py-1.5 px-2 bg-white hover:bg-[#0284c7] hover:text-white hover:border-[#0284c7] text-[#244130] font-bold rounded-xl text-[11px] flex items-center justify-center gap-1 cursor-pointer border border-[#CFDCCB] shadow-2xs transition-all duration-200"
                         >
                             ✓ {isKa ? 'დასრულება' : 'Done'}
                         </button>
@@ -5628,183 +5648,61 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
             {/* 3D FULL VIEW MODE (WHEN 3D IS SWAPPED TO MAIN VIEWPORT) */}
             {is3dMainView && (
                 <div className="absolute inset-0 z-0 w-full h-full bg-slate-950 overflow-hidden">
-                    <Sandbox3DTerrainCanvas
-                        cameras={testCameras}
-                        activeCameraId={activeCamera.id}
-                        onSelectCamera={setActiveCameraId}
-                        onSelectDevice={handleSelectDevice}
-                        elevationExaggeration={elevationExaggeration}
-                        soilSensors={testSoilSensors}
-                        waterSensors={testWaterSensors}
-                        workersGps={testWorkersGps}
-                        droneMission={testDroneMission}
-                        baseLat={baseLat}
-                        baseLng={baseLng}
-                        hillSpineProfile={hillSpineProfile}
-                        hillProfiles={hillProfiles}
-                        slopeObjects={slopeObjects}
-                        onAddSpinePoint={handleAddSpinePointAtCoords}
-                        onUpdateSpinePoint={updatePointById}
-                        onUpdatePerimeterVertex={handleUpdatePerimeterVertex}
-                        onDeleteLastPoint={handleDeleteLastEditedPoint}
-                        onDeleteSlope={handleDeleteWholeSlope}
-                        onDeleteSpinePoint={handleDeleteSpinePoint}
-                        showBaseGrid={layerVisibility.baseGrid}
-                        showHill1={layerVisibility.hill1}
-                        showSlope1={layerVisibility.slope1}
-                        showPhotoPins={layerVisibility.photoPins}
-                        perimeterVertices={perimeterVertices}
-                        photoPins={photoPins}
-                        onSelectPhotoPin={(pin) => {
-                            setSelectedPhotoPin(pin);
-                            setIsPhotoModalOpen(true);
-                        }}
-                        viewMode={sandbox3dMode}
-                        hiddenCameraIds={hiddenCameraIds}
-                        isSatelliteDemLoaded={isSatelliteDemLoaded}
-                        terrainUpdateCounter={terrainCounter}
-                        isMainFullView={true}
-                        onSwap2d3d={() => setIs3dMainView(false)}
-                        onSwitchTo2D={() => setIs3dMainView(false)}
-                        isKa={isKa}
-                    />
-
-                    {/* Restore 2D MiniMap floating button if PiP was closed */}
-                    {isPiPHidden && (
-                        <button
-                            type="button"
-                            onClick={() => setIsPiPHidden(false)}
-                            className="fixed bottom-4 right-4 z-[1200] px-4 py-2 bg-slate-900/95 border border-cyan-500/50 text-cyan-300 hover:text-white rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-2xl backdrop-blur-xl cursor-pointer hover:bg-cyan-900/40 transition-all active:scale-95"
-                        >
-                            <MapIcon size={14} className="text-cyan-400" />
-                            <span>🗺️ {isKa ? '2D რუკის გამოჩენა' : 'Show 2D MiniMap'}</span>
-                        </button>
-                    )}
-                </div>
-            )}
-
-            {/* FLOATING 3D PIP VIEWPORT WINDOW (WHEN 2D IS MAIN) */}
-            {!is3dMainView && is3dWindowOpen && (
-                <div 
-                    data-pip-container="true"
-                    style={pipPos ? {
-                        position: 'absolute',
-                        left: `${pipPos.x}px`,
-                        top: `${pipPos.y}px`,
-                        bottom: 'auto',
-                        right: 'auto'
-                    } : undefined}
-                    className={`
-                        ${is3dWindowMaximized 
-                            ? 'fixed inset-4 z-[2500] rounded-3xl' 
-                            : is3dMinimized
-                                ? 'absolute bottom-4 right-4 z-[1150] w-auto h-auto'
-                                : 'absolute bottom-4 right-4 z-[1150] w-[360px] sm:w-[460px] h-[280px] sm:h-[350px] rounded-2xl'
-                        }
-                        bg-slate-950/95 border border-cyan-500/40 shadow-2xl overflow-hidden backdrop-blur-xl flex flex-col transition-all
-                    `}
-                >
-                    {is3dMinimized ? (
-                        <div className="p-2 bg-slate-900/90 border border-slate-800 rounded-xl flex items-center gap-2 text-xs">
-                            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-                            <span className="font-mono font-bold text-cyan-300">3D DEM PiP</span>
-                            <button
-                                type="button"
-                                onClick={() => setIs3dMinimized(false)}
-                                className="px-2 py-0.5 bg-cyan-600 hover:bg-cyan-500 text-white text-[10px] font-bold rounded cursor-pointer"
-                            >
-                                Expand
-                            </button>
+                    {!is3dConnected ? (
+                        <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center bg-radial from-slate-900 to-slate-950 text-slate-100 select-none">
+                            <div className="w-16 h-16 rounded-3xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-4 shadow-lg shadow-emerald-500/5">
+                                <Layers className="w-8 h-8" />
+                            </div>
+                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 text-[11px] font-mono text-emerald-400 mb-2">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                {isKa ? 'გარე ინსტრუმენტი (Standby)' : 'External Tool (Zero-RAM Standby)'}
+                            </div>
+                            <h3 className="text-base font-black text-white tracking-wide mb-1">
+                                {isKa ? '3D DEM რელიეფის ძრავა (Three.js WebGL)' : '3D DEM Terrain Studio (WebGL)'}
+                            </h3>
+                            <p className="text-xs text-slate-400 max-w-md leading-relaxed mb-5">
+                                {isKa 
+                                    ? '3D რელიეფი დგას პროექტის გარეთ ოპტიმალური სისწრაფისთვის. დააჭირეთ დაკავშირების ღილაკს მხოლოდ მაშინ, როდესაც გჭირდებათ 3D რელიეფის შემოწმება.'
+                                    : 'The 3D Terrain Engine stands outside the project to maximize speed and preserve GPU memory. Connect it only when 3D inspection is required.'}
+                            </p>
+                            <div className="flex flex-wrap items-center justify-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={handleConnect3D}
+                                    className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-600/30 transition-all hover:scale-105 active:scale-95"
+                                >
+                                    <Sparkles className="w-4 h-4" />
+                                    <span>{isKa ? '3D-ს პროექტთან დაკავშირება' : 'Connect 3D View to Project'}</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setIs3dMainView(false)}
+                                    className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs cursor-pointer transition-colors"
+                                >
+                                    {isKa ? '2D რუკაზე დაბრუნება' : 'Back to 2D Map'}
+                                </button>
+                            </div>
                         </div>
                     ) : (
                         <>
-                            {/* PiP Header with Drag Handle */}
-                            <div 
-                                onPointerDown={handlePipPointerDown}
-                                onPointerMove={handlePipPointerMove}
-                                onPointerUp={handlePipPointerUp}
-                                className="p-2 sm:p-2.5 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between text-xs shrink-0 select-none cursor-grab active:cursor-grabbing"
-                            >
-                                <div className="flex items-center gap-2">
-                                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-                                    <span className="font-black text-slate-100 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                                        🌐 3D DEM Sandbox
-                                    </span>
-                                </div>
-
-                                <div className="flex items-center gap-1.5">
-                                    {/* Swap 2D / 3D Button */}
-                                    <button
-                                        type="button"
-                                        onClick={() => setIs3dMainView(true)}
-                                        className="px-2 py-0.5 bg-cyan-600/80 hover:bg-cyan-500 text-white font-bold rounded text-[10px] flex items-center gap-1 cursor-pointer transition-colors"
-                                        title="Swap places: make 3D the full screen main window"
-                                    >
-                                        <span>⇄ Swap</span>
-                                    </button>
-
-                                    {/* 3D View Angle Mode Buttons */}
-                                    <div className="flex items-center gap-0.5 bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[10px]">
-                                        <button
-                                            type="button"
-                                            onClick={() => setSandbox3dMode('orbit')}
-                                            className={`px-1.5 py-0.5 rounded font-bold ${sandbox3dMode === 'orbit' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                                            title="3D Orbit Mode"
-                                        >
-                                            Orbit
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setSandbox3dMode('drone_cockpit')}
-                                            className={`px-1.5 py-0.5 rounded font-bold ${sandbox3dMode === 'drone_cockpit' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                                            title="Drone POV Cockpit"
-                                        >
-                                            Drone
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setSandbox3dMode('camera_fov')}
-                                            className={`px-1.5 py-0.5 rounded font-bold ${sandbox3dMode === 'camera_fov' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                                            title="Active Camera Lens POV"
-                                        >
-                                            Cam
-                                        </button>
-                                    </div>
-
-                                    {/* Minimize */}
-                                    <button
-                                        type="button"
-                                        onClick={() => setIs3dMinimized(true)}
-                                        className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 cursor-pointer"
-                                        title="Minimize 3D Window"
-                                    >
-                                        <Minimize2 size={13} />
-                                    </button>
-
-                                    {/* Maximize / Solo */}
-                                    <button
-                                        type="button"
-                                        onClick={() => setIs3dWindowMaximized(!is3dWindowMaximized)}
-                                        className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 cursor-pointer"
-                                        title={is3dWindowMaximized ? 'Restore Window' : 'Maximize 3D Window'}
-                                    >
-                                        <Maximize2 size={13} />
-                                    </button>
-
-                                    {/* Close */}
-                                    <button
-                                        type="button"
-                                        onClick={() => setIs3dWindowOpen(false)}
-                                        className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 cursor-pointer"
-                                        title="Close 3D Window"
-                                    >
-                                        <X size={13} />
-                                    </button>
-                                </div>
+                            {/* Top Disconnect Action Bar */}
+                            <div className="absolute top-4 left-4 z-[1200] flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={handleDisconnect3D}
+                                    className="px-3 py-1.5 bg-red-600/90 hover:bg-red-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg backdrop-blur-md cursor-pointer transition-all active:scale-95"
+                                    title={isKa ? '3D-ს გათიშვა Standby რეჟიმში' : 'Disconnect 3D to Standby'}
+                                >
+                                    <span>🔌 {isKa ? '3D-ს გათიშვა (Standby)' : 'Disconnect 3D (Standby)'}</span>
+                                </button>
                             </div>
 
-                            {/* 3D Canvas Body */}
-                            <div className="flex-1 w-full relative bg-slate-950">
+                            <Suspense fallback={
+                                <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 font-mono text-xs gap-3">
+                                    <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                                    <span>Loading 3D Three.js Terrain Engine...</span>
+                                </div>
+                            }>
                                 <Sandbox3DTerrainCanvas
                                     cameras={testCameras}
                                     activeCameraId={activeCamera.id}
@@ -5840,9 +5738,233 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                                     hiddenCameraIds={hiddenCameraIds}
                                     isSatelliteDemLoaded={isSatelliteDemLoaded}
                                     terrainUpdateCounter={terrainCounter}
-                                    onSwap2d3d={() => setIs3dMainView(true)}
+                                    isMainFullView={true}
+                                    onSwap2d3d={() => setIs3dMainView(false)}
+                                    onSwitchTo2D={() => setIs3dMainView(false)}
                                     isKa={isKa}
                                 />
+                            </Suspense>
+                        </>
+                    )}
+
+                    {/* Restore 2D MiniMap floating button if PiP was closed */}
+                    {isPiPHidden && (
+                        <button
+                            type="button"
+                            onClick={() => setIsPiPHidden(false)}
+                            className="fixed bottom-4 right-4 z-[1200] px-4 py-2 bg-[#FAFBF8]/95 border border-[#CFDCCB] text-[#1E3B2B] hover:bg-[#0284c7] hover:text-white hover:border-[#0284c7] rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-2xl backdrop-blur-xl cursor-pointer transition-all duration-200 active:scale-95"
+                        >
+                            <MapIcon size={14} className="text-[#0284c7]" />
+                            <span>🗺️ {isKa ? '2D რუკის გამოჩენა' : 'Show 2D MiniMap'}</span>
+                        </button>
+                    )}
+                </div>
+            )}
+
+            {/* FLOATING 3D PIP VIEWPORT WINDOW (WHEN 2D IS MAIN) */}
+            {!is3dMainView && is3dWindowOpen && (
+                <div 
+                    data-pip-container="true"
+                    style={pipPos ? {
+                        position: 'absolute',
+                        left: `${pipPos.x}px`,
+                        top: `${pipPos.y}px`,
+                        bottom: 'auto',
+                        right: 'auto'
+                    } : undefined}
+                    className={`
+                        ${is3dWindowMaximized 
+                            ? 'fixed inset-4 z-[2500] rounded-3xl' 
+                            : is3dMinimized
+                                ? 'absolute bottom-4 right-4 z-[1150] w-auto h-auto'
+                                : 'absolute bottom-4 right-4 z-[1150] w-[360px] sm:w-[460px] h-[280px] sm:h-[350px] rounded-2xl'
+                        }
+                        bg-[#FAFBF8]/95 border border-[#D8E3D4] shadow-2xl overflow-hidden backdrop-blur-xl flex flex-col transition-all text-[#163022]
+                    `}
+                >
+                    {is3dMinimized ? (
+                        <div className="p-2 bg-[#EEF3EA] border border-[#D8E3D4] rounded-xl flex items-center gap-2 text-xs text-[#163022]">
+                            <span className="w-2 h-2 rounded-full bg-[#0284c7] animate-pulse" />
+                            <span className="font-mono font-bold text-[#163022]">3D DEM PiP</span>
+                            <button
+                                type="button"
+                                onClick={() => setIs3dMinimized(false)}
+                                className="px-2.5 py-1 bg-white hover:bg-[#0284c7] hover:text-white text-[#244130] border border-[#CFDCCB] text-[10px] font-bold rounded cursor-pointer transition-all duration-200"
+                            >
+                                Expand
+                            </button>
+                        </div>
+                    ) : (
+                        <>
+                            {/* PiP Header with Drag Handle */}
+                            <div 
+                                onPointerDown={handlePipPointerDown}
+                                onPointerMove={handlePipPointerMove}
+                                onPointerUp={handlePipPointerUp}
+                                className="p-2 sm:p-2.5 bg-[#EEF3EA] border-b border-[#D8E3D4] flex items-center justify-between text-xs shrink-0 select-none cursor-grab active:cursor-grabbing text-[#163022]"
+                            >
+                                <div className="flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-[#0284c7] animate-pulse" />
+                                    <span className="font-black text-[#163022] uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                                        🌐 3D DEM Sandbox
+                                    </span>
+                                </div>
+
+                                <div className="flex items-center gap-1.5">
+                                    {/* Disconnect 3D button when active */}
+                                    {is3dConnected && (
+                                        <button
+                                            type="button"
+                                            onClick={handleDisconnect3D}
+                                            className="px-2 py-0.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold rounded text-[10px] flex items-center gap-1 cursor-pointer transition-colors"
+                                            title={isKa ? '3D-ს გათიშვა Standby რეჟიმში' : 'Disconnect 3D to external standby'}
+                                        >
+                                            <span>🔌 {isKa ? 'გათიშვა' : 'Disconnect'}</span>
+                                        </button>
+                                    )}
+
+                                    {/* Swap 2D / 3D Button */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setIs3dMainView(true)}
+                                        className="px-2.5 py-1 bg-white hover:bg-[#0284c7] hover:text-white text-[#244130] border border-[#CFDCCB] font-bold rounded text-[10px] flex items-center gap-1 cursor-pointer transition-all duration-200 shadow-2xs"
+                                        title="Swap places: make 3D the full screen main window"
+                                    >
+                                        <span>⇄ Swap</span>
+                                    </button>
+
+                                    {/* 3D View Angle Mode Buttons */}
+                                    <div className="flex items-center gap-0.5 bg-white p-0.5 rounded-lg border border-[#CFDCCB] text-[10px]">
+                                        <button
+                                            type="button"
+                                            onClick={() => setSandbox3dMode('orbit')}
+                                            className={`px-2 py-0.5 rounded font-bold transition-all duration-200 ${sandbox3dMode === 'orbit' ? 'bg-[#0284c7] text-white shadow-xs' : 'text-[#244130] hover:bg-[#0284c7] hover:text-white'}`}
+                                            title="3D Orbit Mode"
+                                        >
+                                            Orbit
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSandbox3dMode('drone_cockpit')}
+                                            className={`px-2 py-0.5 rounded font-bold transition-all duration-200 ${sandbox3dMode === 'drone_cockpit' ? 'bg-[#0284c7] text-white shadow-xs' : 'text-[#244130] hover:bg-[#0284c7] hover:text-white'}`}
+                                            title="Drone POV Cockpit"
+                                        >
+                                            Drone
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSandbox3dMode('camera_fov')}
+                                            className={`px-2 py-0.5 rounded font-bold transition-all duration-200 ${sandbox3dMode === 'camera_fov' ? 'bg-[#2563eb] text-white shadow-xs' : 'text-[#244130] hover:bg-[#2563eb] hover:text-white'}`}
+                                            title="Active Camera Lens POV"
+                                        >
+                                            Cam
+                                        </button>
+                                    </div>
+
+                                    {/* Minimize */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setIs3dMinimized(true)}
+                                        className="p-1 text-[#4A6753] hover:text-[#163022] rounded hover:bg-[#D8E3D4] cursor-pointer transition-colors"
+                                        title="Minimize 3D Window"
+                                    >
+                                        <Minimize2 size={13} />
+                                    </button>
+
+                                    {/* Maximize / Solo */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setIs3dWindowMaximized(!is3dWindowMaximized)}
+                                        className="p-1 text-[#4A6753] hover:text-[#163022] rounded hover:bg-[#D8E3D4] cursor-pointer transition-colors"
+                                        title={is3dWindowMaximized ? 'Restore Window' : 'Maximize 3D Window'}
+                                    >
+                                        <Maximize2 size={13} />
+                                    </button>
+
+                                    {/* Close */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setIs3dWindowOpen(false)}
+                                        className="p-1 text-[#4A6753] hover:text-[#163022] rounded hover:bg-[#D8E3D4] cursor-pointer transition-colors"
+                                        title="Close 3D Window"
+                                    >
+                                        <X size={13} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* 3D Canvas Body */}
+                            <div className="flex-1 w-full relative bg-slate-950 overflow-hidden">
+                                {!is3dConnected ? (
+                                    <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center bg-radial from-slate-900 to-slate-950 select-none">
+                                        <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-2.5">
+                                            <Layers className="w-6 h-6" />
+                                        </div>
+                                        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-[10px] font-mono text-emerald-400 mb-1.5">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                            {isKa ? 'გარე ინსტრუმენტი (Standby)' : 'Standby (Zero-RAM Tool)'}
+                                        </div>
+                                        <p className="text-[11px] text-slate-400 max-w-xs mb-3 leading-relaxed">
+                                            {isKa 
+                                                ? '3D რელიეფის ძრავა დგას პროექტის გარეთ. დააჭირეთ დაკავშირებას მხოლოდ საჭიროებისას.' 
+                                                : '3D Terrain Engine stands outside the project. Connect only when needed.'}
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={handleConnect3D}
+                                            className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-lg shadow-emerald-600/30 transition-transform active:scale-95"
+                                        >
+                                            <Sparkles className="w-3.5 h-3.5" />
+                                            <span>{isKa ? '3D-ს დაკავშირება' : 'Connect 3D View'}</span>
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <Suspense fallback={
+                                        <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 font-mono text-xs gap-2">
+                                            <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                                            <span>Loading 3D Three.js Engine...</span>
+                                        </div>
+                                    }>
+                                        <Sandbox3DTerrainCanvas
+                                            cameras={testCameras}
+                                            activeCameraId={activeCamera.id}
+                                            onSelectCamera={setActiveCameraId}
+                                            onSelectDevice={handleSelectDevice}
+                                            elevationExaggeration={elevationExaggeration}
+                                            soilSensors={testSoilSensors}
+                                            waterSensors={testWaterSensors}
+                                            workersGps={testWorkersGps}
+                                            droneMission={testDroneMission}
+                                            baseLat={baseLat}
+                                            baseLng={baseLng}
+                                            hillSpineProfile={hillSpineProfile}
+                                            hillProfiles={hillProfiles}
+                                            slopeObjects={slopeObjects}
+                                            onAddSpinePoint={handleAddSpinePointAtCoords}
+                                            onUpdateSpinePoint={updatePointById}
+                                            onUpdatePerimeterVertex={handleUpdatePerimeterVertex}
+                                            onDeleteLastPoint={handleDeleteLastEditedPoint}
+                                            onDeleteSlope={handleDeleteWholeSlope}
+                                            onDeleteSpinePoint={handleDeleteSpinePoint}
+                                            showBaseGrid={layerVisibility.baseGrid}
+                                            showHill1={layerVisibility.hill1}
+                                            showSlope1={layerVisibility.slope1}
+                                            showPhotoPins={layerVisibility.photoPins}
+                                            perimeterVertices={perimeterVertices}
+                                            photoPins={photoPins}
+                                            onSelectPhotoPin={(pin) => {
+                                                setSelectedPhotoPin(pin);
+                                                setIsPhotoModalOpen(true);
+                                            }}
+                                            viewMode={sandbox3dMode}
+                                            hiddenCameraIds={hiddenCameraIds}
+                                            isSatelliteDemLoaded={isSatelliteDemLoaded}
+                                            terrainUpdateCounter={terrainCounter}
+                                            onSwap2d3d={() => setIs3dMainView(true)}
+                                            isKa={isKa}
+                                        />
+                                    </Suspense>
+                                )}
                             </div>
                         </>
                     )}
@@ -5918,24 +6040,24 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
 
             {/* FLOATING DRONE LIVE CAMERA STREAM WINDOW */}
             {isDroneLiveCameraOpen && (
-                <div className="fixed bottom-4 right-4 z-[2600] w-96 bg-slate-950/95 border border-cyan-500/40 rounded-3xl shadow-2xl overflow-hidden backdrop-blur-xl text-xs text-slate-200">
-                    <div className="p-3 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between">
+                <div className="fixed bottom-4 right-4 z-[2600] w-96 bg-[#FAFBF8]/95 border border-[#D8E3D4] rounded-3xl shadow-2xl overflow-hidden backdrop-blur-xl text-xs text-[#163022]">
+                    <div className="p-3 bg-[#EEF3EA] border-b border-[#D8E3D4] flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-                            <span className="font-black uppercase tracking-wider text-slate-100 text-xs">
+                            <div className="w-2 h-2 rounded-full bg-[#0284c7] animate-pulse" />
+                            <span className="font-black uppercase tracking-wider text-[#163022] text-xs">
                                 🛸 {isKa ? 'დრონის პირდაპირი კამერის ხედი' : 'Drone Live Gimbal Feed'}
                             </span>
                         </div>
                         <div className="flex items-center gap-2">
                             {testDroneMission.isRecordingVideo && (
-                                <span className="px-2 py-0.5 rounded-full bg-red-600/80 text-white font-mono text-[9px] font-bold animate-pulse flex items-center gap-1">
+                                <span className="px-2 py-0.5 rounded-full bg-red-600 text-white font-mono text-[9px] font-bold animate-pulse flex items-center gap-1 shadow-xs">
                                     <span className="w-1.5 h-1.5 rounded-full bg-white" /> REC 00:{testDroneMission.recordingSeconds < 10 ? `0${testDroneMission.recordingSeconds}` : testDroneMission.recordingSeconds}
                                 </span>
                             )}
                             <button
                                 type="button"
                                 onClick={() => setIsDroneLiveCameraOpen(false)}
-                                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
+                                className="p-1 text-[#4A6753] hover:text-[#163022] rounded-lg hover:bg-[#D8E3D4] cursor-pointer transition-colors"
                             >
                                 <X size={15} />
                             </button>
@@ -5961,22 +6083,22 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                         </div>
                     </div>
 
-                    <div className="p-3 bg-slate-950 flex items-center justify-between gap-2 border-t border-slate-800">
+                    <div className="p-3 bg-[#FAFBF8] flex items-center justify-between gap-2 border-t border-[#D8E3D4]">
                         <div className="flex items-center gap-1.5">
                             <button
                                 type="button"
                                 onClick={() => handleDroneTakePhoto('Active Aerial View')}
-                                className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-bold flex items-center gap-1 cursor-pointer"
+                                className="px-3 py-1.5 bg-white hover:bg-[#0284c7] hover:text-white text-[#244130] border border-[#CFDCCB] rounded-xl font-bold flex items-center gap-1 cursor-pointer transition-all duration-200 shadow-2xs"
                             >
                                 <PhotoIcon size={12} /> Photo
                             </button>
                             <button
                                 type="button"
                                 onClick={() => handleDroneToggleRecordVideo('Active Aerial View')}
-                                className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1 cursor-pointer ${
+                                className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1 cursor-pointer transition-all duration-200 shadow-2xs ${
                                     testDroneMission.isRecordingVideo 
-                                        ? 'bg-red-600 text-white' 
-                                        : 'bg-slate-800 hover:bg-slate-700 text-white'
+                                        ? 'bg-red-600 text-white border border-red-600' 
+                                        : 'bg-white hover:bg-[#dc2626] hover:text-white text-[#244130] border border-[#CFDCCB]'
                                 }`}
                             >
                                 <Film size={12} /> {testDroneMission.isRecordingVideo ? 'Stop' : 'Record'}
@@ -6119,65 +6241,65 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
 
             {/* EXPORT CONFIRMATION MODAL */}
             {isExportModalOpen && (
-                <div className="fixed inset-0 z-[3000] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-                    <div className="w-full max-w-lg bg-slate-950 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4">
-                        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="fixed inset-0 z-[3000] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="w-full max-w-lg bg-[#FAFBF8] border border-[#D8E3D4] rounded-3xl p-6 shadow-2xl space-y-4 text-[#163022]">
+                        <div className="flex items-center justify-between border-b border-[#D8E3D4] pb-3">
                             <div className="flex items-center gap-2.5">
-                                <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                <div className="p-2 rounded-xl bg-[#EEF3EA] text-[#16a34a] border border-[#CFDCCB]">
                                     <Layers size={18} />
                                 </div>
-                                <h3 className="text-base font-black text-slate-100 uppercase tracking-wide">
+                                <h3 className="text-base font-black text-[#163022] uppercase tracking-wide">
                                     {isKa ? 'მთავარ რუკაზე ახალ ფენად დამატება' : 'Export Tested Hardware as New Layer'}
                                 </h3>
                             </div>
                             <button
                                 type="button"
                                 onClick={() => setIsExportModalOpen(false)}
-                                className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-900 cursor-pointer"
+                                className="p-1.5 text-[#4A6753] hover:text-[#163022] rounded-xl hover:bg-[#EEF3EA] cursor-pointer transition-colors"
                             >
                                 <X size={16} />
                             </button>
                         </div>
 
-                        <p className="text-xs text-slate-300 leading-relaxed">
+                        <p className="text-xs text-[#4A6753] leading-relaxed">
                             {isKa 
                                 ? 'თქვენ მიერ ლაბორატორიაში წარმატებით გამოცდილი მოწყობილობები დაემატება მთავარ რუკაზე დამოუკიდებელ ახალ ფენად.' 
                                 : 'All tested hardware components will be committed as a pristine new layer on your Main Map Planner.'}
                         </p>
 
                         <div className="space-y-1.5">
-                            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                            <label className="text-[11px] font-bold uppercase tracking-wider text-[#4A6753]">
                                 {isKa ? 'ფენის დასახელება' : 'New Layer Name'}
                             </label>
                             <input
                                 type="text"
                                 value={exportLayerName}
                                 onChange={(e) => setExportLayerName(e.target.value)}
-                                className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-100 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                className="w-full px-3.5 py-2.5 bg-white border border-[#CFDCCB] rounded-xl text-[#163022] text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#16a34a]"
                             />
                         </div>
 
-                        <div className="p-3 bg-slate-900/80 rounded-2xl border border-slate-800 space-y-1 text-xs font-mono">
-                            <div className="text-blue-400">• {testCameras.length} Surveillance Cameras (ColorVu / PTZ with Tilt 4°)</div>
-                            <div className="text-cyan-400">• 1 Drone Mission ({testDroneMission.waypoints.length} Waypoints)</div>
-                            <div className="text-emerald-400">• {testSoilSensors.length} Soil Moisture & NPK Probes</div>
-                            <div className="text-sky-400">• {testWaterSensors.length} Water Flow Stations</div>
-                            <div className="text-purple-400">• {testWorkersGps.length} Worker GPS Trackers</div>
-                            <div className="text-amber-400">• 3D Ridge Slope Profile ({measuredHillLengthM}m, {hillSpineProfile.points.length} Cross-sections)</div>
+                        <div className="p-3 bg-[#EEF3EA] rounded-2xl border border-[#D8E3D4] space-y-1 text-xs font-mono text-[#2D4536]">
+                            <div className="text-blue-700 font-bold">• {testCameras.length} Surveillance Cameras (ColorVu / PTZ with Tilt 4°)</div>
+                            <div className="text-cyan-700 font-bold">• 1 Drone Mission ({testDroneMission.waypoints.length} Waypoints)</div>
+                            <div className="text-emerald-700 font-bold">• {testSoilSensors.length} Soil Moisture & NPK Probes</div>
+                            <div className="text-sky-700 font-bold">• {testWaterSensors.length} Water Flow Stations</div>
+                            <div className="text-purple-700 font-bold">• {testWorkersGps.length} Worker GPS Trackers</div>
+                            <div className="text-amber-700 font-bold">• 3D Ridge Slope Profile ({measuredHillLengthM}m, {hillSpineProfile.points.length} Cross-sections)</div>
                         </div>
 
-                        <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-800">
+                        <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-[#D8E3D4]">
                             <button
                                 type="button"
                                 onClick={() => setIsExportModalOpen(false)}
-                                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                                className="px-4 py-2 bg-white hover:bg-[#64748b] hover:text-white text-[#244130] border border-[#CFDCCB] rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer shadow-2xs"
                             >
                                 {isKa ? 'გაუქმება' : 'Cancel'}
                             </button>
                             <button
                                 type="button"
                                 onClick={handleCommitToMainMapPlanner}
-                                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-emerald-950/50 cursor-pointer active:scale-95 transition-all"
+                                className="px-5 py-2.5 bg-white hover:bg-[#16a34a] hover:text-white text-[#16a34a] border border-[#16a34a] rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-sm cursor-pointer active:scale-95 transition-all duration-200"
                             >
                                 <Check size={14} className="stroke-[3]" />
                                 <span>{isKa ? 'დადასტურება & ფენის დამატება' : 'Confirm & Deploy Layer'}</span>
@@ -6357,17 +6479,17 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
 
             {/* CLEAR MAP FULLY CONFIRMATION MODAL */}
             {isClearMapConfirmOpen && (
-                <div className="fixed inset-0 z-[2000] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-                    <div className="bg-slate-900 border border-red-500/60 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
+                <div className="fixed inset-0 z-[2000] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-[#FAFBF8] border border-[#D8E3D4] rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-in fade-in zoom-in-95 text-[#163022]">
                         <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 rounded-2xl bg-red-950/80 border border-red-600/60 flex items-center justify-center text-red-400 shrink-0">
+                            <div className="w-12 h-12 rounded-2xl bg-red-100 border border-red-200 flex items-center justify-center text-red-600 shrink-0">
                                 <Trash2 size={24} />
                             </div>
                             <div>
-                                <h3 className="text-base font-black text-white">
+                                <h3 className="text-base font-black text-[#163022]">
                                     {isKa ? 'რუკის სრული გასუფთავება?' : 'Clear Map Fully?'}
                                 </h3>
-                                <p className="text-xs text-slate-400 mt-0.5">
+                                <p className="text-xs text-[#4A6753] mt-0.5">
                                     {isKa
                                         ? 'ეს მოქმედება სრულად წაშლის ყველა დაყენებულ კამერას, დრონის მარშრუტს, სენსორებს, მუშებს და 3D რელიეფის ქედს.'
                                         : 'This will remove all placed surveillance cameras, drone waypoints, soil & water sensors, worker beacons, and 3D slope profiles from the map.'}
@@ -6375,28 +6497,28 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                             </div>
                         </div>
 
-                        <div className="p-3 bg-slate-950/80 rounded-2xl border border-slate-800 text-xs space-y-1.5 font-mono text-slate-300">
+                        <div className="p-3 bg-[#EEF3EA] rounded-2xl border border-[#D8E3D4] text-xs space-y-1.5 font-mono text-[#2D4536]">
                             <div className="flex justify-between">
                                 <span>📹 {isKa ? 'კამერები' : 'Surveillance Cameras'}:</span>
-                                <span className="font-bold text-red-300">{testCameras.length}</span>
+                                <span className="font-bold text-red-600">{testCameras.length}</span>
                             </div>
                             <div className="flex justify-between">
                                 <span>🏔️ {isKa ? 'ქედის საკვანძო წერტილები' : 'Slope Ridge Points'}:</span>
-                                <span className="font-bold text-amber-300">{hillSpineProfile.points.length} pts</span>
+                                <span className="font-bold text-amber-700">{hillSpineProfile.points.length} pts</span>
                             </div>
                             {customSlopePerimeter.length > 0 && (
                                 <div className="flex justify-between">
                                     <span>📐 {isKa ? 'პერიმეტრის წერტილები' : 'Perimeter Vertices'}:</span>
-                                    <span className="font-bold text-fuchsia-300">{customSlopePerimeter.length} pts</span>
+                                    <span className="font-bold text-purple-700">{customSlopePerimeter.length} pts</span>
                                 </div>
                             )}
                             <div className="flex justify-between">
                                 <span>🚁 {isKa ? 'დრონის მარშრუტი' : 'Drone Waypoints'}:</span>
-                                <span className="font-bold text-cyan-300">{testDroneMission.waypoints.length}</span>
+                                <span className="font-bold text-cyan-700">{testDroneMission.waypoints.length}</span>
                             </div>
                             <div className="flex justify-between">
                                 <span>🌱 {isKa ? 'ნიადაგის/წყლის სენსორები' : 'Sensors'}:</span>
-                                <span className="font-bold text-emerald-300">{testSoilSensors.length + testWaterSensors.length}</span>
+                                <span className="font-bold text-emerald-700">{testSoilSensors.length + testWaterSensors.length}</span>
                             </div>
                         </div>
 
@@ -6404,14 +6526,14 @@ export const HardwareTestingSandboxMap: React.FC<HardwareTestingSandboxMapProps>
                             <button
                                 type="button"
                                 onClick={() => setIsClearMapConfirmOpen(false)}
-                                className="flex-1 py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold text-xs cursor-pointer transition-colors"
+                                className="flex-1 py-2.5 px-4 bg-white hover:bg-[#64748b] hover:text-white text-[#244130] border border-[#CFDCCB] rounded-xl font-bold text-xs cursor-pointer transition-all duration-200 shadow-2xs"
                             >
                                 {isKa ? 'გაუქმება' : 'Cancel'}
                             </button>
                             <button
                                 type="button"
                                 onClick={executeClearMapFully}
-                                className="flex-1 py-2.5 px-4 bg-red-600 hover:bg-red-500 text-white rounded-xl font-black uppercase tracking-wider text-xs shadow-lg shadow-red-900/40 cursor-pointer transition-all active:scale-95"
+                                className="flex-1 py-2.5 px-4 bg-white hover:bg-[#dc2626] hover:text-white text-[#dc2626] border border-[#dc2626] rounded-xl font-black uppercase tracking-wider text-xs shadow-sm cursor-pointer transition-all duration-200 active:scale-95"
                             >
                                 {isKa ? 'დიახ, გასუფთავება' : 'Yes, Clear Map'}
                             </button>

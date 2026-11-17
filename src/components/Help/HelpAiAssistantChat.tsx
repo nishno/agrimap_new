@@ -4,7 +4,14 @@ import {
     ArrowRight, Compass, Building2, Tractor, Package, 
     Users, Banknote, HelpCircle, Lightbulb, ExternalLink, Key
 } from 'lucide-react';
-import { executeGeminiCall, getActiveGeminiApiKey, setCustomGeminiApiKey, testGeminiApiKey } from '../../services/geminiService';
+import { 
+    executeGeminiCall, 
+    getActiveGeminiApiKey, 
+    setCustomGeminiApiKey, 
+    testGeminiApiKey, 
+    cleanApiKey, 
+    triggerAiDiagnosticsModal 
+} from '../../services/geminiService';
 import { AppMode } from '../../types';
 import { toast } from 'sonner';
 
@@ -14,6 +21,8 @@ interface HelpAiAssistantChatProps {
     currentUser?: any;
 }
 
+import { AiSourceBadge } from '../AiSourceBadge';
+
 interface ChatMessage {
     id: string;
     sender: 'user' | 'assistant';
@@ -21,6 +30,11 @@ interface ChatMessage {
     timestamp: Date;
     actions?: Array<{ label: string; mode: AppMode }>;
     isKnowledgeFallback?: boolean;
+    source?: 'cloud' | 'local';
+    fallbackReason?: string;
+    fallbackCode?: number | string;
+    upstreamNotice?: any;
+    modelUsed?: string;
 }
 
 // Autonomous high-fidelity knowledge base engine
@@ -510,8 +524,9 @@ Ask me anything or select one of the quick guided questions below!`,
     }, []);
 
     const handleSaveCustomKey = async () => {
-        if (!customKeyInput.trim()) {
-            setCustomGeminiApiKey('');
+        const cleaned = cleanApiKey(customKeyInput);
+        if (!cleaned) {
+            await setCustomGeminiApiKey('');
             setHasActiveCustomKey(false);
             toast.success(isKa ? 'გამოყენებული იქნება სისტემური გასაღები' : 'Reverted to default API key');
             setShowKeyModal(false);
@@ -519,17 +534,25 @@ Ask me anything or select one of the quick guided questions below!`,
         }
 
         setIsTestingKey(true);
-        const isValid = await testGeminiApiKey(customKeyInput.trim());
+        const testRes = await testGeminiApiKey(cleaned);
         setIsTestingKey(false);
 
-        if (isValid) {
-            setCustomGeminiApiKey(customKeyInput.trim());
+        if (testRes.ok) {
+            await setCustomGeminiApiKey(cleaned);
             setHasActiveCustomKey(true);
             toast.success(isKa ? 'Gemini API გასაღები წარმატებით შეინახა!' : 'Gemini API Key validated & saved!');
             setShowKeyModal(false);
             setCustomKeyInput('');
+        } else if (testRes.statusCode === 402) {
+            toast.warning(
+                isKa 
+                    ? 'პროექტს (WMDA) ამოეწურა წინასწარი გადახდის კრედიტები (Code 402). იხილეთ დიაგნოსტიკა.' 
+                    : 'Project prepayment credits depleted (Code 402). View diagnostics & billing guide.'
+            );
+            setShowKeyModal(false);
+            triggerAiDiagnosticsModal('Prepayment credits depleted (Code 402)');
         } else {
-            toast.error(isKa ? 'გასაღების ვალიდაცია ვერ მოხერხდა. გადაამოწმეთ გასაღები.' : 'Key test failed. Please verify the API key.');
+            toast.error(testRes.title || (isKa ? 'გასაღების ვალიდაცია ვერ მოხერხდა. გადაამოწმეთ გასაღები.' : 'Key test failed. Please verify the API key.'));
         }
     };
 
@@ -640,6 +663,10 @@ DIRECTIVES & FORMATTING INSTRUCTIONS:
                 contents: `${systemPrompt}\n\nUSER QUESTION: ${query}`
             });
 
+            const isLocal = Boolean(response?.isAutonomousFallback || response?.source === 'local' || response?.modelUsed === 'autonomous-agri-core');
+            const fallbackReason = response?.fallbackReason || (isLocal ? 'Autonomous Agricultural Knowledge Core active' : undefined);
+            const fallbackCode = response?.fallbackCode || response?.upstreamNotice?.code || (isLocal ? 402 : undefined);
+
             if (response && response.text) {
                 const { cleanText, actions } = parseActionsFromResponse(response.text);
                 const assistantMsg: ChatMessage = {
@@ -649,13 +676,24 @@ DIRECTIVES & FORMATTING INSTRUCTIONS:
                     timestamp: new Date(),
                     actions: actions.length > 0 ? actions : [
                         { label: isKa ? 'SOP გზამკვლევი' : 'SOP Timeline', mode: 'guide' }
-                    ]
+                    ],
+                    isKnowledgeFallback: isLocal,
+                    source: isLocal ? 'local' : 'cloud',
+                    fallbackReason,
+                    fallbackCode,
+                    upstreamNotice: response?.upstreamNotice,
+                    modelUsed: response?.modelUsed || (isLocal ? 'autonomous-agri-core' : 'gemini-3.8-flash')
                 };
                 setMessages(prev => [...prev, assistantMsg]);
             } else {
                 throw new Error('No response from AI engine');
             }
-        } catch (error) {
+        } catch (error: any) {
+            const errStr = error?.message || String(error);
+            const isPrepayment = errStr.includes('402') || errStr.includes('prepayment');
+            const isQuota = errStr.includes('429');
+            const isKey = errStr.includes('400') || errStr.includes('API_KEY');
+
             // High-fidelity fallback to the internal comprehensive knowledge engine
             const fallback = generateKnowledgeBaseResponse(query, language || 'en', isKa);
             const assistantMsg: ChatMessage = {
@@ -664,7 +702,17 @@ DIRECTIVES & FORMATTING INSTRUCTIONS:
                 text: fallback.text,
                 timestamp: new Date(),
                 actions: fallback.actions,
-                isKnowledgeFallback: true
+                isKnowledgeFallback: true,
+                source: 'local',
+                fallbackReason: isPrepayment
+                    ? 'Google Gemini prepayment credits depleted ($0 balance on AI Studio project).'
+                    : isQuota
+                    ? 'Gemini quota or rate limit exceeded (HTTP 429).'
+                    : isKey
+                    ? 'Invalid or expired Gemini API key.'
+                    : errStr || 'Answered via Local Knowledge Engine.',
+                fallbackCode: isPrepayment ? 402 : isQuota ? 429 : 500,
+                modelUsed: 'autonomous-agri-core'
             };
             setMessages(prev => [...prev, assistantMsg]);
         } finally {
@@ -767,26 +815,37 @@ DIRECTIVES & FORMATTING INSTRUCTIONS:
                         {/* Bubble */}
                         <div className="space-y-2">
                             <div
-                                className={`p-4 sm:p-5 rounded-2xl text-xs sm:text-sm leading-relaxed ${
+                                className={`p-4 sm:p-5 rounded-2xl text-xs sm:text-sm leading-relaxed transition-all ${
                                     msg.sender === 'user'
                                         ? 'bg-indigo-600 text-white rounded-tr-xs font-medium'
+                                        : msg.isKnowledgeFallback
+                                        ? 'bg-amber-50 border-2 border-amber-400 text-amber-950 rounded-tl-xs shadow-md'
                                         : 'bg-white text-slate-800 rounded-tl-xs border border-slate-200/90 shadow-xs'
                                 }`}
                             >
+                                {msg.sender === 'assistant' && (
+                                    <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-black/5 gap-2">
+                                        <AiSourceBadge 
+                                            source={msg.isKnowledgeFallback ? 'local' : 'cloud'}
+                                            isLocal={msg.isKnowledgeFallback}
+                                            reason={msg.fallbackReason}
+                                            code={msg.fallbackCode}
+                                            modelUsed={msg.modelUsed}
+                                            notice={msg.upstreamNotice}
+                                            isKa={isKa}
+                                        />
+                                        <span className="text-[10px] text-slate-400 font-mono">
+                                            {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                    </div>
+                                )}
+
                                 <div className="whitespace-pre-wrap font-sans">
                                     {msg.text}
                                 </div>
 
                                 {msg.sender === 'assistant' && (
-                                    <div className="flex items-center justify-between pt-3 mt-3 border-t border-slate-100 text-[10px] text-slate-400">
-                                        <div className="flex items-center gap-2">
-                                            <span>{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                            {msg.isKnowledgeFallback && (
-                                                <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-semibold border border-slate-200 text-[9px]">
-                                                    {isKa ? 'სისტემური ცოდნის ბაზა' : 'Internal Knowledge Engine'}
-                                                </span>
-                                            )}
-                                        </div>
+                                    <div className="flex items-center justify-end pt-3 mt-3 border-t border-slate-100 text-[10px] text-slate-400">
                                         <button
                                             type="button"
                                             onClick={() => handleCopyText(msg.text)}
@@ -929,7 +988,18 @@ DIRECTIVES & FORMATTING INSTRUCTIONS:
                             </div>
                         </div>
 
-                        <div className="flex items-center justify-end gap-2.5 mt-6 pt-4 border-t border-slate-100">
+                        <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100 mt-4">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowKeyModal(false);
+                                    triggerAiDiagnosticsModal();
+                                }}
+                                className="mr-auto px-3 py-2 rounded-xl text-slate-700 bg-slate-100 hover:bg-slate-200 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                            >
+                                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>{isKa ? 'სრული დიაგნოსტიკა & ბილინგი' : 'Diagnostics & Billing'}</span>
+                            </button>
                             <button
                                 type="button"
                                 onClick={() => {

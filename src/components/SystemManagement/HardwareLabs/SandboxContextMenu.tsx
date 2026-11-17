@@ -95,16 +95,16 @@ export const SandboxContextMenu: React.FC<SandboxContextMenuProps> = ({
                 top: `${adjustedY}px`,
                 zIndex: 9999
             }}
-            className="w-56 bg-slate-950/98 border border-slate-700/90 rounded-2xl shadow-2xl backdrop-blur-2xl py-1.5 overflow-hidden animate-in fade-in zoom-in-95 duration-100 select-none text-xs"
+            className="w-56 bg-[#FAFBF8]/98 border border-[#D8E3D4] rounded-2xl shadow-2xl backdrop-blur-2xl py-1.5 overflow-hidden animate-in fade-in zoom-in-95 duration-100 select-none text-xs text-[#163022]"
         >
             {/* Header */}
-            <div className="px-3 py-2 border-b border-slate-800/80 flex items-center justify-between">
-                <span className="font-black text-white truncate text-[11px] font-mono tracking-tight">
+            <div className="px-3 py-2 border-b border-[#D8E3D4] bg-[#EEF3EA] flex items-center justify-between">
+                <span className="font-black text-[#163022] truncate text-[11px] font-mono tracking-tight">
                     {getDeviceTitle()}
                 </span>
                 <button
                     onClick={onClose}
-                    className="p-1 text-slate-500 hover:text-white rounded hover:bg-slate-800/80 transition-colors"
+                    className="p-1 text-[#4A6753] hover:text-[#163022] rounded hover:bg-[#D8E3D4] transition-colors cursor-pointer"
                 >
                     <X size={12} />
                 </button>
@@ -119,9 +119,9 @@ export const SandboxContextMenu: React.FC<SandboxContextMenuProps> = ({
                             onOpenLiveStream(menu.data);
                             onClose();
                         }}
-                        className="w-full px-2.5 py-1.5 rounded-xl flex items-center gap-2.5 bg-rose-600/90 hover:bg-rose-500 text-white transition-all font-black group cursor-pointer text-left shadow-sm"
+                        className="w-full px-2.5 py-1.5 rounded-xl flex items-center gap-2.5 bg-white hover:bg-[#dc2626] text-[#244130] hover:text-white transition-all duration-200 font-bold group cursor-pointer text-left shadow-2xs border border-[#CFDCCB]"
                     >
-                        <Video size={13} className="text-white animate-pulse" />
+                        <Video size={13} className="text-[#dc2626] group-hover:text-white animate-pulse" />
                         <span>📹 {isKa ? 'პირდაპირი ვიდეო ნაკადი (Live)' : 'Watch Live Stream (RTSP)'}</span>
                     </button>
                 )}
@@ -132,9 +132,9 @@ export const SandboxContextMenu: React.FC<SandboxContextMenuProps> = ({
                         onOpenProperties(menu.type, menu.data);
                         onClose();
                     }}
-                    className="w-full px-2.5 py-1.5 rounded-xl flex items-center gap-2.5 text-slate-200 hover:bg-blue-600 hover:text-white transition-all font-bold group cursor-pointer text-left"
+                    className="w-full px-2.5 py-1.5 rounded-xl flex items-center gap-2.5 text-[#244130] hover:bg-[#2563eb] hover:text-white transition-all duration-200 font-bold group cursor-pointer text-left"
                 >
-                    <Sliders size={13} className="text-blue-400 group-hover:text-white" />
+                    <Sliders size={13} className="text-[#2563eb] group-hover:text-white" />
                     <span>{isKa ? 'პარამეტრები & მართვა' : 'Properties & Config'}</span>
                 </button>
 
@@ -146,9 +146,9 @@ export const SandboxContextMenu: React.FC<SandboxContextMenuProps> = ({
                         }
                         onClose();
                     }}
-                    className="w-full px-2.5 py-1.5 rounded-xl flex items-center gap-2.5 text-slate-200 hover:bg-cyan-600 hover:text-white transition-all font-bold group cursor-pointer text-left"
+                    className="w-full px-2.5 py-1.5 rounded-xl flex items-center gap-2.5 text-[#244130] hover:bg-[#0284c7] hover:text-white transition-all duration-200 font-bold group cursor-pointer text-left"
                 >
-                    <Navigation size={13} className="text-cyan-400 group-hover:text-white" />
+                    <Navigation size={13} className="text-[#0284c7] group-hover:text-white" />
                     <span>{isKa ? 'რუკაზე მიახლოება (Fly to)' : 'Fly to Device'}</span>
                 </button>
 
@@ -158,9 +158,9 @@ export const SandboxContextMenu: React.FC<SandboxContextMenuProps> = ({
                         onMove(menu.type, menu.data);
                         onClose();
                     }}
-                    className="w-full px-2.5 py-1.5 rounded-xl flex items-center gap-2.5 text-slate-200 hover:bg-amber-600 hover:text-white transition-all font-bold group cursor-pointer text-left"
+                    className="w-full px-2.5 py-1.5 rounded-xl flex items-center gap-2.5 text-[#244130] hover:bg-[#d97706] hover:text-white transition-all duration-200 font-bold group cursor-pointer text-left"
                 >
-                    <Move size={13} className="text-amber-400 group-hover:text-white" />
+                    <Move size={13} className="text-[#d97706] group-hover:text-white" />
                     <span>{isKa ? 'გადაადგილება რუკაზე' : 'Reposition on Map'}</span>
                 </button>
 
@@ -171,9 +171,9 @@ export const SandboxContextMenu: React.FC<SandboxContextMenuProps> = ({
                             onDuplicate(menu.type, menu.data);
                             onClose();
                         }}
-                        className="w-full px-2.5 py-1.5 rounded-xl flex items-center gap-2.5 text-slate-200 hover:bg-emerald-600 hover:text-white transition-all font-bold group cursor-pointer text-left"
+                        className="w-full px-2.5 py-1.5 rounded-xl flex items-center gap-2.5 text-[#244130] hover:bg-[#16a34a] hover:text-white transition-all duration-200 font-bold group cursor-pointer text-left"
                     >
-                        <Copy size={13} className="text-emerald-400 group-hover:text-white" />
+                        <Copy size={13} className="text-[#16a34a] group-hover:text-white" />
                         <span>{isKa ? 'დუბლირება' : 'Duplicate Device'}</span>
                     </button>
                 )}
@@ -184,9 +184,9 @@ export const SandboxContextMenu: React.FC<SandboxContextMenuProps> = ({
                         onResetDefaults(menu.type, menu.data);
                         onClose();
                     }}
-                    className="w-full px-2.5 py-1.5 rounded-xl flex items-center gap-2.5 text-slate-200 hover:bg-purple-600 hover:text-white transition-all font-bold group cursor-pointer text-left"
+                    className="w-full px-2.5 py-1.5 rounded-xl flex items-center gap-2.5 text-[#244130] hover:bg-[#8b5cf6] hover:text-white transition-all duration-200 font-bold group cursor-pointer text-left"
                 >
-                    <RotateCcw size={13} className="text-purple-400 group-hover:text-white" />
+                    <RotateCcw size={13} className="text-[#8b5cf6] group-hover:text-white" />
                     <span>{isKa ? 'საწყისი პარამეტრები' : 'Reset Defaults'}</span>
                 </button>
 
@@ -197,14 +197,14 @@ export const SandboxContextMenu: React.FC<SandboxContextMenuProps> = ({
                             onToggleVisibility(menu.type, menu.data);
                             onClose();
                         }}
-                        className="w-full px-2.5 py-1.5 rounded-xl flex items-center gap-2.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition-all font-bold group cursor-pointer text-left"
+                        className="w-full px-2.5 py-1.5 rounded-xl flex items-center gap-2.5 text-[#244130] hover:bg-[#4f46e5] hover:text-white transition-all duration-200 font-bold group cursor-pointer text-left"
                     >
-                        <Eye size={13} className="text-indigo-400 group-hover:text-white" />
+                        <Eye size={13} className="text-[#4f46e5] group-hover:text-white" />
                         <span>{isKa ? 'კონუსის დამალვა/გამოჩენა' : 'Toggle FOV Cone'}</span>
                     </button>
                 )}
 
-                <div className="my-1 border-t border-slate-800/80" />
+                <div className="my-1 border-t border-[#D8E3D4]" />
 
                 {/* Delete */}
                 <button
@@ -212,9 +212,9 @@ export const SandboxContextMenu: React.FC<SandboxContextMenuProps> = ({
                         onDelete(menu.type, menu.data);
                         onClose();
                     }}
-                    className="w-full px-2.5 py-1.5 rounded-xl flex items-center gap-2.5 text-red-400 hover:bg-red-600 hover:text-white transition-all font-bold group cursor-pointer text-left"
+                    className="w-full px-2.5 py-1.5 rounded-xl flex items-center gap-2.5 text-[#dc2626] hover:bg-[#dc2626] hover:text-white transition-all duration-200 font-bold group cursor-pointer text-left"
                 >
-                    <Trash2 size={13} className="text-red-400 group-hover:text-white" />
+                    <Trash2 size={13} className="text-[#dc2626] group-hover:text-white" />
                     <span>{isKa ? (menu.type === 'slope_point' ? 'წერტილის წაშლა' : 'მოწყობილობის წაშლა') : (menu.type === 'slope_point' ? 'Delete Slope Point' : 'Delete Device')}</span>
                 </button>
             </div>

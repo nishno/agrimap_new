@@ -110,25 +110,30 @@ const PurchaseOrderModal: React.FC<PurchaseOrderModalProps> = ({ isOpen, onClose
             setFormState(prev => {
                 const existingSupplier = suppliers.find(s => analysis.supplierName && s.name.toLowerCase().includes(analysis.supplierName.toLowerCase()));
                 
-                const newItems: PurchaseOrderItem[] = (analysis.lineItems || []).map(item => {
-                    const existingItem = inventoryItems.find(inv => item.description && inv.name.toLowerCase().includes(item.description.toLowerCase()));
+                const newItems: PurchaseOrderItem[] = (analysis.lineItems || []).map((item: any) => {
+                    const desc = item.description || item.itemName || item.name || (isKa ? 'აგრო პროდუქტი' : 'Agro Item');
+                    const existingItem = inventoryItems.find(inv => desc && inv.name.toLowerCase().includes(desc.toLowerCase()));
                     return {
                         inventoryItemId: existingItem?.id || 'new-item',
-                        itemName: existingItem ? undefined : item.description,
+                        itemName: desc,
                         description: existingItem ? existingItem.description : '',
-                        quantity: item.quantity || 1,
-                        unitCost: item.unitPrice || 0,
-                        vat: item.vat || 0,
+                        quantity: Number(item.quantity) || 1,
+                        unitCost: Number(item.unitPrice ?? item.unitCost) || 0,
+                        vat: Number(item.vat) || 0,
                         addToStock: true,
                     };
                 });
+
+                if (newItems.length > 0) {
+                    toast.success(isKa ? `AI-მ დოკუმენტიდან ამოიცნო ${newItems.length} ნივთი და დაამატა სიაში` : `AI extracted ${newItems.length} items and added to order`);
+                }
 
                 return {
                     ...prev,
                     documentAnalysis: analysis,
                     documentUrl: documentDataUrl,
                     supplierId: existingSupplier?.id || 'new-supplier',
-                    supplierName: existingSupplier ? undefined : analysis.supplierName,
+                    supplierName: existingSupplier ? existingSupplier.name : analysis.supplierName,
                     date: analysis.date || prev.date,
                     items: newItems.length > 0 ? newItems : prev.items,
                     status: 'Received',
@@ -138,6 +143,7 @@ const PurchaseOrderModal: React.FC<PurchaseOrderModalProps> = ({ isOpen, onClose
             setUploadedFile(null);
         } catch (err) {
             setAnalysisError(err instanceof Error ? err.message : (isKa ? 'ანალიზი ვერ შესრულდა.' : 'Analysis failed.'));
+            toast.error(isKa ? 'დოკუმენტის AI ანალიზი ვერ შესრულდა' : 'Document AI analysis failed');
         } finally {
             setIsAnalyzing(false);
         }

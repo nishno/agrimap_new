@@ -134,7 +134,7 @@ export const SubStocksManager: React.FC<SubStocksManagerProps> = ({
                     <button
                         type="button"
                         onClick={openCreateModal}
-                        className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-sm flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95"
+                        className="px-4 py-2.5 bg-white text-[#244130] border border-[#2D5A27] hover:bg-[#2D5A27] hover:text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-2xs flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95"
                     >
                         <Plus className="w-4 h-4" />
                         <span>{isKa ? '+ ქვესაწყობის დამატება' : '+ Add Sub-Stock'}</span>

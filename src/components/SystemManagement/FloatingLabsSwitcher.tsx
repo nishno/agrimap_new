@@ -62,7 +62,7 @@ export const FloatingLabsSwitcher: React.FC<FloatingLabsSwitcherProps> = ({
                     top: `${pos.y}px`,
                     transform: 'none'
                 } : undefined}
-                className={`z-[1300] flex items-center gap-1.5 p-1 px-2.5 rounded-2xl bg-slate-900/95 border border-slate-700/80 shadow-2xl backdrop-blur-xl select-none text-xs ${
+                className={`z-[1300] flex items-center gap-1.5 p-1 px-2.5 rounded-2xl bg-[#FAFBF8]/95 border border-[#D8E3D4] shadow-xl backdrop-blur-xl select-none text-xs ${
                     pos ? '' : 'absolute top-3 left-1/2 -translate-x-1/2'
                 }`}
             >
@@ -70,17 +70,17 @@ export const FloatingLabsSwitcher: React.FC<FloatingLabsSwitcherProps> = ({
                     onPointerDown={handlePointerDown}
                     onPointerMove={handlePointerMove}
                     onPointerUp={handlePointerUp}
-                    className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-white flex items-center gap-1.5 py-1"
+                    className="cursor-grab active:cursor-grabbing text-[#5B7565] hover:text-[#1E3B2B] flex items-center gap-1.5 py-1"
                     title="Drag anywhere"
                 >
                     <GripHorizontal size={13} />
-                    <span className="font-black uppercase tracking-wider text-[11px] text-blue-400">
+                    <span className="font-black uppercase tracking-wider text-[11px] text-[#1E3B2B]">
                         🗺️ Labs Nav
                     </span>
                 </div>
                 <button
                     onClick={() => setIsMinimized(false)}
-                    className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                    className="p-1 text-[#5B7565] hover:text-[#1E3B2B] rounded-lg hover:bg-[#EEF3EA] transition-colors cursor-pointer"
                     title="Expand Labs switcher"
                 >
                     <ChevronDown size={13} />
@@ -98,7 +98,7 @@ export const FloatingLabsSwitcher: React.FC<FloatingLabsSwitcherProps> = ({
                 top: `${pos.y}px`,
                 transform: 'none'
             } : undefined}
-            className={`z-[1300] flex items-center p-1 rounded-2xl bg-slate-900/95 border border-slate-700/80 shadow-2xl backdrop-blur-xl gap-1 select-none ${
+            className={`z-[1300] flex items-center p-1 rounded-2xl bg-[#FAFBF8]/95 border border-[#D8E3D4] shadow-xl backdrop-blur-xl gap-1 select-none ${
                 pos ? '' : 'absolute top-3 left-1/2 -translate-x-1/2'
             }`}
         >
@@ -107,8 +107,8 @@ export const FloatingLabsSwitcher: React.FC<FloatingLabsSwitcherProps> = ({
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
                 onDoubleClick={() => setPos(null)}
-                className="px-1.5 py-1 cursor-grab active:cursor-grabbing text-slate-500 hover:text-cyan-400 flex items-center justify-center transition-colors rounded-lg hover:bg-slate-800/60"
-                title="Drag anywhere on map (double click to reset)"
+                className="px-1.5 py-1 cursor-grab active:cursor-grabbing text-[#6A8272] hover:text-[#1E3B2B] flex items-center justify-center transition-colors rounded-lg hover:bg-[#EEF3EA]"
+                title={isKa ? 'გადაადგილება რუკაზე (ორჯერ დაწკაპუნება - საწყის ადგილზე დაბრუნება)' : 'Drag anywhere on map (double click to reset)'}
             >
                 <GripHorizontal size={14} />
             </div>
@@ -116,10 +116,10 @@ export const FloatingLabsSwitcher: React.FC<FloatingLabsSwitcherProps> = ({
             <button
                 onClick={() => onSelectLabTab('devices_map')}
                 data-active={labTab === 'devices_map' ? 'true' : 'false'}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider shadow-md flex items-center gap-1.5 transition-all cursor-pointer ${
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer ${
                     labTab === 'devices_map'
-                        ? 'bg-blue-600 text-white'
-                        : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                        ? 'bg-[#1E3B2B] text-white shadow-md border border-[#1E3B2B]'
+                        : 'bg-white/90 text-[#2D4536] border border-[#D3DFCE] hover:bg-[#2563eb] hover:text-white hover:border-[#2563eb]'
                 }`}
             >
                 🗺️ {isKa ? 'მოწყობილობების რუკა' : 'Devices Map'}
@@ -129,8 +129,8 @@ export const FloatingLabsSwitcher: React.FC<FloatingLabsSwitcherProps> = ({
                 data-active={labTab === 'hardware' ? 'true' : 'false'}
                 className={`px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${
                     labTab === 'hardware'
-                        ? 'bg-blue-600 text-white shadow-md'
-                        : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                        ? 'bg-[#1E3B2B] text-white shadow-md border border-[#1E3B2B]'
+                        : 'bg-white/90 text-[#2D4536] border border-[#D3DFCE] hover:bg-[#2563eb] hover:text-white hover:border-[#2563eb]'
                 }`}
             >
                 🔌 {isKa ? 'აპარატურა & მოწყობილობები' : 'Hardware & Devices'}
@@ -138,28 +138,28 @@ export const FloatingLabsSwitcher: React.FC<FloatingLabsSwitcherProps> = ({
             <button
                 onClick={() => onSelectLabTab('theme')}
                 data-active="false"
-                className="px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider text-slate-400 hover:text-white hover:bg-slate-800/80 flex items-center gap-1.5 transition-all cursor-pointer"
+                className="px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider bg-white/90 text-[#2D4536] border border-[#D3DFCE] hover:bg-[#8b5cf6] hover:text-white hover:border-[#8b5cf6] flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
             >
                 🎨 {isKa ? 'თემების სტუდია' : 'Theme Studio'}
             </button>
             <button
                 onClick={() => onSelectLabTab('letters')}
                 data-active="false"
-                className="px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider text-amber-400 hover:text-amber-300 hover:bg-slate-800/80 flex items-center gap-1.5 transition-all cursor-pointer"
+                className="px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider bg-white/90 text-[#2D4536] border border-[#D3DFCE] hover:bg-[#d97706] hover:text-white hover:border-[#d97706] flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
             >
                 🔤 {isKa ? 'შრიფტი & მენიუს ფერები' : 'Letters & Menu Colors'}
             </button>
             <button
                 onClick={() => onSelectLabTab('analytics')}
                 data-active="false"
-                className="px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider text-slate-400 hover:text-white hover:bg-slate-800/80 flex items-center gap-1.5 transition-all cursor-pointer"
+                className="px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider bg-white/90 text-[#2D4536] border border-[#D3DFCE] hover:bg-[#16a34a] hover:text-white hover:border-[#16a34a] flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
             >
                 🧠 {isKa ? 'ინტელექტი' : 'Intelligence'}
             </button>
 
             <button
                 onClick={() => setIsMinimized(true)}
-                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                className="p-1 text-[#6A8272] hover:text-[#1E3B2B] rounded-lg hover:bg-[#EEF3EA] transition-colors cursor-pointer"
                 title="Minimize Labs switcher"
             >
                 <ChevronUp size={13} />

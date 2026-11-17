@@ -893,23 +893,23 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
     ];
 
     return (
-        <div className="fixed inset-0 z-[3200] flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="relative w-full max-w-6xl max-h-[92vh] bg-slate-950 border border-slate-700/80 rounded-3xl shadow-2xl flex flex-col text-white overflow-hidden">
+        <div className="fixed inset-0 z-[3200] flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="relative w-full max-w-6xl max-h-[92vh] bg-[#FAFBF8] border border-[#D8E3D4] rounded-3xl shadow-2xl flex flex-col text-[#163022] overflow-hidden">
                 
                 {/* Header with Title and Close */}
-                <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-slate-900/90 border-b border-slate-800">
+                <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-[#EEF3EA] border-b border-[#D8E3D4]">
                     <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-blue-600/20 text-blue-400 border border-blue-500/30 rounded-2xl">
+                        <div className="p-2.5 bg-white text-[#2563eb] border border-[#CFDCCB] rounded-2xl shadow-2xs">
                             <Wifi size={22} />
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
-                                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">
+                                <span className="w-2.5 h-2.5 rounded-full bg-[#16a34a] animate-pulse" />
+                                <span className="text-[10px] font-black uppercase tracking-widest text-[#16a34a]">
                                     Local Area Network Hardware Discovery Engine
                                 </span>
                             </div>
-                            <h2 className="text-base sm:text-lg font-black uppercase tracking-wide text-white mt-0.5">
+                            <h2 className="text-base sm:text-lg font-black uppercase tracking-wide text-[#163022] mt-0.5">
                                 {isKa ? 'ლოკალური ქსელის (LAN) & NVR მოწყობილობების სკანერი' : 'LAN Hardware & Multi-Channel NVR Scanner'}
                             </h2>
                         </div>
@@ -919,7 +919,7 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                         <button
                             type="button"
                             onClick={onClose}
-                            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                            className="p-2 rounded-xl bg-white hover:bg-[#D8E3D4] text-[#4A6753] hover:text-[#163022] border border-[#CFDCCB] transition-colors cursor-pointer"
                         >
                             <X size={18} />
                         </button>
@@ -927,24 +927,24 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                 </div>
 
                 {/* Subnet Configuration & Live Scanner Trigger Bar */}
-                <div className="p-4 bg-slate-900/50 border-b border-slate-800 space-y-3">
+                <div className="p-4 bg-[#EEF3EA]/60 border-b border-[#D8E3D4] space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
-                            <span className="text-xs font-bold text-slate-400 flex items-center gap-1">
-                                <Radio size={13} className="text-cyan-400" />
+                            <span className="text-xs font-bold text-[#4A6753] flex items-center gap-1">
+                                <Radio size={13} className="text-[#0284c7]" />
                                 {isKa ? 'ქვექსელი (Subnet):' : 'Subnet Range:'}
                             </span>
                             
                             {/* Editable Subnet input */}
-                            <div className="flex items-center gap-1 bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-700">
+                            <div className="flex items-center gap-1 bg-white px-2.5 py-1 rounded-xl border border-[#CFDCCB] shadow-2xs">
                                 <input
                                     type="text"
                                     value={customSubnet}
                                     onChange={(e) => setCustomSubnet(e.target.value)}
                                     placeholder="192.168.1"
-                                    className="bg-transparent text-xs font-mono font-bold text-cyan-300 w-28 focus:outline-none"
+                                    className="bg-transparent text-xs font-mono font-bold text-[#0284c7] w-28 focus:outline-none"
                                 />
-                                <span className="text-[10px] font-mono text-slate-500">.1 - .254</span>
+                                <span className="text-[10px] font-mono text-[#4A6753]">.1 - .254</span>
                             </div>
 
                             {/* Auto-detect Subnet button */}
@@ -952,10 +952,10 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                                 type="button"
                                 onClick={handleAutoDetectSubnet}
                                 disabled={isAutoDetecting}
-                                className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-[11px] font-bold flex items-center gap-1 border border-cyan-800/50 transition-colors cursor-pointer"
+                                className="px-2.5 py-1 rounded-xl bg-white hover:bg-[#0284c7] hover:text-white text-[#244130] text-[11px] font-bold flex items-center gap-1 border border-[#CFDCCB] transition-all duration-200 cursor-pointer shadow-2xs"
                                 title="Auto-detect active local subnet via WebRTC"
                             >
-                                <Zap size={12} className={isAutoDetecting ? 'animate-spin text-amber-400' : 'text-cyan-400'} />
+                                <Zap size={12} className={isAutoDetecting ? 'animate-spin text-amber-500' : 'text-[#0284c7]'} />
                                 <span>{isAutoDetecting ? 'Detecting...' : 'Auto-Detect'}</span>
                             </button>
 
@@ -966,10 +966,10 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                                         key={chip}
                                         type="button"
                                         onClick={() => setCustomSubnet(chip)}
-                                        className={`px-2 py-0.5 rounded-lg text-[10px] font-mono transition-colors cursor-pointer ${
+                                        className={`px-2 py-0.5 rounded-lg text-[10px] font-mono transition-all duration-200 cursor-pointer shadow-2xs ${
                                             customSubnet.startsWith(chip)
-                                                ? 'bg-cyan-950 text-cyan-300 border border-cyan-700'
-                                                : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                                                ? 'bg-[#0284c7] text-white'
+                                                : 'bg-white hover:bg-[#0284c7] hover:text-white text-[#244130] border border-[#CFDCCB]'
                                         }`}
                                     >
                                         {chip}.x
@@ -979,13 +979,13 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
 
                             {/* Search box */}
                             <div className="relative flex-1 min-w-[150px]">
-                                <Search size={13} className="absolute left-3 top-2.5 text-slate-500" />
+                                <Search size={13} className="absolute left-3 top-2.5 text-[#4A6753]" />
                                 <input
                                     type="text"
                                     placeholder={isKa ? 'ძიება IP, ბრენდით, მოდელით...' : 'Search IP, model, MAC...'}
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full pl-8 pr-3 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                                    className="w-full pl-8 pr-3 py-1.5 bg-white border border-[#CFDCCB] rounded-xl text-xs text-[#163022] placeholder-[#6A8A73] focus:outline-none focus:border-[#2563eb] shadow-2xs"
                                 />
                             </div>
                         </div>
@@ -995,10 +995,10 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                             <button
                                 type="button"
                                 onClick={() => setShowPortConfig(!showPortConfig)}
-                                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all duration-200 cursor-pointer shadow-2xs ${
                                     showPortConfig || selectedPorts.includes(2006)
-                                        ? 'bg-slate-800 text-cyan-300 border-cyan-700/60'
-                                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                                        ? 'bg-[#2563eb] text-white border-[#2563eb]'
+                                        : 'bg-white hover:bg-[#2563eb] hover:text-white text-[#244130] border-[#CFDCCB]'
                                 }`}
                                 title="Configure ports to scan (e.g. 2006, 80, 8000)"
                             >
@@ -1009,7 +1009,7 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                             <button
                                 type="button"
                                 onClick={() => setIsManualAddOpen(true)}
-                                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 flex items-center gap-1 transition-all cursor-pointer"
+                                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-[#16a34a] hover:text-white text-[#244130] border border-[#CFDCCB] flex items-center gap-1 transition-all duration-200 cursor-pointer shadow-2xs"
                                 title="Add an NVR, camera, or sensor by IP directly"
                             >
                                 <Plus size={13} />
@@ -1019,10 +1019,10 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                             <button
                                 type="button"
                                 onClick={handleStartLanScan}
-                                className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer ${
+                                className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all duration-200 cursor-pointer shadow-2xs ${
                                     isScanning 
-                                        ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-900/30'
-                                        : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/30'
+                                        ? 'bg-red-600 hover:bg-red-500 text-white'
+                                        : 'bg-white hover:bg-[#2563eb] hover:text-white text-[#2563eb] border border-[#2563eb]'
                                 }`}
                             >
                                 <RefreshCw size={14} className={isScanning ? 'animate-spin' : ''} />
@@ -1037,9 +1037,9 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
 
                     {/* Ports Config Drawer */}
                     {showPortConfig && (
-                        <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 space-y-2 animate-in fade-in duration-150">
+                        <div className="p-3 bg-[#F4F7F2] rounded-2xl border border-[#D8E3D4] space-y-2 animate-in fade-in duration-150">
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                                <span className="text-[11px] font-bold text-slate-400">
+                                <span className="text-[11px] font-bold text-[#4A6753]">
                                     Target Scan Ports (Click to toggle / probe):
                                 </span>
                                 <div className="flex items-center gap-2">
@@ -1049,12 +1049,12 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                                         value={customPortInput}
                                         onChange={(e) => setCustomPortInput(e.target.value)}
                                         onKeyDown={(e) => e.key === 'Enter' && handleAddPort()}
-                                        className="w-36 px-2.5 py-1 bg-slate-900 border border-slate-700 rounded-lg text-xs font-mono text-white focus:outline-none"
+                                        className="w-36 px-2.5 py-1 bg-white border border-[#CFDCCB] rounded-lg text-xs font-mono text-[#163022] focus:outline-none"
                                     />
                                     <button
                                         type="button"
                                         onClick={handleAddPort}
-                                        className="px-2.5 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-bold cursor-pointer"
+                                        className="px-2.5 py-1 bg-white hover:bg-cyan-600 text-[#244130] hover:text-white border border-[#CFDCCB] hover:border-cyan-600 rounded-lg text-xs font-bold shadow-2xs transition-all duration-200 cursor-pointer"
                                     >
                                         + Add Port
                                     </button>
@@ -1078,10 +1078,10 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                                             key={p.port}
                                             type="button"
                                             onClick={() => handleTogglePort(p.port)}
-                                            className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                                            className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold flex items-center gap-1 transition-all duration-200 cursor-pointer ${
                                                 isSel 
-                                                    ? 'bg-cyan-900/80 text-cyan-200 border border-cyan-500/80' 
-                                                    : 'bg-slate-900 text-slate-500 border border-slate-800 hover:text-slate-300'
+                                                    ? 'bg-cyan-100 text-cyan-900 border border-cyan-400 shadow-2xs' 
+                                                    : 'bg-white hover:bg-[#EEF3EA] text-[#4A6753] hover:text-[#163022] border border-[#CFDCCB]'
                                             }`}
                                         >
                                             <span>{p.label}</span>
@@ -1094,8 +1094,8 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                     )}
 
                     {/* Chrome Local Network Access Permission Info Banner */}
-                    <div className="p-2.5 bg-blue-950/40 border border-blue-900/50 rounded-xl flex items-center gap-2 text-xs text-blue-300">
-                        <Info size={15} className="text-cyan-400 shrink-0" />
+                    <div className="p-2.5 bg-[#EEF5FB] border border-[#C5DCF2] rounded-xl flex items-center gap-2 text-xs text-[#1D4E89]">
+                        <Info size={15} className="text-blue-600 shrink-0" />
                         <span className="text-[11px] leading-tight">
                             <strong>Chrome Local Network Access:</strong> When you start the scan, Chrome may prompt: <em>&quot;Look for and connect to any device on your local network&quot;</em>. Click <strong>Allow</strong> so your browser can probe your local NVRs, cameras, and IoT sensors.
                         </span>
@@ -1104,17 +1104,17 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
 
                 {/* Progress Bar during Scanning */}
                 {isScanning && (
-                    <div className="px-6 py-2.5 bg-blue-950/40 border-b border-blue-900/50">
-                        <div className="flex items-center justify-between text-[11px] font-mono text-cyan-300 mb-1">
-                            <span className="flex items-center gap-1.5">
-                                <Zap size={12} className="animate-pulse text-amber-400" />
+                    <div className="px-6 py-2.5 bg-[#EEF5FB] border-b border-[#D8E3D4]">
+                        <div className="flex items-center justify-between text-[11px] font-mono text-blue-700 mb-1">
+                            <span className="flex items-center gap-1.5 font-bold">
+                                <Zap size={12} className="animate-pulse text-amber-500" />
                                 {scanPhaseText}
                             </span>
                             <span className="font-bold">{scanProgress}%</span>
                         </div>
-                        <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                        <div className="w-full h-1.5 bg-[#D8E3D4] rounded-full overflow-hidden">
                             <div 
-                                className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-300 rounded-full"
+                                className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-all duration-300 rounded-full"
                                 style={{ width: `${scanProgress}%` }}
                             />
                         </div>
@@ -1122,22 +1122,22 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                 )}
 
                 {/* Filter Categories Tabs */}
-                <div className="px-6 py-2 bg-slate-900/80 border-b border-slate-800 flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+                <div className="px-6 py-2 bg-[#EEF3EA] border-b border-[#D8E3D4] flex items-center gap-1.5 overflow-x-auto scrollbar-none">
                     {categoryTabs.map(tab => (
                         <button
                             key={tab.key}
                             type="button"
                             onClick={() => setActiveCategory(tab.key)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
+                            className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-1.5 shrink-0 cursor-pointer ${
                                 activeCategory === tab.key
-                                    ? 'bg-blue-600 text-white shadow-md'
-                                    : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
+                                    ? 'bg-[#163022] text-white shadow-sm'
+                                    : 'bg-white hover:bg-[#163022] text-[#4A6753] hover:text-white border border-[#CFDCCB]'
                             }`}
                         >
                             {tab.icon}
                             <span>{tab.label}</span>
                             <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono ${
-                                activeCategory === tab.key ? 'bg-blue-800 text-white' : 'bg-slate-800 text-slate-400'
+                                activeCategory === tab.key ? 'bg-emerald-900 text-white' : 'bg-[#EEF3EA] text-[#4A6753]'
                             }`}>
                                 {tab.count}
                             </span>
@@ -1146,20 +1146,20 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                 </div>
 
                 {/* Bulk Selection & Device Action Toolbar */}
-                <div className="px-6 py-2 bg-slate-950/90 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div className="px-6 py-2 bg-[#FAFBF8] border-b border-[#D8E3D4] flex flex-wrap items-center justify-between gap-3 text-xs">
                     <div className="flex items-center gap-3">
-                        <label className="flex items-center gap-2 cursor-pointer select-none text-slate-300 hover:text-white font-bold">
+                        <label className="flex items-center gap-2 cursor-pointer select-none text-[#244130] hover:text-[#163022] font-bold">
                             <input
                                 type="checkbox"
                                 checked={selectedDeviceIds.length > 0 && selectedDeviceIds.length === filteredDevices.length}
                                 onChange={handleSelectAll}
-                                className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-blue-600 focus:ring-0 cursor-pointer"
+                                className="w-4 h-4 rounded bg-white border-[#CFDCCB] text-[#163022] focus:ring-0 cursor-pointer"
                             />
                             <span>{isKa ? 'ყველას მონიშვნა' : 'Select All'} ({filteredDevices.length})</span>
                         </label>
 
                         {selectedDeviceIds.length > 0 && (
-                            <span className="px-2 py-0.5 rounded-full bg-blue-950 text-blue-300 border border-blue-800 text-[11px] font-bold">
+                            <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-900 border border-blue-300 text-[11px] font-bold">
                                 {selectedDeviceIds.length} {isKa ? 'მონიშნულია' : 'selected'}
                             </span>
                         )}
@@ -1170,7 +1170,7 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                             <button
                                 type="button"
                                 onClick={handleDeleteSelected}
-                                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-rose-900/30 transition-all cursor-pointer"
+                                className="px-3 py-1.5 bg-white hover:bg-rose-600 text-[#244130] hover:text-white border border-[#CFDCCB] hover:border-rose-600 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-2xs transition-all duration-200 cursor-pointer"
                             >
                                 <X size={13} />
                                 <span>{isKa ? `მონიშნულის წაშლა (${selectedDeviceIds.length})` : `Delete Selected (${selectedDeviceIds.length})`}</span>
@@ -1180,7 +1180,7 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                         <button
                             type="button"
                             onClick={handleAddUserNvrPreset}
-                            className="px-2.5 py-1.5 bg-emerald-950/60 hover:bg-emerald-900 text-emerald-300 border border-emerald-700/60 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+                            className="px-2.5 py-1.5 bg-white hover:bg-emerald-600 text-[#244130] hover:text-white border border-[#CFDCCB] hover:border-emerald-600 rounded-xl text-xs font-bold flex items-center gap-1 shadow-2xs transition-all duration-200 cursor-pointer"
                             title="Attach Hikvision 4K NVR (192.168.10.244)"
                         >
                             <Plus size={13} />
@@ -1191,7 +1191,7 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                             <button
                                 type="button"
                                 onClick={handleClearAllDevices}
-                                className="px-2.5 py-1.5 bg-slate-900 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 border border-slate-800 hover:border-rose-800 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                                className="px-2.5 py-1.5 bg-white hover:bg-rose-600 text-[#4A6753] hover:text-white border border-[#CFDCCB] hover:border-rose-600 rounded-xl text-xs font-bold shadow-2xs transition-all duration-200 cursor-pointer"
                                 title="Wipe all devices from LAN list"
                             >
                                 {isKa ? 'გასუფთავება' : 'Clear All'}
@@ -1201,14 +1201,14 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                 </div>
 
                 {/* Discovered Device Cards Grid */}
-                <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-[#F5F8F4]">
                     {filteredDevices.length === 0 ? (
-                        <div className="p-12 text-center text-slate-500 space-y-2">
-                            <Server size={36} className="mx-auto text-slate-600" />
-                            <p className="text-sm font-bold text-slate-400">
+                        <div className="p-12 text-center text-[#4A6753] space-y-2">
+                            <Server size={36} className="mx-auto text-[#7D9B86]" />
+                            <p className="text-sm font-bold text-[#163022]">
                                 {isKa ? 'მოწყობილობა ვერ მოიძებნა ამ კატეგორიაში' : 'No devices found matching current filter.'}
                             </p>
-                            <p className="text-xs text-slate-600">
+                            <p className="text-xs text-[#4A6753]">
                                 {isKa ? 'დააჭირეთ "ქსელის სკანირება"-ს ქვექსელის გადასამოწმებლად.' : 'Click "Scan LAN Subnet" above to broadcast inquiry packets.'}
                             </p>
                         </div>
@@ -1220,7 +1220,7 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                             return (
                                 <div
                                     key={dev.id}
-                                    className="p-5 bg-slate-900/90 border border-slate-800 rounded-2xl shadow-sm hover:border-slate-700 transition-all space-y-4"
+                                    className="p-5 bg-white border border-[#D8E3D4] rounded-2xl shadow-xs hover:border-[#B5CBB0] transition-all space-y-4"
                                 >
                                     {/* Device Header */}
                                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1230,10 +1230,10 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                                                 type="checkbox"
                                                 checked={selectedDeviceIds.includes(dev.id)}
                                                 onChange={() => handleToggleSelectDevice(dev.id)}
-                                                className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-blue-600 focus:ring-0 cursor-pointer"
+                                                className="w-4 h-4 rounded bg-white border-[#CFDCCB] text-[#163022] focus:ring-0 cursor-pointer"
                                             />
 
-                                            <div className="p-3 bg-blue-950/70 border border-blue-800/60 text-blue-400 rounded-2xl">
+                                            <div className="p-3 bg-[#EEF3EA] border border-[#D8E3D4] text-[#163022] rounded-2xl">
                                                 {dev.category === 'NVR' && <Server size={22} />}
                                                 {dev.category === 'IP_CAMERA' && <Camera size={22} />}
                                                 {dev.category === 'DRONE' && <Plane size={22} />}
@@ -1244,22 +1244,22 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                                             </div>
                                             <div>
                                                 <div className="flex items-center gap-2">
-                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-blue-950 text-blue-300 border border-blue-800/60">
+                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#EEF3EA] text-[#244130] border border-[#D8E3D4]">
                                                         {dev.brand} • {dev.category.replace('_', ' ')}
                                                     </span>
-                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-emerald-950 text-emerald-300 border border-emerald-800/60">
+                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
                                                         {dev.pingMs}ms LAN
                                                     </span>
                                                     {dev.isVerified && (
-                                                        <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                                                        <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
                                                             <CheckCircle2 size={10} /> VERIFIED
                                                         </span>
                                                     )}
                                                 </div>
-                                                <h3 className="text-sm sm:text-base font-black text-white uppercase tracking-wide mt-1">
+                                                <h3 className="text-sm sm:text-base font-black text-[#163022] uppercase tracking-wide mt-1">
                                                     {dev.alias}
                                                 </h3>
-                                                <p className="text-[11px] font-mono text-slate-400">
+                                                <p className="text-[11px] font-mono text-[#4A6753]">
                                                     {dev.model}
                                                 </p>
                                             </div>
@@ -1272,7 +1272,7 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                                                 <button
                                                     type="button"
                                                     onClick={() => handleOpenVerification(dev)}
-                                                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md shadow-blue-900/30 cursor-pointer"
+                                                    className="px-3 py-1.5 bg-white hover:bg-blue-600 text-[#244130] hover:text-white border border-[#CFDCCB] hover:border-blue-600 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-2xs transition-all duration-200 cursor-pointer"
                                                     title="Verify credentials, port 2006, and test live snapshot"
                                                 >
                                                     <Sliders size={13} />
@@ -1285,7 +1285,7 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                                                 href={`http://${dev.ip}:${dev.httpPort || 80}`}
                                                 target="_blank"
                                                 rel="noreferrer"
-                                                className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-xs flex items-center gap-1 transition-all"
+                                                className="p-2 bg-white hover:bg-slate-800 text-[#244130] hover:text-white border border-[#CFDCCB] hover:border-slate-800 rounded-xl text-xs flex items-center gap-1 shadow-2xs transition-all duration-200"
                                                 title={`Open Web Interface at http://${dev.ip}:${dev.httpPort || 80}`}
                                             >
                                                 <ExternalLink size={14} />
@@ -1295,7 +1295,7 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                                                 <button
                                                     type="button"
                                                     onClick={() => handleDeployAllNvrChannels(dev)}
-                                                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md shadow-emerald-900/30 cursor-pointer"
+                                                    className="px-3 py-1.5 bg-white hover:bg-emerald-600 text-[#244130] hover:text-white border border-[#CFDCCB] hover:border-emerald-600 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-2xs transition-all duration-200 cursor-pointer"
                                                 >
                                                     <Layers size={13} />
                                                     <span>{isKa ? 'ყველა არხის რუკაზე დასმა' : 'Deploy All Channels'}</span>
@@ -1306,7 +1306,7 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                                                 <button
                                                     type="button"
                                                     onClick={() => handleDeployOtherDevice(dev)}
-                                                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md shadow-emerald-900/30 cursor-pointer"
+                                                    className="px-3.5 py-1.5 bg-white hover:bg-emerald-600 text-[#244130] hover:text-white border border-[#CFDCCB] hover:border-emerald-600 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-2xs transition-all duration-200 cursor-pointer"
                                                 >
                                                     <Plus size={13} />
                                                     <span>{isKa ? 'რუკაზე დამატება' : 'Deploy to Map'}</span>
@@ -1317,7 +1317,7 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                                                 <button
                                                     type="button"
                                                     onClick={() => toggleNvrExpand(dev.id)}
-                                                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer"
+                                                    className="px-3 py-1.5 bg-white hover:bg-[#EEF3EA] text-[#244130] border border-[#CFDCCB] rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-2xs transition-all duration-200 cursor-pointer"
                                                 >
                                                     <span>{dev.channels?.length || dev.channelsCount || 16} {isKa ? 'არხი' : 'Channels'}</span>
                                                     {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
@@ -1328,7 +1328,7 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                                             <button
                                                 type="button"
                                                 onClick={() => handleDeleteDevice(dev.id, dev.alias)}
-                                                className="p-2 bg-slate-800 hover:bg-rose-950/80 text-slate-400 hover:text-rose-300 border border-slate-700 hover:border-rose-700/80 rounded-xl transition-all cursor-pointer"
+                                                className="p-2 bg-white hover:bg-rose-600 text-[#4A6753] hover:text-white border border-[#CFDCCB] hover:border-rose-600 rounded-xl shadow-2xs transition-all duration-200 cursor-pointer"
                                                 title={isKa ? 'მოწყობილობის წაშლა' : 'Delete Device'}
                                             >
                                                 <X size={14} />
@@ -1337,57 +1337,57 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                                     </div>
 
                                     {/* Hardware Technical Metadata Bar */}
-                                    <div className="p-3 bg-slate-950 rounded-xl font-mono text-xs text-slate-300 grid grid-cols-2 sm:grid-cols-4 gap-3 border border-slate-800/80">
+                                    <div className="p-3 bg-[#FAFBF8] rounded-xl font-mono text-xs text-[#244130] grid grid-cols-2 sm:grid-cols-4 gap-3 border border-[#D8E3D4]">
                                         <div>
-                                            <span className="text-[9px] text-slate-500 uppercase block font-bold">IP ADDRESS:</span>
-                                            <span className="font-bold text-white text-xs">{dev.ip}</span>
+                                            <span className="text-[9px] text-[#4A6753] uppercase block font-bold">IP ADDRESS:</span>
+                                            <span className="font-bold text-[#163022] text-xs">{dev.ip}</span>
                                         </div>
                                         <div>
-                                            <span className="text-[9px] text-slate-500 uppercase block font-bold">MAC ADDRESS:</span>
-                                            <span className="text-slate-300 text-xs">{dev.mac}</span>
+                                            <span className="text-[9px] text-[#4A6753] uppercase block font-bold">MAC ADDRESS:</span>
+                                            <span className="text-[#244130] text-xs">{dev.mac}</span>
                                         </div>
                                         <div>
-                                            <span className="text-[9px] text-slate-500 uppercase block font-bold">ACTIVE PORTS:</span>
-                                            <span className="text-slate-300 text-xs">
+                                            <span className="text-[9px] text-[#4A6753] uppercase block font-bold">ACTIVE PORTS:</span>
+                                            <span className="text-[#244130] text-xs">
                                                 HTTP: {dev.httpPort} {dev.rtspPort ? `| RTSP: ${dev.rtspPort}` : ''} {dev.telemetryPort ? `| Data: ${dev.telemetryPort}` : ''}
                                             </span>
                                         </div>
                                         <div>
-                                            <span className="text-[9px] text-slate-500 uppercase block font-bold">PROTOCOL / STATUS:</span>
-                                            <span className="text-emerald-400 text-xs truncate block">{dev.protocol}</span>
+                                            <span className="text-[9px] text-[#4A6753] uppercase block font-bold">PROTOCOL / STATUS:</span>
+                                            <span className="text-emerald-700 font-bold text-xs truncate block">{dev.protocol}</span>
                                         </div>
                                     </div>
 
                                     {/* Specialized Telemetry Strip (for Drones, Weather, Soil) */}
                                     {dev.telemetry && (
-                                        <div className="p-2.5 bg-slate-950/60 rounded-xl border border-slate-800/60 flex flex-wrap items-center gap-4 text-xs font-mono">
+                                        <div className="p-2.5 bg-[#FAFBF8] rounded-xl border border-[#D8E3D4] flex flex-wrap items-center gap-4 text-xs font-mono text-[#163022]">
                                             {dev.telemetry.batteryPct !== undefined && (
-                                                <span className="flex items-center gap-1.5 text-cyan-300">
+                                                <span className="flex items-center gap-1.5 text-blue-800 font-bold">
                                                     🔋 Battery: <strong>{dev.telemetry.batteryPct}%</strong>
                                                 </span>
                                             )}
                                             {dev.telemetry.gpsFix && (
-                                                <span className="flex items-center gap-1.5 text-emerald-400">
+                                                <span className="flex items-center gap-1.5 text-emerald-800 font-bold">
                                                     🛰️ GNSS Fix: <strong>{dev.telemetry.gpsFix}</strong>
                                                 </span>
                                             )}
                                             {dev.telemetry.moisturePct !== undefined && (
-                                                <span className="flex items-center gap-1.5 text-blue-300">
+                                                <span className="flex items-center gap-1.5 text-blue-800 font-bold">
                                                     💧 Soil Moisture: <strong>{dev.telemetry.moisturePct}%</strong> (Depth: {dev.telemetry.depthCm}cm)
                                                 </span>
                                             )}
                                             {dev.telemetry.soilPh !== undefined && (
-                                                <span className="flex items-center gap-1.5 text-amber-300">
+                                                <span className="flex items-center gap-1.5 text-amber-800 font-bold">
                                                     🧪 pH: <strong>{dev.telemetry.soilPh}</strong> • EC: <strong>{dev.telemetry.soilEcDsm} dS/m</strong>
                                                 </span>
                                             )}
                                             {dev.telemetry.tempC !== undefined && (
-                                                <span className="flex items-center gap-1.5 text-orange-300">
+                                                <span className="flex items-center gap-1.5 text-orange-800 font-bold">
                                                     🌡️ Air Temp: <strong>{dev.telemetry.tempC}°C</strong> • Humidity: <strong>{dev.telemetry.humidityPct}%</strong>
                                                 </span>
                                             )}
                                             {dev.telemetry.solarRadiationWm2 !== undefined && (
-                                                <span className="flex items-center gap-1.5 text-yellow-300">
+                                                <span className="flex items-center gap-1.5 text-amber-900 font-bold">
                                                     ☀️ Solar: <strong>{dev.telemetry.solarRadiationWm2} W/m²</strong>
                                                 </span>
                                             )}
@@ -1396,10 +1396,10 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
 
                                     {/* Expanded PoE Channels for NVR */}
                                     {isNvr && isExpanded && dev.channels && (
-                                        <div className="pt-2 border-t border-slate-800 space-y-2">
+                                        <div className="pt-2 border-t border-[#D8E3D4] space-y-2">
                                             <div className="flex items-center justify-between">
-                                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                                                    <CornerDownRight size={12} className="text-blue-400" />
+                                                <span className="text-[10px] font-black uppercase tracking-wider text-[#4A6753] flex items-center gap-1">
+                                                    <CornerDownRight size={12} className="text-emerald-700" />
                                                     {isKa ? 'NVR-ზე შეერთებული PoE IP კამერების არხები:' : 'Individual PoE IP Camera Channels connected to NVR:'}
                                                 </span>
                                             </div>
@@ -1408,17 +1408,17 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                                                 {dev.channels.map(ch => (
                                                     <div
                                                         key={`ch-${ch.channel}`}
-                                                        className="p-3 bg-slate-950 border border-slate-800/80 rounded-xl flex items-center justify-between gap-3"
+                                                        className="p-3 bg-[#FAFBF8] border border-[#D8E3D4] rounded-xl flex items-center justify-between gap-3"
                                                     >
                                                         <div className="flex items-center gap-2.5 min-w-0">
-                                                            <span className="px-1.5 py-0.5 rounded bg-blue-950 text-blue-300 font-mono font-bold text-[10px] border border-blue-800/60 shrink-0">
+                                                            <span className="px-1.5 py-0.5 rounded bg-[#EEF3EA] text-[#244130] font-mono font-bold text-[10px] border border-[#D8E3D4] shrink-0">
                                                                 CH0{ch.channel}
                                                             </span>
                                                             <div className="min-w-0">
-                                                                <h4 className="font-bold text-xs text-white truncate">
+                                                                <h4 className="font-bold text-xs text-[#163022] truncate">
                                                                     {ch.name}
                                                                 </h4>
-                                                                <p className="text-[10px] font-mono text-slate-400 truncate">
+                                                                <p className="text-[10px] font-mono text-[#4A6753] truncate">
                                                                     {ch.ip} • {ch.resolution} {ch.isPtz ? '• PTZ' : ''}
                                                                 </p>
                                                             </div>
@@ -1450,7 +1450,7 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                                                                             status: 'ONLINE'
                                                                         });
                                                                     }}
-                                                                    className="p-1.5 bg-blue-600/80 hover:bg-blue-500 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                                                                    className="px-2.5 py-1.5 bg-white hover:bg-blue-600 text-[#244130] hover:text-white border border-[#CFDCCB] hover:border-blue-600 rounded-lg text-[10px] font-bold flex items-center gap-1 shadow-2xs transition-all duration-200 cursor-pointer"
                                                                     title="Open Live RTSP Stream View"
                                                                 >
                                                                     <Play size={11} />
@@ -1461,7 +1461,7 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleDeployChannelToMap(dev, ch)}
-                                                                className="px-2.5 py-1.5 bg-emerald-600/80 hover:bg-emerald-500 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                                                                className="px-2.5 py-1.5 bg-white hover:bg-emerald-600 text-[#244130] hover:text-white border border-[#CFDCCB] hover:border-emerald-600 rounded-lg text-[10px] font-bold flex items-center gap-1 shadow-2xs transition-all duration-200 cursor-pointer"
                                                                 title="Place this camera onto the map"
                                                             >
                                                                 <Plus size={11} />
@@ -1480,7 +1480,7 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                 </div>
 
                 {/* Footer with Summary */}
-                <div className="p-4 bg-slate-900 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                <div className="p-4 bg-[#EEF3EA] border-t border-[#D8E3D4] flex items-center justify-between text-xs text-[#4A6753]">
                     <span className="flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-emerald-500" />
                         {devices.length} {isKa ? 'მოწყობილობა იდენტიფიცირებულია' : 'hardware devices identified across local subnet'}
@@ -1488,7 +1488,7 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all cursor-pointer"
+                        className="px-4 py-1.5 bg-white hover:bg-[#163022] text-[#244130] hover:text-white border border-[#CFDCCB] font-bold rounded-xl shadow-2xs transition-all duration-200 cursor-pointer"
                     >
                         {isKa ? 'დახურვა' : 'Done / Close'}
                     </button>
@@ -1507,18 +1507,18 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
 
             {/* Manual Add Device Modal */}
             {isManualAddOpen && (
-                <div className="fixed inset-0 z-[3400] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
-                    <div className="w-full max-w-lg bg-slate-950 border border-slate-700 rounded-3xl p-6 shadow-2xl text-white space-y-4">
-                        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="fixed inset-0 z-[3400] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
+                    <div className="w-full max-w-lg bg-[#FAFBF8] border border-[#D8E3D4] rounded-3xl p-6 shadow-2xl text-[#163022] space-y-4">
+                        <div className="flex items-center justify-between border-b border-[#D8E3D4] pb-3">
                             <div className="flex items-center gap-2.5">
-                                <div className="p-2 bg-blue-600/20 text-blue-400 rounded-xl">
+                                <div className="p-2 bg-[#EEF3EA] text-[#163022] border border-[#D8E3D4] rounded-xl">
                                     <Server size={20} />
                                 </div>
                                 <div>
-                                    <h3 className="text-base font-black uppercase text-white">
+                                    <h3 className="text-base font-black uppercase text-[#163022]">
                                         {isKa ? 'მოწყობილობის ხელით დამატება' : 'Add Hardware Device Manually'}
                                     </h3>
-                                    <p className="text-[10px] text-slate-400 uppercase tracking-wider">
+                                    <p className="text-[10px] text-[#4A6753] uppercase tracking-wider font-bold">
                                         Enter IP, Device Port (e.g. 2006), and credentials
                                     </p>
                                 </div>
@@ -1526,7 +1526,7 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                             <button
                                 type="button"
                                 onClick={() => setIsManualAddOpen(false)}
-                                className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
+                                className="p-1.5 rounded-lg bg-white hover:bg-[#EEF3EA] text-[#4A6753] hover:text-[#163022] border border-[#CFDCCB] transition-all cursor-pointer"
                             >
                                 <X size={16} />
                             </button>
@@ -1534,21 +1534,21 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                             <div>
-                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Device Alias / Name</label>
+                                <label className="block text-[10px] font-bold text-[#4A6753] uppercase mb-1">Device Alias / Name</label>
                                 <input
                                     type="text"
                                     value={manualDevice.alias}
                                     onChange={e => setManualDevice({ ...manualDevice, alias: e.target.value })}
-                                    className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none"
+                                    className="w-full px-3 py-1.5 bg-white border border-[#CFDCCB] rounded-xl text-[#163022] focus:outline-none focus:ring-1 focus:ring-[#163022]"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Category</label>
+                                <label className="block text-[10px] font-bold text-[#4A6753] uppercase mb-1">Category</label>
                                 <select
                                     value={manualDevice.category}
                                     onChange={e => setManualDevice({ ...manualDevice, category: e.target.value as any })}
-                                    className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none"
+                                    className="w-full px-3 py-1.5 bg-white border border-[#CFDCCB] rounded-xl text-[#163022] focus:outline-none"
                                 >
                                     <option value="NVR">NVR / DVR Recorder</option>
                                     <option value="IP_CAMERA">IP Camera</option>
@@ -1561,18 +1561,18 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                             </div>
 
                             <div>
-                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">IP Address / Host</label>
+                                <label className="block text-[10px] font-bold text-[#4A6753] uppercase mb-1">IP Address / Host</label>
                                 <input
                                     type="text"
                                     placeholder="192.168.10.248"
                                     value={manualDevice.ip}
                                     onChange={e => setManualDevice({ ...manualDevice, ip: e.target.value })}
-                                    className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl font-mono text-cyan-300 focus:outline-none"
+                                    className="w-full px-3 py-1.5 bg-white border border-[#CFDCCB] rounded-xl font-mono text-[#163022] focus:outline-none"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-[10px] font-bold text-cyan-400 uppercase mb-1">
+                                <label className="block text-[10px] font-bold text-blue-700 uppercase mb-1">
                                     Device Port (SDK / 2006)
                                 </label>
                                 <input
@@ -1580,79 +1580,79 @@ export const UniversalLanDeviceScannerModal: React.FC<UniversalLanDeviceScannerM
                                     placeholder="2006"
                                     value={manualDevice.devicePort}
                                     onChange={e => setManualDevice({ ...manualDevice, devicePort: parseInt(e.target.value, 10) || 2006 })}
-                                    className="w-full px-3 py-1.5 bg-slate-900 border border-cyan-800 rounded-xl font-mono text-cyan-300 focus:outline-none"
+                                    className="w-full px-3 py-1.5 bg-white border border-blue-400 rounded-xl font-mono text-[#163022] focus:outline-none"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">HTTP / Web Port</label>
+                                <label className="block text-[10px] font-bold text-[#4A6753] uppercase mb-1">HTTP / Web Port</label>
                                 <input
                                     type="number"
                                     placeholder="80"
                                     value={manualDevice.httpPort}
                                     onChange={e => setManualDevice({ ...manualDevice, httpPort: parseInt(e.target.value, 10) || 80 })}
-                                    className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl font-mono text-white focus:outline-none"
+                                    className="w-full px-3 py-1.5 bg-white border border-[#CFDCCB] rounded-xl font-mono text-[#163022] focus:outline-none"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">RTSP Stream Port</label>
+                                <label className="block text-[10px] font-bold text-[#4A6753] uppercase mb-1">RTSP Stream Port</label>
                                 <input
                                     type="number"
                                     placeholder="554"
                                     value={manualDevice.rtspPort}
                                     onChange={e => setManualDevice({ ...manualDevice, rtspPort: parseInt(e.target.value, 10) || 554 })}
-                                    className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl font-mono text-white focus:outline-none"
+                                    className="w-full px-3 py-1.5 bg-white border border-[#CFDCCB] rounded-xl font-mono text-[#163022] focus:outline-none"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Username</label>
+                                <label className="block text-[10px] font-bold text-[#4A6753] uppercase mb-1">Username</label>
                                 <input
                                     type="text"
                                     value={manualDevice.username}
                                     onChange={e => setManualDevice({ ...manualDevice, username: e.target.value })}
-                                    className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none"
+                                    className="w-full px-3 py-1.5 bg-white border border-[#CFDCCB] rounded-xl text-[#163022] focus:outline-none"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Password</label>
+                                <label className="block text-[10px] font-bold text-[#4A6753] uppercase mb-1">Password</label>
                                 <input
                                     type="password"
                                     value={manualDevice.password}
                                     onChange={e => setManualDevice({ ...manualDevice, password: e.target.value })}
-                                    className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none"
+                                    className="w-full px-3 py-1.5 bg-white border border-[#CFDCCB] rounded-xl text-[#163022] focus:outline-none"
                                 />
                             </div>
 
                             {manualDevice.category === 'NVR' && (
                                 <div className="sm:col-span-2">
-                                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">NVR Camera Channels Count</label>
+                                    <label className="block text-[10px] font-bold text-[#4A6753] uppercase mb-1">NVR Camera Channels Count</label>
                                     <input
                                         type="number"
                                         min={1}
                                         max={64}
                                         value={manualDevice.channelsCount}
                                         onChange={e => setManualDevice({ ...manualDevice, channelsCount: parseInt(e.target.value, 10) || 16 })}
-                                        className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono focus:outline-none"
+                                        className="w-full px-3 py-1.5 bg-white border border-[#CFDCCB] rounded-xl text-[#163022] font-mono focus:outline-none"
                                     />
                                 </div>
                             )}
                         </div>
 
-                        <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                        <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#D8E3D4]">
                             <button
                                 type="button"
                                 onClick={() => setIsManualAddOpen(false)}
-                                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl"
+                                className="px-4 py-2 bg-white hover:bg-slate-700 text-[#4A6753] hover:text-white text-xs font-bold rounded-xl border border-[#CFDCCB] shadow-2xs transition-all duration-200 cursor-pointer"
                             >
                                 Cancel
                             </button>
                             <button
                                 type="button"
                                 onClick={handleSaveManualDevice}
-                                className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-black uppercase tracking-wider rounded-xl shadow-lg shadow-blue-900/30"
+                                className="px-5 py-2 bg-white hover:bg-blue-600 text-[#244130] hover:text-white border border-[#CFDCCB] hover:border-blue-600 text-xs font-black uppercase tracking-wider rounded-xl shadow-2xs transition-all duration-200 cursor-pointer"
                             >
                                 Save Device
                             </button>

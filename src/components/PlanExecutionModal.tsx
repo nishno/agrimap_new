@@ -248,10 +248,10 @@ const PlanExecutionModal: React.FC<PlanExecutionModalProps> = ({ isOpen, onClose
                     <button
                         type="button"
                         onClick={() => setIsScannerOpen(true)}
-                        className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-sm transition-all cursor-pointer"
+                        className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-white text-[#244130] border border-[#CFDCCB] hover:bg-[#163022] hover:text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-2xs transition-all cursor-pointer"
                         title={isKa ? "აგრო-ინპუტის QR / შტრიხკოდის სკანირება" : "Scan Agro-Input QR / Barcode"}
                     >
-                        <ScanLine className="h-3.5 w-3.5 text-emerald-400" />
+                        <ScanLine className="h-3.5 w-3.5 text-emerald-600" />
                         <span>{isKa ? 'QR სკანერი' : 'Scan QR'}</span>
                     </button>
                     <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors cursor-pointer">
@@ -382,66 +382,66 @@ const PlanExecutionModal: React.FC<PlanExecutionModalProps> = ({ isOpen, onClose
                     </section>
                 </form>
 
-                <div className="w-full md:w-[420px] bg-slate-900 text-white p-6 md:p-8 flex flex-col shadow-2xl flex-shrink-0 min-h-0">
+                <div className="w-full md:w-[420px] bg-[#EEF3EA] text-[#163022] p-6 md:p-8 flex flex-col shadow-lg border-t md:border-t-0 md:border-l border-[#D8E3D4] flex-shrink-0 min-h-0">
                     <div className="flex items-center gap-2 mb-1">
-                         <ChartBarIcon className="h-5 w-5 text-emerald-400" />
-                         <h3 className="text-lg font-black text-emerald-400">{isKa ? 'ჩამოწერის წინასწარი გადახედვა' : 'Consumption Preview'}</h3>
+                         <ChartBarIcon className="h-5 w-5 text-[#2D5A27]" />
+                         <h3 className="text-lg font-black text-[#2D5A27]">{isKa ? 'ჩამოწერის წინასწარი გადახედვა' : 'Consumption Preview'}</h3>
                     </div>
-                    <p className="text-xs text-slate-400 mb-6 font-medium">
+                    <p className="text-xs text-[#5C7867] mb-6 font-medium">
                         {isKa ? 'საწყობის ცვლილება რეალურ დროში ფართობისა და დოზის მიხედვით.' : 'Real-time inventory deduction based on area and dosing.'}
                     </p>
 
                     <div className="space-y-4 md:flex-1 md:overflow-y-auto pr-2 md:custom-scrollbar mb-6 md:mb-0">
                         {calculationData.map((item, idx) => (
-                            <div key={idx} className={`bg-slate-800/90 p-4 rounded-2xl border ${item.isInsufficient ? 'border-rose-500 bg-rose-950/30' : 'border-slate-700'} relative transition-all`}>
+                            <div key={idx} className={`bg-white p-4 rounded-2xl border ${item.isInsufficient ? 'border-rose-400 bg-rose-50/60' : 'border-[#D8E3D4]'} shadow-2xs relative transition-all`}>
                                 {item.isInsufficient && (
-                                    <div className="absolute top-2 right-2 text-rose-300 text-[9px] font-black uppercase flex items-center gap-1 bg-rose-900/80 px-2 py-0.5 rounded-lg">
+                                    <div className="absolute top-2 right-2 text-rose-700 text-[9px] font-black uppercase flex items-center gap-1 bg-rose-100 border border-rose-300 px-2 py-0.5 rounded-lg">
                                         <AlertTriangleIcon className="h-3 w-3" /> {isKa ? 'არასაკმარისი ნაშთი' : 'Insufficient Stock'}
                                     </div>
                                 )}
                                 <div className="flex justify-between items-start mb-2">
                                     <div className="flex-1 pr-16">
-                                        <span className="font-black text-sm block truncate text-white">{item.name}</span>
-                                        <span className="text-[10px] text-slate-400 uppercase font-bold">{isKa ? 'ნაშთი:' : 'Stock:'} {item.stock}</span>
+                                        <span className="font-black text-sm block truncate text-[#163022]">{item.name}</span>
+                                        <span className="text-[10px] text-[#5C7867] uppercase font-bold">{isKa ? 'ნაშთი:' : 'Stock:'} {item.stock}</span>
                                     </div>
                                 </div>
-                                <div className="grid grid-cols-2 gap-4 text-xs mb-3 border-t border-slate-700 pt-2">
+                                <div className="grid grid-cols-2 gap-4 text-xs mb-3 border-t border-[#EEF3EA] pt-2">
                                     <div>
-                                        <div className="text-slate-400 text-[9px] uppercase font-black tracking-wider">{isKa ? 'საჭირო რაოდენობა' : 'Required'}</div>
-                                        <div className="font-mono text-indigo-400 font-bold">{item.totalConsumptionDisplay}</div>
+                                        <div className="text-[#5C7867] text-[9px] uppercase font-black tracking-wider">{isKa ? 'საჭირო რაოდენობა' : 'Required'}</div>
+                                        <div className="font-mono text-indigo-700 font-bold">{item.totalConsumptionDisplay}</div>
                                     </div>
                                     <div className="text-right">
-                                        <div className="text-slate-400 text-[9px] uppercase font-black tracking-wider">{isKa ? 'ჩამოწერა' : 'Impact'}</div>
-                                        <div className="font-mono text-emerald-400 font-bold">-{item.stockDeductionDisplay}</div>
+                                        <div className="text-[#5C7867] text-[9px] uppercase font-black tracking-wider">{isKa ? 'ჩამოწერა' : 'Impact'}</div>
+                                        <div className="font-mono text-emerald-700 font-bold">-{item.stockDeductionDisplay}</div>
                                     </div>
                                 </div>
-                                <div className="border-t border-slate-700 pt-2.5 flex justify-between items-center">
-                                    <span className={`font-bold text-xs ${item.isInsufficient ? 'text-rose-400' : 'text-slate-300'}`}>
+                                <div className="border-t border-[#EEF3EA] pt-2.5 flex justify-between items-center">
+                                    <span className={`font-bold text-xs ${item.isInsufficient ? 'text-rose-600' : 'text-[#4F6A5B]'}`}>
                                         {isKa ? 'დარჩება:' : 'Remaining:'} {item.remainingStockDisplay}
                                     </span>
-                                    <span className="text-amber-400 font-black text-sm">{formatCurrency(item.estimatedCost)}</span>
+                                    <span className="text-amber-800 font-black text-sm">{formatCurrency(item.estimatedCost)}</span>
                                 </div>
-                                {item.warning && <p className="text-[10px] text-amber-400 mt-2 italic font-semibold">* {item.warning}</p>}
+                                {item.warning && <p className="text-[10px] text-amber-700 mt-2 italic font-semibold">* {item.warning}</p>}
                             </div>
                         ))}
                         {calculationData.length === 0 && (
-                            <div className="flex flex-col items-center justify-center h-40 text-slate-500 border-2 border-dashed border-slate-800 rounded-2xl">
-                                <BeakerIcon className="h-10 w-10 mb-2 opacity-30" />
+                            <div className="flex flex-col items-center justify-center h-40 text-[#5C7867] border-2 border-dashed border-[#CFDCCB] bg-white/60 rounded-2xl">
+                                <BeakerIcon className="h-10 w-10 mb-2 opacity-40 text-[#2D5A27]" />
                                 <p className="text-xs font-bold">{isKa ? 'აირჩიეთ რეცეპტი მონაცემების სანახავად' : 'Select a recipe to view impact'}</p>
                             </div>
                         )}
                     </div>
 
-                    <div className="mt-6 pt-6 border-t border-slate-700 flex flex-col gap-4">
-                        <div className="flex justify-between items-center text-lg font-black text-amber-400">
-                            <span className="uppercase text-xs tracking-wider">{isKa ? 'ჯამური ღირებულება' : 'TOTAL COST'}</span>
+                    <div className="mt-6 pt-6 border-t border-[#D8E3D4] flex flex-col gap-4">
+                        <div className="flex justify-between items-center text-lg font-black text-amber-900">
+                            <span className="uppercase text-xs tracking-wider text-[#5C7867]">{isKa ? 'ჯამური ღირებულება' : 'TOTAL COST'}</span>
                             <span>{formatCurrency(totalEstimatedCost)}</span>
                         </div>
                         <div className="flex gap-3 mt-2">
-                            <button type="button" onClick={onClose} className="flex-1 py-3 rounded-xl border border-slate-600 text-slate-400 hover:text-white hover:bg-slate-800 transition-all font-bold text-xs uppercase tracking-wider cursor-pointer">
+                            <button type="button" onClick={onClose} className="flex-1 py-3 rounded-xl border border-[#CFDCCB] bg-white text-[#244130] hover:bg-[#F0F5EE] transition-all font-bold text-xs uppercase tracking-wider cursor-pointer shadow-2xs">
                                 {isKa ? 'გაუქმება' : 'Cancel'}
                             </button>
-                            <button type="submit" form="execution-form" className="flex-[2] py-3 rounded-xl bg-emerald-600 text-white hover:bg-emerald-500 transition-all font-black shadow-xl shadow-emerald-950/40 text-xs uppercase tracking-wider cursor-pointer">
+                            <button type="submit" form="execution-form" className="flex-[2] py-3 rounded-xl bg-white text-[#244130] border border-[#2D5A27] hover:bg-[#2D5A27] hover:text-white transition-all font-black shadow-2xs text-xs uppercase tracking-wider cursor-pointer">
                                 {isKa ? 'შესრულების დადასტურება' : 'Confirm Log'}
                             </button>
                         </div>

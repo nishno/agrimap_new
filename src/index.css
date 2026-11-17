@@ -48,10 +48,7 @@ textarea[class*="bg-slate-8"],
 textarea[class*="bg-black"],
 select[class*="bg-slate-9"],
 select[class*="bg-slate-8"],
-select[class*="bg-black"],
-.module-labs input:not(.bg-white):not([class*="bg-white"]):not([class*="bg-slate-50"]),
-.module-labs textarea:not(.bg-white):not([class*="bg-white"]),
-.module-labs select:not(.bg-white):not([class*="bg-white"]) {
+select[class*="bg-black"] {
   color: #f8fafc !important;
   -webkit-text-fill-color: #f8fafc !important;
 }
@@ -115,24 +112,24 @@ textarea::placeholder {
   color: var(--text-secondary) !important;
 }
 
-/* Dark mode automatic module theming */
+/* Automatic module theming */
 .dark body,
 .dark main {
-  background-color: var(--bg-canvas, #090d16) !important;
-  color: var(--text-primary, #f8fafc) !important;
+  background-color: var(--bg-canvas, #FAFBF8) !important;
+  color: var(--text-primary, #163022) !important;
 }
 
 .dark .bg-slate-50,
 .dark .bg-gray-50,
 .dark .bg-zinc-50,
 .dark .bg-neutral-50 {
-  background-color: var(--bg-canvas, #090d16) !important;
-  color: var(--text-primary, #f8fafc) !important;
+  background-color: var(--bg-canvas, #FAFBF8) !important;
+  color: var(--text-primary, #163022) !important;
 }
 
 .dark .bg-white {
-  background-color: var(--bg-surface, #0f172a) !important;
-  color: var(--text-primary, #f8fafc) !important;
+  background-color: var(--bg-surface, #ffffff) !important;
+  color: var(--text-primary, #163022) !important;
   border-color: var(--border-color, #1e293b) !important;
 }
 

@@ -369,30 +369,30 @@ export const HarvestBoxQrModal: React.FC<HarvestBoxQrModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-3 sm:p-4 backdrop-blur-xs animate-in fade-in duration-200" onClick={onClose}>
-            <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[92vh]" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-3 sm:p-4 backdrop-blur-md animate-in fade-in duration-200" onClick={onClose}>
+            <div className="bg-[#FAFBF8] w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden border border-[#D8E3D4] flex flex-col max-h-[92vh] text-[#163022]" onClick={e => e.stopPropagation()}>
                 
                 {/* Header */}
-                <div className="p-4 sm:p-5 bg-slate-900 text-white flex justify-between items-center shrink-0">
+                <div className="p-4 sm:p-5 bg-[#EEF3EA] text-[#163022] border-b border-[#D8E3D4] flex justify-between items-center shrink-0">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-400">
+                        <div className="w-10 h-10 rounded-2xl bg-white border border-[#D8E3D4] flex items-center justify-center text-[#2D5A27] shadow-2xs">
                             <QrCode size={22} />
                         </div>
                         <div>
-                            <h2 className="text-base sm:text-lg font-black tracking-tight flex items-center gap-2">
+                            <h2 className="text-base sm:text-lg font-black tracking-tight flex items-center gap-2 text-[#163022]">
                                 <span>{isKa ? 'მოსავლის ყუთების QR გენერატორი' : 'Harvest Box QR Label Generator'}</span>
-                                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
                                     Anti-Duplicate
                                 </span>
                             </h2>
-                            <p className="text-xs text-slate-400 mt-0.5">
+                            <p className="text-xs text-[#5C7867] mt-0.5">
                                 {isKa 
                                     ? 'შექმენით უნიკალური QR ეტიკეტები ყუთებისთვის მუშებზე მიბმით და ასაწონ პუნქტში დუბლირების პრევენციით' 
                                     : 'Generate unique, non-duplicating box QR codes mapped to pickers with automated weigh station identification'}
                             </p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer">
+                    <button onClick={onClose} className="p-2 rounded-xl text-[#5C7867] hover:text-[#163022] hover:bg-white/60 transition-colors cursor-pointer">
                         <X size={20} />
                     </button>
                 </div>
@@ -565,7 +565,7 @@ export const HarvestBoxQrModal: React.FC<HarvestBoxQrModalProps> = ({
                                 type="button"
                                 onClick={handleGenerateCodes}
                                 disabled={isGenerating || !activeEvent}
-                                className="py-2.5 px-5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 disabled:bg-slate-300 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-sm transition-all flex items-center gap-2 cursor-pointer"
+                                className="py-2.5 px-5 bg-white text-[#244130] border border-[#2D5A27] hover:bg-[#2D5A27] hover:text-white active:scale-95 disabled:opacity-50 rounded-xl text-xs font-black uppercase tracking-wider shadow-2xs transition-all flex items-center gap-2 cursor-pointer"
                             >
                                 <Sparkles size={15} />
                                 <span>{isGenerating ? (isKa ? 'გენერირდება...' : 'Generating...') : (isKa ? `QR კოდების შექმნა (${boxCount})` : `Generate (${boxCount}) Box QRs`)}</span>
@@ -575,9 +575,9 @@ export const HarvestBoxQrModal: React.FC<HarvestBoxQrModalProps> = ({
                                 <button
                                     type="button"
                                     onClick={handlePrintStickers}
-                                    className="py-2.5 px-5 bg-slate-900 hover:bg-slate-800 active:scale-95 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-sm transition-all flex items-center gap-2 cursor-pointer"
+                                    className="py-2.5 px-5 bg-white text-[#244130] border border-[#CFDCCB] hover:bg-[#163022] hover:text-white active:scale-95 rounded-xl text-xs font-black uppercase tracking-wider shadow-2xs transition-all flex items-center gap-2 cursor-pointer"
                                 >
-                                    <Printer size={15} className="text-amber-400" />
+                                    <Printer size={15} className="text-[#2D5A27]" />
                                     <span>{isKa ? 'ეტიკეტების ბეჭდვა' : 'Print Sticker Sheet'}</span>
                                 </button>
                             )}

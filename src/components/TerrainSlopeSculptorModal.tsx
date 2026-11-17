@@ -359,25 +359,25 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
     };
 
     return (
-        <div className="fixed inset-0 z-[2600] flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="relative w-full max-w-5xl bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh]">
+        <div className="fixed inset-0 z-[2600] flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="relative w-full max-w-5xl bg-[#FAFBF8] border border-[#D8E3D4] rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh] text-[#163022]">
                 
                 {/* Header */}
-                <div className="p-4 sm:p-5 border-b border-slate-800 bg-slate-950/90 flex items-center justify-between">
+                <div className="p-4 sm:p-5 border-b border-[#D8E3D4] bg-[#EEF3EA] flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-emerald-600/20 border border-emerald-500/40 rounded-2xl text-emerald-400">
+                        <div className="p-2.5 bg-white border border-[#D8E3D4] rounded-2xl text-emerald-700 shadow-2xs">
                             <Mountain size={22} />
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
-                                <h3 className="text-base sm:text-lg font-black text-white tracking-tight">
+                                <h3 className="text-base sm:text-lg font-black text-[#163022] tracking-tight">
                                     {isKa ? '3D რელიეფის & ფერდობის მოდელირება (Falloff Engine)' : '3D Terrain & Slope Sculptor (Falloff Engine)'}
                                 </h3>
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-950 text-emerald-300 border border-emerald-700/50">
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
                                     DEM v2.4
                                 </span>
                             </div>
-                            <p className="text-xs text-slate-400">
+                            <p className="text-xs text-[#4A6753]">
                                 {isKa 
                                     ? 'ფერდობების შექმნა, სიმაღლის (H) და რადიუსის (R) მართვა, კამერის ხილვადობის და დრონის AGL ავტო-ადაპტაცია' 
                                     : 'Create custom slopes, adjust peak height (H) and radius (R), auto-occlude camera viewshed & elevate drone flight path'}
@@ -386,20 +386,20 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                        className="p-2 text-[#4A6753] hover:text-[#163022] bg-white hover:bg-[#EEF3EA] border border-[#CFDCCB] rounded-xl transition-all duration-200 cursor-pointer shadow-2xs"
                     >
                         <X size={20} />
                     </button>
                 </div>
 
                 {/* Body Content */}
-                <div className="flex-1 overflow-y-auto p-4 sm:p-5 grid grid-cols-1 lg:grid-cols-12 gap-5 custom-scrollbar">
+                <div className="flex-1 overflow-y-auto p-4 sm:p-5 grid grid-cols-1 lg:grid-cols-12 gap-5 custom-scrollbar bg-[#F5F8F4]">
                     
                     {/* Left Column: Interactive Map & Profile Visualizer (7 cols) */}
                     <div className="lg:col-span-7 space-y-4 flex flex-col">
                         
                         {/* Map Viewport with Draggable Pin & Radius Circle */}
-                        <div className="relative w-full h-[280px] sm:h-[340px] bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-inner">
+                        <div className="relative w-full h-[280px] sm:h-[340px] bg-white rounded-2xl overflow-hidden border border-[#D8E3D4] shadow-inner">
                             <MapContainer
                                 center={[activeSlope.centerLat, activeSlope.centerLng]}
                                 zoom={17}
@@ -488,26 +488,26 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                             </MapContainer>
 
                             {/* Floating Map Help Overlay */}
-                            <div className="absolute bottom-3 left-3 z-[400] bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-700/80 text-[11px] text-slate-300 font-medium flex items-center gap-2">
-                                <Crosshair size={13} className="text-emerald-400" />
+                            <div className="absolute bottom-3 left-3 z-[400] bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-xl border border-[#D8E3D4] text-[11px] text-[#244130] font-bold flex items-center gap-2 shadow-sm">
+                                <Crosshair size={13} className="text-emerald-700" />
                                 <span>{isKa ? 'დააწკაპუნეთ რუკაზე ან გადაათრიეთ პინი მწვერვალის დასასმელად' : 'Click on map or drag pin to place peak marker'}</span>
                             </div>
                         </div>
 
                         {/* Real-Time Cross-Section Profile Curve (Z vs r) */}
-                        <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2">
+                        <div className="bg-white p-4 rounded-2xl border border-[#D8E3D4] space-y-2 shadow-2xs">
                             <div className="flex items-center justify-between text-xs">
-                                <span className="font-bold text-slate-200 flex items-center gap-1.5">
-                                    <Activity size={14} className="text-emerald-400" />
+                                <span className="font-bold text-[#163022] flex items-center gap-1.5">
+                                    <Activity size={14} className="text-emerald-700" />
                                     <span>{isKa ? 'ფერდობის გეომეტრიული პროფილი (Z vs r)' : 'Slope Cross-Section Profile (Z vs r)'}</span>
                                 </span>
-                                <span className="font-mono text-[11px] text-slate-400">
+                                <span className="font-mono text-[11px] text-[#4A6753] font-bold">
                                     H = {activeSlope.peakHeightM > 0 ? `+${activeSlope.peakHeightM}m` : `${activeSlope.peakHeightM}m`} &bull; R = {activeSlope.radiusM}m
                                 </span>
                             </div>
 
                             {/* Interactive SVG Curve with Direct Dragging */}
-                            <div className="relative w-full h-[84px] bg-slate-900/70 rounded-xl overflow-hidden border border-slate-800/80 flex items-center justify-center select-none">
+                            <div className="relative w-full h-[84px] bg-[#FAFBF8] rounded-xl overflow-hidden border border-[#D8E3D4] flex items-center justify-center select-none">
                                 <svg
                                     ref={modalSvgRef}
                                     viewBox="0 0 240 70"
@@ -517,9 +517,9 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                                     onPointerUp={handleModalPointerUp}
                                 >
                                     {/* Base plane Z=0 line */}
-                                    <line x1="0" y1="48" x2="240" y2="48" stroke="#334155" strokeWidth="1" strokeDasharray="3,3" />
+                                    <line x1="0" y1="48" x2="240" y2="48" stroke="#CFDCCB" strokeWidth="1" strokeDasharray="3,3" />
                                     {/* Central peak vertical axis */}
-                                    <line x1="120" y1="8" x2="120" y2="62" stroke="#475569" strokeWidth="0.8" strokeDasharray="2,2" />
+                                    <line x1="120" y1="8" x2="120" y2="62" stroke="#B5CBB0" strokeWidth="0.8" strokeDasharray="2,2" />
                                     
                                     {/* Gradient fill beneath curve */}
                                     <polygon
@@ -550,7 +550,7 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                                             stroke={isExcavation ? '#ef4444' : '#10b981'}
                                             strokeWidth="2"
                                         />
-                                        <rect x="-14" y="-14" width="28" height="10" rx="3" fill="#0f172a" stroke="#38bdf8" strokeWidth="0.8" />
+                                        <rect x="-14" y="-14" width="28" height="10" rx="3" fill="#163022" stroke="#D8E3D4" strokeWidth="0.8" />
                                         <text x="0" y="-7" fill="#ffffff" fontSize="7" fontWeight="bold" textAnchor="middle">
                                             {activeSlope.peakHeightM > 0 ? `+${activeSlope.peakHeightM}m` : `${activeSlope.peakHeightM}m`}
                                         </text>
@@ -586,9 +586,9 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                                     />
                                 </svg>
 
-                                <div className="absolute top-1 left-3 text-[9px] font-mono text-slate-400">r = -{activeSlope.radiusM}m</div>
-                                <div className="absolute top-1 right-3 text-[9px] font-mono text-slate-400">r = +{activeSlope.radiusM}m</div>
-                                <div className="absolute bottom-1 self-center text-[9px] font-mono text-emerald-400 font-bold">r = 0 (Apex H: {activeSlope.peakHeightM}m)</div>
+                                <div className="absolute top-1 left-3 text-[9px] font-mono text-[#4A6753] font-bold">r = -{activeSlope.radiusM}m</div>
+                                <div className="absolute top-1 right-3 text-[9px] font-mono text-[#4A6753] font-bold">r = +{activeSlope.radiusM}m</div>
+                                <div className="absolute bottom-1 self-center text-[9px] font-mono text-emerald-800 font-bold">r = 0 (Apex H: {activeSlope.peakHeightM}m)</div>
                             </div>
                         </div>
 
@@ -597,30 +597,30 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                             <button
                                 type="button"
                                 onClick={handleAutoAdjustDroneAGL}
-                                className="p-3 bg-gradient-to-r from-cyan-950/80 to-blue-950/80 border border-cyan-700/50 hover:border-cyan-400 rounded-2xl flex items-center gap-3 transition-all cursor-pointer group text-left shadow-lg"
+                                className="p-3 bg-white hover:bg-cyan-600 text-[#244130] hover:text-white border border-[#CFDCCB] hover:border-cyan-600 rounded-2xl flex items-center gap-3 transition-all duration-200 cursor-pointer group text-left shadow-2xs"
                             >
-                                <div className="p-2 rounded-xl bg-cyan-600/20 text-cyan-400 group-hover:scale-110 transition-transform">
+                                <div className="p-2 rounded-xl bg-cyan-100 text-cyan-800 group-hover:bg-white group-hover:text-cyan-600 transition-colors">
                                     <Plane size={18} />
                                 </div>
                                 <div className="min-w-0">
-                                    <span className="block text-xs font-bold text-slate-100 leading-tight">
+                                    <span className="block text-xs font-bold leading-tight">
                                         {isKa ? 'დრონის ფრენის სიმაღლის (AGL) ადაპტაცია' : 'Auto AGL Drone Collision Protection'}
                                     </span>
-                                    <span className="text-[10px] text-cyan-400">
+                                    <span className="text-[10px] text-cyan-700 group-hover:text-cyan-100">
                                         {isKa ? 'გეგმის აწევა ფერდობის თავზე' : 'Elevate path above slope crest'}
                                     </span>
                                 </div>
                             </button>
 
-                            <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl flex items-center gap-3">
-                                <div className="p-2 rounded-xl bg-blue-600/20 text-blue-400">
+                            <div className="p-3 bg-white border border-[#D8E3D4] rounded-2xl flex items-center gap-3 shadow-2xs">
+                                <div className="p-2 rounded-xl bg-blue-100 text-blue-800">
                                     <Camera size={18} />
                                 </div>
                                 <div className="min-w-0">
-                                    <span className="block text-xs font-bold text-slate-100 leading-tight">
+                                    <span className="block text-xs font-bold text-[#163022] leading-tight">
                                         {isKa ? 'კამერის Viewshed დაბრკოლება' : 'Camera Viewshed Occlusion'}
                                     </span>
-                                    <span className="text-[10px] text-emerald-400">
+                                    <span className="text-[10px] text-emerald-700 font-bold">
                                         {isKa ? 'ფერდობის უკან ჩნდება ბრმა ზონა' : 'Hill rear slope generates blind spot'}
                                     </span>
                                 </div>
@@ -632,18 +632,18 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                     <div className="lg:col-span-5 space-y-4">
                         
                         {/* 1. Target Selection (Where we are standing / Plantation / Drawn Sector) */}
-                        <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2.5">
-                            <span className="text-xs font-bold text-slate-200 block uppercase tracking-wider text-[11px]">
+                        <div className="bg-white p-4 rounded-2xl border border-[#D8E3D4] space-y-2.5 shadow-2xs">
+                            <span className="text-xs font-bold text-[#163022] block uppercase tracking-wider text-[11px]">
                                 {isKa ? '1. სამიზნე 3D არეალის არჩევა' : '1. Target 3D Area / Location'}
                             </span>
                             <div className="grid grid-cols-2 gap-2">
                                 <button
                                     type="button"
                                     onClick={() => handleSelectSource('standing_location')}
-                                    className={`p-2.5 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                                    className={`p-2.5 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer ${
                                         activeSlope.sourceType === 'standing_location'
-                                            ? 'bg-emerald-600/20 border-emerald-500 text-emerald-300 shadow-sm'
-                                            : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-850'
+                                            ? 'bg-emerald-100 border-emerald-400 text-emerald-900 shadow-2xs'
+                                            : 'bg-white hover:bg-[#EEF3EA] border-[#CFDCCB] text-[#244130]'
                                     }`}
                                 >
                                     <Crosshair size={16} />
@@ -653,10 +653,10 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                                 <button
                                     type="button"
                                     onClick={() => handleSelectSource('plantation_polygon')}
-                                    className={`p-2.5 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                                    className={`p-2.5 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer ${
                                         activeSlope.sourceType === 'plantation_polygon'
-                                            ? 'bg-emerald-600/20 border-emerald-500 text-emerald-300 shadow-sm'
-                                            : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-850'
+                                            ? 'bg-emerald-100 border-emerald-400 text-emerald-900 shadow-2xs'
+                                            : 'bg-white hover:bg-[#EEF3EA] border-[#CFDCCB] text-[#244130]'
                                     }`}
                                 >
                                     <Layers size={16} />
@@ -667,7 +667,7 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                             {/* Drawn sectors selector if available */}
                             {availablePolygons.length > 0 && (
                                 <div className="pt-1">
-                                    <label className="text-[10px] text-slate-400 block mb-1">
+                                    <label className="text-[10px] text-[#4A6753] block mb-1 font-bold">
                                         {isKa ? 'ან აირჩიეთ დახაზული სექტორი:' : 'Or select drawn sector:'}
                                     </label>
                                     <select
@@ -676,7 +676,7 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                                             const found = availablePolygons.find(p => p.name === e.target.value);
                                             if (found) handleSelectSource('drawn_sector', found);
                                         }}
-                                        className="w-full bg-slate-900 border border-slate-800 text-white rounded-xl px-3 py-2 text-xs font-medium focus:outline-none focus:border-emerald-500"
+                                        className="w-full bg-[#FAFBF8] border border-[#CFDCCB] text-[#163022] rounded-xl px-3 py-2 text-xs font-medium focus:outline-none focus:border-emerald-600"
                                     >
                                         <option value="">{isKa ? '-- აირჩიეთ სექტორი --' : '-- Select Drawn Sector --'}</option>
                                         {availablePolygons.map(p => (
@@ -688,18 +688,18 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                         </div>
 
                         {/* 2. Convexity / Concavity Mode (Add / Remove Slope) */}
-                        <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2.5">
-                            <span className="text-xs font-bold text-slate-200 block uppercase tracking-wider text-[11px]">
+                        <div className="bg-white p-4 rounded-2xl border border-[#D8E3D4] space-y-2.5 shadow-2xs">
+                            <span className="text-xs font-bold text-[#163022] block uppercase tracking-wider text-[11px]">
                                 {isKa ? '2. ფერდობის მიმართულება' : '2. Convexity / Concavity'}
                             </span>
                             <div className="grid grid-cols-2 gap-2">
                                 <button
                                     type="button"
                                     onClick={handleSetConvex}
-                                    className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                                    className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer ${
                                         !isExcavation 
-                                            ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40 border-emerald-500' 
-                                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                                            ? 'bg-emerald-600 text-white shadow-2xs border-emerald-600' 
+                                            : 'bg-white hover:bg-emerald-600 border-[#CFDCCB] hover:border-emerald-600 text-[#4A6753] hover:text-white'
                                     }`}
                                 >
                                     <ArrowUp size={15} />
@@ -708,10 +708,10 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                                 <button
                                     type="button"
                                     onClick={handleSetConcave}
-                                    className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                                    className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer ${
                                         isExcavation 
-                                            ? 'bg-rose-600 text-white shadow-md shadow-rose-900/40 border-rose-500' 
-                                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                                            ? 'bg-rose-600 text-white shadow-2xs border-rose-600' 
+                                            : 'bg-white hover:bg-rose-600 border-[#CFDCCB] hover:border-rose-600 text-[#4A6753] hover:text-white'
                                     }`}
                                 >
                                     <ArrowDown size={15} />
@@ -721,13 +721,13 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                         </div>
 
                         {/* 3. Height Slider & Vertical Gizmo */}
-                        <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-3">
+                        <div className="bg-white p-4 rounded-2xl border border-[#D8E3D4] space-y-3 shadow-2xs">
                             <div className="flex items-center justify-between text-xs">
-                                <span className="font-bold text-slate-200 flex items-center gap-1.5">
-                                    <Sliders size={14} className="text-emerald-400" />
+                                <span className="font-bold text-[#163022] flex items-center gap-1.5">
+                                    <Sliders size={14} className="text-emerald-700" />
                                     <span>{isKa ? 'მწვერვალის სიმაღლე (H)' : 'Peak Height / Depth (H)'}</span>
                                 </span>
-                                <span className={`font-mono font-black text-sm ${isExcavation ? 'text-rose-400' : 'text-emerald-400'}`}>
+                                <span className={`font-mono font-black text-sm ${isExcavation ? 'text-rose-600' : 'text-emerald-700'}`}>
                                     {activeSlope.peakHeightM > 0 ? `+${activeSlope.peakHeightM}m` : `${activeSlope.peakHeightM}m`}
                                 </span>
                             </div>
@@ -739,7 +739,7 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                                 step={1}
                                 value={activeSlope.peakHeightM}
                                 onChange={(e) => updateActiveSlope({ peakHeightM: parseInt(e.target.value, 10) || 0 })}
-                                className="w-full accent-emerald-500 cursor-pointer"
+                                className="w-full accent-emerald-600 cursor-pointer"
                             />
 
                             {/* Quick Step Buttons */}
@@ -749,10 +749,10 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                                         key={h}
                                         type="button"
                                         onClick={() => updateActiveSlope({ peakHeightM: h })}
-                                        className={`flex-1 py-1 rounded-lg text-[10px] font-mono font-bold border transition-colors cursor-pointer ${
+                                        className={`flex-1 py-1 rounded-lg text-[10px] font-mono font-bold border transition-all duration-200 cursor-pointer ${
                                             activeSlope.peakHeightM === h
-                                                ? 'bg-emerald-500 text-slate-950 border-emerald-400'
-                                                : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                                                ? 'bg-[#163022] text-white border-[#163022] shadow-2xs'
+                                                : 'bg-white hover:bg-[#EEF3EA] text-[#4A6753] hover:text-[#163022] border-[#CFDCCB]'
                                         }`}
                                     >
                                         {h > 0 ? `+${h}` : h}m
@@ -762,13 +762,13 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                         </div>
 
                         {/* 4. Radius Ring of Influence (R) */}
-                        <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-3">
+                        <div className="bg-white p-4 rounded-2xl border border-[#D8E3D4] space-y-3 shadow-2xs">
                             <div className="flex items-center justify-between text-xs">
-                                <span className="font-bold text-slate-200 flex items-center gap-1.5">
-                                    <Compass size={14} className="text-emerald-400" />
+                                <span className="font-bold text-[#163022] flex items-center gap-1.5">
+                                    <Compass size={14} className="text-emerald-700" />
                                     <span>{isKa ? 'გავლენის რადიუსი (R)' : 'Influence Radius (R)'}</span>
                                 </span>
-                                <span className="font-mono font-black text-sm text-emerald-400">
+                                <span className="font-mono font-black text-sm text-emerald-700">
                                     {activeSlope.radiusM} meters
                                 </span>
                             </div>
@@ -780,10 +780,10 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                                 step={5}
                                 value={activeSlope.radiusM}
                                 onChange={(e) => updateActiveSlope({ radiusM: parseInt(e.target.value, 10) || 50 })}
-                                className="w-full accent-emerald-500 cursor-pointer"
+                                className="w-full accent-emerald-600 cursor-pointer"
                             />
                             
-                            <p className="text-[10px] text-slate-400">
+                            <p className="text-[10px] text-[#4A6753]">
                                 {isKa 
                                     ? 'რადიუსის გაზრდა ფერდობს ხდის უფრო გრძელს და დამრეცს, შემცირება კი - ციცაბოს.' 
                                     : 'Increasing radius makes the slope shallower and longer; decreasing it makes it steeper.'}
@@ -791,8 +791,8 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                         </div>
 
                         {/* 5. Falloff Formula Selector */}
-                        <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2.5">
-                            <span className="text-xs font-bold text-slate-200 block uppercase tracking-wider text-[11px]">
+                        <div className="bg-white p-4 rounded-2xl border border-[#D8E3D4] space-y-2.5 shadow-2xs">
+                            <span className="text-xs font-bold text-[#163022] block uppercase tracking-wider text-[11px]">
                                 {isKa ? '5. ფერდობის ფორმულა (Slope Type)' : '5. Slope Falloff Function'}
                             </span>
                             <div className="grid grid-cols-3 gap-2">
@@ -805,14 +805,14 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                                         key={type.id}
                                         type="button"
                                         onClick={() => updateActiveSlope({ slopeType: type.id as any })}
-                                        className={`p-2 rounded-xl border text-center transition-all cursor-pointer ${
+                                        className={`p-2 rounded-xl border text-center transition-all duration-200 cursor-pointer ${
                                             activeSlope.slopeType === type.id
-                                                ? 'bg-emerald-600/20 border-emerald-500 text-emerald-300 font-bold'
-                                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                                                ? 'bg-emerald-100 border-emerald-400 text-emerald-900 font-bold shadow-2xs'
+                                                : 'bg-white hover:bg-[#EEF3EA] border-[#CFDCCB] text-[#4A6753] hover:text-[#163022]'
                                         }`}
                                     >
                                         <div className="text-xs">{type.label}</div>
-                                        <div className="text-[9px] font-mono opacity-60 truncate">{type.desc}</div>
+                                        <div className="text-[9px] font-mono opacity-70 truncate">{type.desc}</div>
                                     </button>
                                 ))}
                             </div>
@@ -823,7 +823,7 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                             <button
                                 type="button"
                                 onClick={handleAddNewSlope}
-                                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-emerald-900/30"
+                                className="flex-1 py-2.5 bg-white hover:bg-emerald-600 text-[#244130] hover:text-white border border-[#CFDCCB] hover:border-emerald-600 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
                             >
                                 <Plus size={14} />
                                 <span>{isKa ? 'ახალი ფერდობი' : 'Add Slope'}</span>
@@ -831,7 +831,7 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                             <button
                                 type="button"
                                 onClick={handleDuplicateSlope}
-                                className="p-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-xl border border-slate-800 transition-colors cursor-pointer"
+                                className="p-2.5 bg-white hover:bg-[#EEF3EA] text-[#244130] rounded-xl border border-[#CFDCCB] transition-all duration-200 cursor-pointer shadow-2xs"
                                 title="Duplicate Slope"
                             >
                                 <Copy size={15} />
@@ -839,7 +839,7 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                             <button
                                 type="button"
                                 onClick={handleDeleteSlope}
-                                className="p-2.5 bg-slate-900 hover:bg-rose-950/40 text-rose-400 rounded-xl border border-slate-800 transition-colors cursor-pointer"
+                                className="p-2.5 bg-white hover:bg-rose-600 text-[#4A6753] hover:text-white rounded-xl border border-[#CFDCCB] hover:border-rose-600 transition-all duration-200 cursor-pointer shadow-2xs"
                                 title="Delete Slope"
                             >
                                 <Trash2 size={15} />
@@ -849,9 +849,9 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 border-t border-slate-800 bg-slate-950/90 flex flex-wrap items-center justify-between gap-3">
+                <div className="p-4 border-t border-[#D8E3D4] bg-[#EEF3EA] flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
-                        <span className="text-xs text-slate-400">
+                        <span className="text-xs text-[#4A6753] font-bold">
                             {slopes.length} {isKa ? 'აქტიური 3D ფერდობი ინტეგრირებულია რელიეფში' : 'active slopes rendered in 3D terrain'}
                         </span>
                     </div>
@@ -859,7 +859,7 @@ const TerrainSlopeSculptorModalContent: React.FC<TerrainSlopeSculptorModalProps>
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer shadow-lg shadow-emerald-900/40"
+                        className="px-6 py-2.5 bg-white hover:bg-emerald-600 text-[#244130] hover:text-white border border-[#CFDCCB] hover:border-emerald-600 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 cursor-pointer shadow-2xs"
                     >
                         {isKa ? 'შენახვა & დასრულება' : 'Apply & Close'}
                     </button>

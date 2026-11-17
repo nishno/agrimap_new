@@ -397,24 +397,24 @@ export const ExportExcelModal: React.FC<ExportExcelModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[3500] flex items-center justify-center p-3 sm:p-6 animate-fadeIn" onClick={onClose}>
-            <div className="bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-slate-100" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-md z-[3500] flex items-center justify-center p-3 sm:p-6 animate-fadeIn" onClick={onClose}>
+            <div className="bg-[#FAFBF8] w-full max-w-2xl rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-[#D8E3D4]" onClick={e => e.stopPropagation()}>
                 {/* Header */}
-                <div className="p-5 bg-slate-900 text-white flex justify-between items-center flex-shrink-0">
+                <div className="p-5 bg-[#EEF3EA] text-[#163022] border-b border-[#D8E3D4] flex justify-between items-center flex-shrink-0">
                     <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-500/30">
+                        <div className="p-2.5 bg-white text-[#2D5A27] rounded-xl border border-[#D8E3D4] shadow-2xs">
                             <FileSpreadsheet size={20} />
                         </div>
                         <div>
-                            <h2 className="text-base font-black uppercase tracking-tight text-white flex items-center gap-2">
+                            <h2 className="text-base font-black uppercase tracking-tight text-[#163022] flex items-center gap-2">
                                 {isKa ? 'მოქნილი Excel ექსპორტიორი' : 'Flexible Excel / Payroll Data Exporter'}
                             </h2>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                            <p className="text-[10px] text-[#5C7867] font-bold uppercase tracking-wider">
                                 {event.name} • Filtered Export Engine
                             </p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-400 hover:text-white">
+                    <button onClick={onClose} className="p-2 hover:bg-white/60 rounded-full transition-colors text-[#5C7867] hover:text-[#163022] cursor-pointer">
                         <XIcon className="h-5 w-5" />
                     </button>
                 </div>
@@ -575,11 +575,11 @@ export const ExportExcelModal: React.FC<ExportExcelModalProps> = ({
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
+                <div className="p-4 bg-[#EEF3EA] border-t border-[#D8E3D4] flex justify-between items-center">
                     <button 
                         type="button" 
                         onClick={onClose} 
-                        className="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-black uppercase text-xs tracking-wider cursor-pointer transition-colors"
+                        className="px-5 py-2.5 bg-white hover:bg-[#F0F5EE] text-[#244130] border border-[#CFDCCB] rounded-xl font-bold uppercase text-xs tracking-wider cursor-pointer transition-all shadow-2xs"
                     >
                         {isKa ? 'გაუქმება' : 'Cancel'}
                     </button>
@@ -589,18 +589,18 @@ export const ExportExcelModal: React.FC<ExportExcelModalProps> = ({
                             type="button" 
                             onClick={handleExecuteGoogleSheetsExport}
                             disabled={isExportingToGoogleSheets}
-                            className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white rounded-xl font-black uppercase text-xs tracking-wider flex items-center gap-2 shadow-lg shadow-teal-600/20 cursor-pointer active:scale-95 transition-all"
+                            className="px-5 py-2.5 bg-white text-[#244130] border border-teal-600 hover:bg-teal-700 hover:text-white disabled:opacity-50 rounded-xl font-black uppercase text-xs tracking-wider flex items-center gap-2 shadow-2xs cursor-pointer active:scale-95 transition-all"
                         >
-                            {isExportingToGoogleSheets ? <RefreshCw className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+                            {isExportingToGoogleSheets ? <RefreshCw className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4 text-teal-600" />}
                             {isExportingToGoogleSheets ? 'Exporting...' : 'Export to Google Sheets'}
                         </button>
 
                         <button 
                             type="button" 
                             onClick={handleExecuteExport} 
-                            className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black uppercase text-xs tracking-wider flex items-center gap-2 shadow-lg shadow-emerald-600/30 cursor-pointer active:scale-95 transition-all"
+                            className="px-6 py-2.5 bg-white text-[#244130] border border-[#2D5A27] hover:bg-[#2D5A27] hover:text-white rounded-xl font-black uppercase text-xs tracking-wider flex items-center gap-2 shadow-2xs cursor-pointer active:scale-95 transition-all"
                         >
-                            <ArrowDownTrayIcon className="h-4 w-4" />
+                            <ArrowDownTrayIcon className="h-4 w-4 text-emerald-600" />
                             {isKa ? 'Excel-ში ჩამოტვირთვა (.XLS)' : 'Download Excel File (.XLS)'}
                         </button>
                     </div>

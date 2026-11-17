@@ -218,29 +218,29 @@ streams:
     };
 
     return (
-        <div className="fixed inset-0 z-[2700] flex items-center justify-center p-2 sm:p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="relative w-full max-w-[96vw] h-[94vh] bg-slate-950 border border-slate-700/80 rounded-3xl shadow-2xl overflow-hidden flex flex-col text-white">
+        <div className="fixed inset-0 z-[2700] flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="relative w-full max-w-[96vw] h-[94vh] bg-[#FAFBF8] border border-[#D8E3D4] rounded-3xl shadow-2xl overflow-hidden flex flex-col text-[#163022]">
                 
                 {/* Header Bar */}
-                <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 sm:p-4 bg-slate-900/95 border-b border-slate-800">
+                <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 sm:p-4 bg-[#EEF3EA] border-b border-[#D8E3D4]">
                     <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-blue-600/20 border border-blue-500/40 rounded-2xl text-blue-400">
+                        <div className="p-2.5 bg-white border border-[#CFDCCB] rounded-2xl text-[#2563eb] shadow-2xs">
                             <Video size={22} />
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
-                                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">
+                                <span className="w-2.5 h-2.5 rounded-full bg-[#16a34a] animate-pulse" />
+                                <span className="text-[10px] font-black uppercase tracking-widest text-[#16a34a]">
                                     Hikvision DS-7716NI-I4 / 16P (192.168.10.244) & All IP Cameras
                                 </span>
-                                <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono text-[9px]">
+                                <span className="px-2 py-0.5 rounded-full bg-white text-[#4A6753] font-mono text-[9px] border border-[#CFDCCB]">
                                     {allChannelsList.length} Channels Total
                                 </span>
-                                <span className="px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-700/60 font-mono text-[9px] flex items-center gap-1">
+                                <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono text-[9px] flex items-center gap-1 font-bold">
                                     <Navigation size={9} /> 🌿 {mainPlantation.name}
                                 </span>
                             </div>
-                            <h2 className="text-base sm:text-lg font-black uppercase tracking-wide text-white mt-0.5">
+                            <h2 className="text-base sm:text-lg font-black uppercase tracking-wide text-[#163022] mt-0.5">
                                 {isKa ? 'პლანტაციის ვიდეოთვალთვალის პირდაპირი მატრიცა' : 'Watch Live Surveillance Grid & Channels Streaming'}
                             </h2>
                         </div>
@@ -252,10 +252,10 @@ streams:
                         <button
                             type="button"
                             onClick={() => setViewAll16Channels(!viewAll16Channels)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider border transition-all cursor-pointer flex items-center gap-1.5 ${
+                            className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider border transition-all duration-200 cursor-pointer flex items-center gap-1.5 shadow-2xs ${
                                 viewAll16Channels 
-                                    ? 'bg-blue-600/30 border-blue-500 text-blue-300' 
-                                    : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
+                                    ? 'bg-[#2563eb] text-white border-[#2563eb]' 
+                                    : 'bg-white hover:bg-[#2563eb] hover:text-white hover:border-[#2563eb] border-[#CFDCCB] text-[#244130]'
                             }`}
                         >
                             <Server size={13} />
@@ -263,14 +263,14 @@ streams:
                         </button>
 
                         {/* Grid Matrix Buttons: 1x1, 2x2, 3x3, 4x4 */}
-                        <div className="flex items-center gap-1 p-1 bg-slate-950 rounded-xl border border-slate-800">
+                        <div className="flex items-center gap-1 p-1 bg-white rounded-xl border border-[#CFDCCB] shadow-2xs">
                             {(['1x1', '2x2', '3x3', '4x4'] as const).map(l => (
                                 <button
                                     key={l}
                                     type="button"
                                     onClick={() => setLayout(l)}
-                                    className={`px-2.5 py-1.5 rounded-lg text-xs font-mono font-black transition-all cursor-pointer ${
-                                        layout === l ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-mono font-black transition-all duration-200 cursor-pointer ${
+                                        layout === l ? 'bg-[#2563eb] text-white shadow-xs' : 'text-[#244130] hover:bg-[#2563eb] hover:text-white'
                                     }`}
                                 >
                                     {l}
@@ -282,7 +282,7 @@ streams:
                         <button
                             type="button"
                             onClick={handleDownloadMasterGateway}
-                            className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md shadow-emerald-900/30 cursor-pointer"
+                            className="px-3 py-1.5 bg-white hover:bg-[#16a34a] hover:text-white text-[#16a34a] border border-[#16a34a] rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all duration-200 shadow-2xs cursor-pointer"
                             title="Download 1 unified gateway for all 16 cameras (No need to download one by one)"
                         >
                             <Download size={13} />
@@ -293,7 +293,7 @@ streams:
                         <button
                             type="button"
                             onClick={handleDownloadYaml}
-                            className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-xl text-xs font-bold border border-emerald-600/40 flex items-center gap-1 cursor-pointer"
+                            className="px-2.5 py-1.5 bg-white hover:bg-[#0284c7] hover:text-white text-[#244130] rounded-xl text-xs font-bold border border-[#CFDCCB] flex items-center gap-1 cursor-pointer transition-all duration-200 shadow-2xs"
                             title="Download pre-configured go2rtc.yaml directly"
                         >
                             <Copy size={12} />
@@ -304,7 +304,7 @@ streams:
                         <button
                             type="button"
                             onClick={() => setShowUnblockHelper(true)}
-                            className="px-2.5 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
+                            className="px-2.5 py-1.5 bg-white hover:bg-[#d97706] hover:text-white text-[#244130] border border-[#CFDCCB] rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-all duration-200 shadow-2xs"
                             title="Instructions to allow Insecure Content in browser"
                         >
                             <ShieldAlert size={13} />
@@ -318,7 +318,7 @@ streams:
                                     onClose();
                                     onOpenAddCameraModal();
                                 }}
-                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                                className="px-3 py-1.5 bg-white hover:bg-[#2563eb] hover:text-white text-[#244130] border border-[#CFDCCB] rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all duration-200 shadow-2xs cursor-pointer"
                             >
                                 <Plus size={14} />
                                 <span className="hidden sm:inline">{isKa ? 'დამატება' : 'Add Cam'}</span>
@@ -328,7 +328,7 @@ streams:
                         <button
                             type="button"
                             onClick={onClose}
-                            className="p-1.5 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white transition-colors cursor-pointer"
+                            className="p-1.5 hover:bg-[#D8E3D4] rounded-xl text-[#4A6753] hover:text-[#163022] transition-colors cursor-pointer"
                             title="Close Window"
                         >
                             <X size={20} />
@@ -379,15 +379,15 @@ streams:
 
                 {/* Footer Telemetry & Selected Camera Quick Actions */}
                 {activeCam && (
-                    <div className="p-3 bg-slate-900/95 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+                    <div className="p-3 bg-[#EEF3EA] border-t border-[#D8E3D4] flex flex-wrap items-center justify-between gap-3 text-xs text-[#163022]">
                         <div className="flex items-center gap-3">
-                            <span className="text-slate-400">
+                            <span className="text-[#4A6753]">
                                 {isKa ? 'არჩეული არხი:' : 'Active Focused Channel:'}
                             </span>
-                            <span className="font-black text-white">
+                            <span className="font-black text-[#163022]">
                                 [CH0{activeCam.channel < 10 ? `0${activeCam.channel}` : activeCam.channel}] {activeCam.name}
                             </span>
-                            <span className="text-slate-400 font-mono hidden sm:inline">
+                            <span className="text-[#4A6753] font-mono hidden sm:inline">
                                 ({activeCam.ipAddress || '192.168.10.244'}:554 • Tilt: {activeCam.tiltAngleDeg || 4}° • Azimuth: {activeCam.azimuthDeg || 0}°)
                             </span>
                         </div>
@@ -400,7 +400,7 @@ streams:
                                     navigator.clipboard.writeText(link);
                                     toast.success(`Copied RTSP for CH0${activeCam.channel}!`);
                                 }}
-                                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer text-slate-300"
+                                className="px-3 py-1.5 bg-white hover:bg-[#64748b] hover:text-white rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition-all duration-200 cursor-pointer text-[#244130] border border-[#CFDCCB] shadow-2xs"
                             >
                                 <Copy size={13} />
                                 <span>Copy RTSP</span>
@@ -409,10 +409,10 @@ streams:
                             <button
                                 type="button"
                                 onClick={() => setShowDeviceControl(!showDeviceControl)}
-                                className={`px-3 py-1.5 rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                                className={`px-3 py-1.5 rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition-all duration-200 cursor-pointer shadow-2xs ${
                                     showDeviceControl 
-                                        ? 'bg-blue-600 text-white' 
-                                        : 'bg-slate-800 hover:bg-slate-700 text-blue-300'
+                                        ? 'bg-[#2563eb] text-white border border-[#2563eb]' 
+                                        : 'bg-white hover:bg-[#2563eb] hover:text-white text-[#244130] border border-[#CFDCCB]'
                                 }`}
                                 title="Device Control & Moving"
                             >
@@ -429,7 +429,7 @@ streams:
                                     setLayout('1x1');
                                     toast.info(`Single view for CH0${activeCam.channel}`);
                                 }}
-                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer text-white"
+                                className="px-3 py-1.5 bg-white hover:bg-[#2563eb] hover:text-white rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition-all duration-200 cursor-pointer text-[#244130] border border-[#CFDCCB] shadow-2xs"
                             >
                                 <Maximize2 size={13} />
                                 <span>{isKa ? 'სრული ეკრანი' : '1x1 Solo View'}</span>
@@ -441,16 +441,16 @@ streams:
 
             {/* Device Control Modal Overlay */}
             {showDeviceControl && activeCam && (
-                <div className="fixed inset-0 z-[3100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
-                    <div className="bg-slate-900 border border-slate-700 p-6 rounded-3xl max-w-2xl w-full shadow-2xl space-y-4 text-white max-h-[90vh] overflow-y-auto custom-scrollbar">
-                        <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                            <h4 className="font-black text-sm uppercase tracking-wide text-white flex items-center gap-2">
-                                <Move size={16} className="text-blue-400" />
+                <div className="fixed inset-0 z-[3100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-150">
+                    <div className="bg-[#FAFBF8] border border-[#D8E3D4] p-6 rounded-3xl max-w-2xl w-full shadow-2xl space-y-4 text-[#163022] max-h-[90vh] overflow-y-auto custom-scrollbar">
+                        <div className="flex items-center justify-between pb-2 border-b border-[#D8E3D4]">
+                            <h4 className="font-black text-sm uppercase tracking-wide text-[#163022] flex items-center gap-2">
+                                <Move size={16} className="text-[#2563eb]" />
                                 {isKa ? 'მოწყობილობის მართვა & გადაადგილება' : 'Device Control & Moving Panel'}
                             </h4>
                             <button
                                 onClick={() => setShowDeviceControl(false)}
-                                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
+                                className="p-1 rounded-lg hover:bg-[#EEF3EA] text-[#4A6753] hover:text-[#163022] cursor-pointer"
                             >
                                 <X size={18} />
                             </button>
@@ -485,31 +485,31 @@ streams:
 
             {/* Browser Unblock Guide Modal */}
             {showUnblockHelper && (
-                <div className="fixed inset-0 z-[3000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
-                    <div className="bg-slate-900 border border-slate-700 p-6 rounded-3xl max-w-lg w-full shadow-2xl space-y-4 text-white">
-                        <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                <div className="fixed inset-0 z-[3000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-150">
+                    <div className="bg-[#FAFBF8] border border-[#D8E3D4] p-6 rounded-3xl max-w-lg w-full shadow-2xl space-y-4 text-[#163022]">
+                        <div className="flex items-center justify-between pb-2 border-b border-[#D8E3D4]">
                             <div className="flex items-center gap-3">
-                                <div className="p-2.5 bg-amber-500/20 border border-amber-500/40 rounded-2xl text-amber-400">
+                                <div className="p-2.5 bg-amber-100 border border-amber-200 rounded-2xl text-amber-700">
                                     <ShieldAlert size={22} />
                                 </div>
                                 <div>
-                                    <h4 className="font-black text-sm uppercase tracking-wide text-white">
+                                    <h4 className="font-black text-sm uppercase tracking-wide text-[#163022]">
                                         How to Unblock Live Stream in Browser
                                     </h4>
-                                    <p className="text-[11px] text-slate-400">3 simple steps to watch live video inside Chrome or Edge</p>
+                                    <p className="text-[11px] text-[#4A6753]">3 simple steps to watch live video inside Chrome or Edge</p>
                                 </div>
                             </div>
                             <button
                                 onClick={() => setShowUnblockHelper(false)}
-                                className="p-1.5 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white"
+                                className="p-1.5 hover:bg-[#EEF3EA] rounded-xl text-[#4A6753] hover:text-[#163022] cursor-pointer"
                             >
                                 <X size={18} />
                             </button>
                         </div>
 
-                        <div className="space-y-3 text-xs text-slate-300 leading-relaxed">
-                            <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1">
-                                <span className="font-bold text-amber-300 block">Step 1: Allow Insecure Content in Chrome</span>
+                        <div className="space-y-3 text-xs text-[#2D4536] leading-relaxed">
+                            <div className="p-3 bg-white rounded-xl border border-[#D8E3D4] space-y-1">
+                                <span className="font-bold text-amber-800 block">Step 1: Allow Insecure Content in Chrome</span>
                                 <p>
                                     1. Look at the left of the address bar at the top (next to <code>https://...</code>) and click the <strong>Tune / Padlock icon</strong>.<br />
                                     2. Click <strong>Site Settings</strong>.<br />

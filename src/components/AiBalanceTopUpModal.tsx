@@ -34,8 +34,6 @@ export const AiBalanceTopUpModal: React.FC<AiBalanceTopUpModalProps> = ({
     isKa = false,
     allUsers = []
 }) => {
-    if (!isOpen) return null;
-
     const quota = getEffectiveUserAiQuota(currentUser);
     const isRootOrAdmin = Boolean(
         currentUser?.roles?.some(r => ['ROOT_SUPER_ADMIN', 'Founder', 'Co-Founder', 'Admin'].includes(r))
@@ -165,6 +163,8 @@ export const AiBalanceTopUpModal: React.FC<AiBalanceTopUpModalProps> = ({
             toast.error(isKa ? "არასწორი პრომო-კოდი" : "Invalid voucher code");
         }
     };
+
+    if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-4 animate-in fade-in duration-200">

@@ -408,26 +408,26 @@ Provide a concise, practical, agronomically sound answer with specific dosages, 
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[5000] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-slate-900 w-full max-w-6xl max-h-[92vh] rounded-[2rem] shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden text-slate-800 dark:text-slate-100">
+        <div className="fixed inset-0 z-[5000] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/50 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="bg-[#FAFBF8] w-full max-w-6xl max-h-[92vh] rounded-[2rem] shadow-2xl border border-[#D8E3D4] flex flex-col overflow-hidden text-[#163022]">
                 
                 {/* Header */}
-                <div className="p-5 sm:p-6 bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-900 text-white border-b border-indigo-800/40 flex items-center justify-between shrink-0">
+                <div className="p-5 sm:p-6 bg-[#EEF3EA] text-[#163022] border-b border-[#D8E3D4] flex items-center justify-between shrink-0">
                     <div className="flex items-center gap-3 sm:gap-4">
-                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/30 text-white">
+                        <div className="w-12 h-12 rounded-2xl bg-white border border-[#D8E3D4] flex items-center justify-center shadow-2xs text-[#2D5A27]">
                             <Sparkles className="h-6 w-6 animate-pulse" />
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
-                                <h2 className="text-lg sm:text-xl font-black italic uppercase tracking-tight">
+                                <h2 className="text-lg sm:text-xl font-black italic uppercase tracking-tight text-[#163022]">
                                     {isKa ? 'AI აგრო-ინტელექტი და საველე ანალიტიკოსი' : 'AI Agronomy & Field Operations Intelligence'}
                                 </h2>
-                                <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[9px] font-black uppercase tracking-widest">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                                <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-800 text-[9px] font-black uppercase tracking-widest">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
                                     Gemini 3.8 Flash • Synced
                                 </span>
                             </div>
-                            <p className="text-[10px] font-bold text-indigo-200 uppercase tracking-widest mt-0.5">
+                            <p className="text-[10px] font-bold text-[#5C7867] uppercase tracking-widest mt-0.5">
                                 {isKa ? 'რეესტრების, დაავადებების, გასხვლის და OPEX-ის ერთიანი ანალიზი' : 'Unified Audit of Registries, Pathology, Pruning & OPEX'}
                             </p>
                         </div>
@@ -437,14 +437,14 @@ Provide a concise, practical, agronomically sound answer with specific dosages, 
                         <button
                             onClick={runFullAgronomicAnalysis}
                             disabled={isAnalyzing}
-                            className="p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl transition-colors disabled:opacity-50"
+                            className="p-2.5 bg-white text-[#244130] border border-[#CFDCCB] hover:bg-[#163022] hover:text-white rounded-xl transition-all shadow-2xs disabled:opacity-50 cursor-pointer"
                             title={isKa ? "ხელახალი ანალიზი" : "Re-analyze"}
                         >
                             <RefreshCw size={16} className={isAnalyzing ? 'animate-spin' : ''} />
                         </button>
                         <button 
                             onClick={onClose}
-                            className="p-2.5 bg-white/10 hover:bg-rose-600 text-white rounded-xl transition-colors"
+                            className="p-2.5 bg-white text-[#244130] border border-[#CFDCCB] hover:bg-rose-600 hover:text-white rounded-xl transition-all shadow-2xs cursor-pointer"
                         >
                             <X size={18} />
                         </button>
@@ -452,68 +452,68 @@ Provide a concise, practical, agronomically sound answer with specific dosages, 
                 </div>
 
                 {/* 4 Financial & Agronomic Pillar KPIs */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 sm:p-5 bg-slate-50 dark:bg-slate-850/60 border-b border-slate-200 dark:border-slate-800 shrink-0">
-                    <div className="bg-white dark:bg-slate-800 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm">
-                        <div className="flex items-center justify-between text-slate-400 mb-1">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 sm:p-5 bg-[#FAFBF8] border-b border-[#D8E3D4] shrink-0">
+                    <div className="bg-white p-3.5 rounded-2xl border border-[#D8E3D4] shadow-2xs">
+                        <div className="flex items-center justify-between text-[#5C7867] mb-1">
                             <span className="text-[9px] font-black uppercase tracking-widest">{isKa ? 'სრული OPEX' : 'Total OPEX'}</span>
-                            <DollarSign size={14} className="text-emerald-500" />
+                            <DollarSign size={14} className="text-emerald-600" />
                         </div>
-                        <p className="text-xl font-black text-emerald-600 dark:text-emerald-400 italic">
+                        <p className="text-xl font-black text-emerald-700 italic">
                             GEL {metrics.totalOpex.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
-                        <p className="text-[9px] text-slate-400 font-bold mt-0.5">
+                        <p className="text-[9px] text-[#5C7867] font-bold mt-0.5">
                             {isKa ? 'ხელფასი:' : 'Labor:'} GEL {metrics.totalLaborCost.toFixed(0)} • {isKa ? 'მასალები:' : 'Materials:'} GEL {metrics.totalMaterialCost.toFixed(0)}
                         </p>
                     </div>
 
-                    <div className="bg-white dark:bg-slate-800 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm">
-                        <div className="flex items-center justify-between text-slate-400 mb-1">
+                    <div className="bg-white p-3.5 rounded-2xl border border-[#D8E3D4] shadow-2xs">
+                        <div className="flex items-center justify-between text-[#5C7867] mb-1">
                             <span className="text-[9px] font-black uppercase tracking-widest">{isKa ? 'მისიები რეესტრში' : 'Registries & Tasks'}</span>
-                            <CheckSquare size={14} className="text-blue-500" />
+                            <CheckSquare size={14} className="text-blue-600" />
                         </div>
-                        <p className="text-xl font-black text-slate-900 dark:text-white italic">
-                            {metrics.totalMissionsCount} <span className="text-xs font-bold text-slate-400">({metrics.completedCount} ok)</span>
+                        <p className="text-xl font-black text-[#163022] italic">
+                            {metrics.totalMissionsCount} <span className="text-xs font-bold text-[#5C7867]">({metrics.completedCount} ok)</span>
                         </p>
-                        <p className="text-[9px] text-slate-400 font-bold mt-0.5">
+                        <p className="text-[9px] text-[#5C7867] font-bold mt-0.5">
                             {metrics.totalHoursLogged.toFixed(0)} hrs • {metrics.uniqueWorkersCount} {isKa ? 'თანამშრომელი' : 'workers'}
                         </p>
                     </div>
 
-                    <div className="bg-white dark:bg-slate-800 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm">
-                        <div className="flex items-center justify-between text-slate-400 mb-1">
+                    <div className="bg-white p-3.5 rounded-2xl border border-[#D8E3D4] shadow-2xs">
+                        <div className="flex items-center justify-between text-[#5C7867] mb-1">
                             <span className="text-[9px] font-black uppercase tracking-widest">{isKa ? 'გასხვლა & ოპერაციები' : 'Pruning & Spraying'}</span>
-                            <Scissors size={14} className="text-purple-500" />
+                            <Scissors size={14} className="text-purple-600" />
                         </div>
-                        <p className="text-xl font-black text-purple-600 dark:text-purple-400 italic">
-                            {metrics.taskTypeCounts.Pruning} <span className="text-xs font-normal text-slate-400">prun / {metrics.taskTypeCounts.Spraying} spray</span>
+                        <p className="text-xl font-black text-purple-700 italic">
+                            {metrics.taskTypeCounts.Pruning} <span className="text-xs font-normal text-[#5C7867]">prun / {metrics.taskTypeCounts.Spraying} spray</span>
                         </p>
-                        <p className="text-[9px] text-slate-400 font-bold mt-0.5">
+                        <p className="text-[9px] text-[#5C7867] font-bold mt-0.5">
                             {isKa ? 'ბოლო გასხვლა:' : 'Last Pruning:'} {metrics.latestDates.Pruning ? new Date(metrics.latestDates.Pruning).toLocaleDateString() : 'None'}
                         </p>
                     </div>
 
-                    <div className="bg-white dark:bg-slate-800 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm">
-                        <div className="flex items-center justify-between text-slate-400 mb-1">
+                    <div className="bg-white p-3.5 rounded-2xl border border-[#D8E3D4] shadow-2xs">
+                        <div className="flex items-center justify-between text-[#5C7867] mb-1">
                             <span className="text-[9px] font-black uppercase tracking-widest">{isKa ? 'კლინიკური დიაგნოზები' : 'Active Diagnoses'}</span>
-                            <ShieldAlert size={14} className="text-rose-500" />
+                            <ShieldAlert size={14} className="text-rose-600" />
                         </div>
-                        <p className="text-xl font-black text-rose-600 dark:text-rose-400 italic">
-                            {clinicalRecords.length} <span className="text-xs font-normal text-slate-400">{isKa ? 'ჩანაწერი' : 'records'}</span>
+                        <p className="text-xl font-black text-rose-700 italic">
+                            {clinicalRecords.length} <span className="text-xs font-normal text-[#5C7867]">{isKa ? 'ჩანაწერი' : 'records'}</span>
                         </p>
-                        <p className="text-[9px] text-slate-400 font-bold mt-0.5">
+                        <p className="text-[9px] text-[#5C7867] font-bold mt-0.5">
                             {clinicalRecords.filter(c => c.agronomistConclusion?.severity === 'Severe' || c.agronomistConclusion?.severity === 'Critical').length} {isKa ? 'მწვავე შემთხვევა' : 'severe cases'}
                         </p>
                     </div>
                 </div>
 
                 {/* Tabs Navigation */}
-                <div className="flex items-center gap-2 px-6 py-2.5 bg-slate-100 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 shrink-0 overflow-x-auto">
+                <div className="flex items-center gap-2 px-6 py-2.5 bg-[#EEF3EA] border-b border-[#D8E3D4] shrink-0 overflow-x-auto">
                     <button 
                         onClick={() => setActiveTab('overview')}
-                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 whitespace-nowrap ${
+                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
                             activeTab === 'overview' 
-                                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' 
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                                ? 'bg-white text-[#244130] border border-[#2D5A27] shadow-2xs' 
+                                : 'text-[#5C7867] hover:text-[#163022] hover:bg-white/60'
                         }`}
                     >
                         <Activity size={14} />
@@ -521,10 +521,10 @@ Provide a concise, practical, agronomically sound answer with specific dosages, 
                     </button>
                     <button 
                         onClick={() => setActiveTab('pruning')}
-                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 whitespace-nowrap ${
+                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
                             activeTab === 'pruning' 
-                                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' 
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                                ? 'bg-white text-[#244130] border border-[#2D5A27] shadow-2xs' 
+                                : 'text-[#5C7867] hover:text-[#163022] hover:bg-white/60'
                         }`}
                     >
                         <Scissors size={14} />
@@ -532,10 +532,10 @@ Provide a concise, practical, agronomically sound answer with specific dosages, 
                     </button>
                     <button 
                         onClick={() => setActiveTab('pathology')}
-                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 whitespace-nowrap ${
+                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
                             activeTab === 'pathology' 
-                                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' 
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                                ? 'bg-white text-[#244130] border border-[#2D5A27] shadow-2xs' 
+                                : 'text-[#5C7867] hover:text-[#163022] hover:bg-white/60'
                         }`}
                     >
                         <ShieldAlert size={14} />
@@ -543,10 +543,10 @@ Provide a concise, practical, agronomically sound answer with specific dosages, 
                     </button>
                     <button 
                         onClick={() => setActiveTab('opex')}
-                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 whitespace-nowrap ${
+                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
                             activeTab === 'opex' 
-                                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' 
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                                ? 'bg-white text-[#244130] border border-[#2D5A27] shadow-2xs' 
+                                : 'text-[#5C7867] hover:text-[#163022] hover:bg-white/60'
                         }`}
                     >
                         <DollarSign size={14} />
@@ -554,10 +554,10 @@ Provide a concise, practical, agronomically sound answer with specific dosages, 
                     </button>
                     <button 
                         onClick={() => setActiveTab('chat')}
-                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 whitespace-nowrap ${
+                        className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
                             activeTab === 'chat' 
-                                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' 
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                                ? 'bg-white text-[#244130] border border-[#2D5A27] shadow-2xs' 
+                                : 'text-[#5C7867] hover:text-[#163022] hover:bg-white/60'
                         }`}
                     >
                         <Sparkles size={14} />
@@ -574,15 +574,15 @@ Provide a concise, practical, agronomically sound answer with specific dosages, 
                             
                             {/* Actionable Recommended Tasks Banner */}
                             {recommendedTasks.length > 0 && (
-                                <div className="p-5 bg-gradient-to-br from-indigo-50 to-slate-50 dark:from-slate-800/60 dark:to-indigo-950/30 rounded-2xl border border-indigo-200 dark:border-indigo-900/50 space-y-3">
+                                <div className="p-5 bg-[#EEF3EA]/70 rounded-2xl border border-[#D8E3D4] space-y-3">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-2">
-                                            <Zap className="h-4 w-4 text-amber-500" />
-                                            <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-white">
+                                            <Zap className="h-4 w-4 text-amber-600" />
+                                            <h3 className="text-xs font-black uppercase tracking-wider text-[#163022]">
                                                 {isKa ? 'AI-ს მიერ შემოთავაზებული გადაუდებელი სამუშაოები' : 'Actionable Recommended Missions (Click to Add to Registry)'}
                                             </h3>
                                         </div>
-                                        <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">
+                                        <span className="text-[10px] font-bold text-[#2D5A27] uppercase tracking-widest">
                                             {recommendedTasks.length} {isKa ? 'მისია' : 'Missions'}
                                         </span>
                                     </div>
@@ -591,32 +591,32 @@ Provide a concise, practical, agronomically sound answer with specific dosages, 
                                         {recommendedTasks.map((rec, idx) => (
                                             <div 
                                                 key={idx}
-                                                className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-indigo-400 hover:shadow-md transition-all flex flex-col justify-between"
+                                                className="bg-white p-4 rounded-xl border border-[#D8E3D4] hover:border-[#2D5A27] hover:shadow-md transition-all flex flex-col justify-between"
                                             >
                                                 <div>
                                                     <div className="flex items-center justify-between mb-1.5">
                                                         <span className={`px-2 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wider ${
-                                                            rec.priority === 'Urgent' ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300' :
-                                                            rec.priority === 'High' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300' :
-                                                            'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
+                                                            rec.priority === 'Urgent' ? 'bg-rose-100 text-rose-800' :
+                                                            rec.priority === 'High' ? 'bg-amber-100 text-amber-800' :
+                                                            'bg-blue-100 text-blue-800'
                                                         }`}>
                                                             {rec.priority}
                                                         </span>
-                                                        <span className="text-[9px] font-bold text-slate-400">
+                                                        <span className="text-[9px] font-bold text-[#5C7867]">
                                                             {rec.recommendedDate}
                                                         </span>
                                                     </div>
-                                                    <h4 className="font-black text-sm text-slate-900 dark:text-white leading-tight">
+                                                    <h4 className="font-black text-sm text-[#163022] leading-tight">
                                                         {rec.title}
                                                     </h4>
-                                                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 line-clamp-2">
+                                                    <p className="text-[11px] text-[#5C7867] mt-1.5 line-clamp-2">
                                                         {rec.rationale}
                                                     </p>
                                                 </div>
 
                                                 <button
                                                     onClick={() => handleCreateTaskFromRecommendation(rec)}
-                                                    className="mt-3 w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                                                    className="mt-3 w-full py-2 bg-white text-[#244130] border border-[#2D5A27] hover:bg-[#2D5A27] hover:text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
                                                 >
                                                     <Plus size={13} />
                                                     {isKa ? 'რეესტრში დამატება' : 'Add to Registry'}
@@ -628,16 +628,16 @@ Provide a concise, practical, agronomically sound answer with specific dosages, 
                             )}
 
                             {/* Full AI Audit Report */}
-                            <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
-                                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
+                            <div className="bg-white p-6 rounded-2xl border border-[#D8E3D4] shadow-2xs space-y-4">
+                                <div className="flex items-center justify-between border-b border-[#EEF3EA] pb-3">
                                     <div className="flex items-center gap-2">
-                                        <Sparkles className="h-5 w-5 text-indigo-600" />
-                                        <h3 className="font-black text-sm uppercase tracking-wider text-slate-900 dark:text-white">
+                                        <Sparkles className="h-5 w-5 text-[#2D5A27]" />
+                                        <h3 className="font-black text-sm uppercase tracking-wider text-[#163022]">
                                             {isKa ? 'სრული აგრონომიული და ეკონომიკური დასკვნა' : 'Executive Agronomic & Economic Synthesis'}
                                         </h3>
                                     </div>
                                     {isAnalyzing && (
-                                        <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 text-xs font-bold animate-pulse">
+                                        <div className="flex items-center gap-2 text-[#2D5A27] text-xs font-bold animate-pulse">
                                             <RefreshCw size={14} className="animate-spin" />
                                             <span>{isKa ? 'ანალიტიკური ძრავა მუშაობს...' : 'Synthesizing field data...'}</span>
                                         </div>
@@ -645,12 +645,12 @@ Provide a concise, practical, agronomically sound answer with specific dosages, 
                                 </div>
 
                                 {aiAnalysisMarkdown ? (
-                                    <div className="prose dark:prose-invert max-w-none text-xs leading-relaxed space-y-3 whitespace-pre-line">
+                                    <div className="max-w-none text-xs leading-relaxed space-y-3 whitespace-pre-line text-[#163022]">
                                         {aiAnalysisMarkdown}
                                     </div>
                                 ) : (
-                                    <div className="py-12 text-center text-slate-400 space-y-2">
-                                        <RefreshCw size={24} className="mx-auto animate-spin text-indigo-500" />
+                                    <div className="py-12 text-center text-[#5C7867] space-y-2">
+                                        <RefreshCw size={24} className="mx-auto animate-spin text-[#2D5A27]" />
                                         <p className="text-xs font-bold">{isKa ? 'მონაცემების ანალიზი მიმდინარეობს...' : 'Analyzing field telemetry and registry...'}</p>
                                     </div>
                                 )}
@@ -661,42 +661,42 @@ Provide a concise, practical, agronomically sound answer with specific dosages, 
                     {/* PRUNING TAB */}
                     {activeTab === 'pruning' && (
                         <div className="space-y-6">
-                            <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+                            <div className="bg-white p-6 rounded-2xl border border-[#D8E3D4] shadow-2xs space-y-4">
                                 <div className="flex items-center gap-3">
-                                    <div className="p-3 bg-purple-100 dark:bg-purple-950/60 rounded-xl text-purple-600 dark:text-purple-400">
+                                    <div className="p-3 bg-purple-100 rounded-xl text-purple-700">
                                         <Scissors size={24} />
                                     </div>
                                     <div>
-                                        <h3 className="text-base font-black text-slate-900 dark:text-white">
+                                        <h3 className="text-base font-black text-[#163022]">
                                             {isKa ? 'გასხვლის კალენდარი და ტექნოლოგიური რეგლამენტი' : 'Pruning Window & Physiological Readiness'}
                                         </h3>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                                        <p className="text-xs text-[#5C7867]">
                                             {isKa ? 'ვეგეტაციური ციკლის, ყინვების რისკის და ნარგავების ფიტოსანიტარიის მონიტორინგი' : 'Vegetative dormancy timing, frost resilience, and sanitary cutting protocols'}
                                         </p>
                                     </div>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                                    <div className="p-4 bg-slate-50 dark:bg-slate-850 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
-                                        <h4 className="text-xs font-black uppercase tracking-wider text-purple-600 dark:text-purple-400">
+                                    <div className="p-4 bg-[#FAFBF8] rounded-xl border border-[#D8E3D4] space-y-2">
+                                        <h4 className="text-xs font-black uppercase tracking-wider text-purple-700">
                                             {isKa ? 'გასხვლის ჩანაწერები რეესტრში' : 'Recorded Pruning History'}
                                         </h4>
-                                        <p className="text-2xl font-black text-slate-900 dark:text-white">
-                                            {metrics.taskTypeCounts.Pruning} <span className="text-xs text-slate-400 font-bold">{isKa ? 'ჩანაწერი' : 'entries'}</span>
+                                        <p className="text-2xl font-black text-[#163022]">
+                                            {metrics.taskTypeCounts.Pruning} <span className="text-xs text-[#5C7867] font-bold">{isKa ? 'ჩანაწერი' : 'entries'}</span>
                                         </p>
-                                        <p className="text-xs text-slate-500">
+                                        <p className="text-xs text-[#5C7867]">
                                             {isKa ? 'ბოლო გასხვლა:' : 'Last session:'} <strong>{metrics.latestDates.Pruning ? new Date(metrics.latestDates.Pruning).toLocaleDateString() : 'None'}</strong>
                                         </p>
                                     </div>
 
-                                    <div className="p-4 bg-slate-50 dark:bg-slate-850 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
-                                        <h4 className="text-xs font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                                    <div className="p-4 bg-[#FAFBF8] rounded-xl border border-[#D8E3D4] space-y-2">
+                                        <h4 className="text-xs font-black uppercase tracking-wider text-emerald-700">
                                             {isKa ? 'რეკომენდებული პერიოდი' : 'Optimal Window'}
                                         </h4>
-                                        <p className="text-base font-black text-slate-900 dark:text-white">
+                                        <p className="text-base font-black text-[#163022]">
                                             {isKa ? 'მშრალი ამინდი, წვენთა მოძრაობამდე' : 'Dry weather, pre-budbreak dormancy'}
                                         </p>
-                                        <p className="text-xs text-slate-500">
+                                        <p className="text-xs text-[#5C7867]">
                                             {isKa ? 'დაავადებული ტოტების გატანა და დაუყოვნებელი დაწვა ან დამუშავება სპილენძით.' : 'Disinfect shears between rows (70% alcohol), seal thick cuts with copper paste.'}
                                         </p>
                                     </div>
@@ -709,11 +709,11 @@ Provide a concise, practical, agronomically sound answer with specific dosages, 
                     {activeTab === 'pathology' && (
                         <div className="space-y-4">
                             <div className="flex items-center justify-between">
-                                <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
-                                    <ShieldAlert className="text-rose-500" size={16} />
+                                <h3 className="text-xs font-black uppercase tracking-wider text-[#163022] flex items-center gap-2">
+                                    <ShieldAlert className="text-rose-600" size={16} />
                                     {isKa ? 'ლაბორატორიული და საველე AI დიაგნოზები' : 'Clinical Diagnoses & Laboratory Detections'}
                                 </h3>
-                                <span className="text-xs text-slate-400 font-bold">
+                                <span className="text-xs text-[#5C7867] font-bold">
                                     {clinicalRecords.length} {isKa ? 'ჩანაწერი' : 'Cases'}
                                 </span>
                             </div>
@@ -722,38 +722,38 @@ Provide a concise, practical, agronomically sound answer with specific dosages, 
                                 {clinicalRecords.map(record => (
                                     <div 
                                         key={record.id}
-                                        className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-3"
+                                        className="bg-white p-5 rounded-2xl border border-[#D8E3D4] shadow-2xs space-y-3"
                                     >
                                         <div className="flex justify-between items-start">
                                             <div>
                                                 <span className={`px-2 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wider ${
                                                     record.agronomistConclusion?.severity === 'Severe' || record.agronomistConclusion?.severity === 'Critical'
-                                                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300'
-                                                        : 'bg-amber-100 text-amber-700 dark:bg-amber-950/80 dark:text-amber-300'
+                                                        ? 'bg-rose-100 text-rose-800'
+                                                        : 'bg-amber-100 text-amber-800'
                                                 }`}>
                                                     {record.agronomistConclusion?.severity || 'Moderate'}
                                                 </span>
-                                                <h4 className="text-base font-black text-slate-900 dark:text-white mt-1">
+                                                <h4 className="text-base font-black text-[#163022] mt-1">
                                                     {record.title}
                                                 </h4>
-                                                <p className="text-[10px] text-slate-400 font-bold">
+                                                <p className="text-[10px] text-[#5C7867] font-bold">
                                                     {new Date(record.createdAt).toLocaleDateString()} • {record.agronomistConclusion?.targetSectorOrPlot || 'General'}
                                                 </p>
                                             </div>
                                         </div>
 
                                         {record.agronomistConclusion && (
-                                            <div className="p-3 bg-slate-50 dark:bg-slate-850 rounded-xl space-y-1.5 text-xs">
-                                                <p className="font-bold text-indigo-600 dark:text-indigo-400">
+                                            <div className="p-3 bg-[#FAFBF8] border border-[#D8E3D4] rounded-xl space-y-1.5 text-xs">
+                                                <p className="font-bold text-[#2D5A27]">
                                                     {isKa ? 'დანიშნული შეწამვლა:' : 'Prescribed Treatment:'}
                                                 </p>
-                                                <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                                                <p className="text-[#163022] leading-relaxed">
                                                     {record.agronomistConclusion.prescribedTreatment}
                                                 </p>
                                                 {record.agronomistConclusion.activeIngredients?.length > 0 && (
                                                     <div className="flex flex-wrap gap-1 pt-1">
                                                         {record.agronomistConclusion.activeIngredients.map((ai, i) => (
-                                                            <span key={i} className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 rounded text-[9px] font-bold border border-indigo-200/60">
+                                                            <span key={i} className="px-2 py-0.5 bg-emerald-50 text-[#2D5A27] rounded text-[9px] font-bold border border-emerald-200">
                                                                 {ai}
                                                             </span>
                                                         ))}
@@ -765,8 +765,8 @@ Provide a concise, practical, agronomically sound answer with specific dosages, 
                                 ))}
 
                                 {clinicalRecords.length === 0 && (
-                                    <div className="col-span-2 py-12 text-center bg-slate-50 dark:bg-slate-800 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700">
-                                        <p className="text-xs text-slate-400 font-bold">{isKa ? 'დიაგნოსტიკის ჩანაწერები ჯერ არ არის დაფიქსირებული' : 'No clinical plant pathology records found.'}</p>
+                                    <div className="col-span-2 py-12 text-center bg-white rounded-2xl border-2 border-dashed border-[#D8E3D4]">
+                                        <p className="text-xs text-[#5C7867] font-bold">{isKa ? 'დიაგნოსტიკის ჩანაწერები ჯერ არ არის დაფიქსირებული' : 'No clinical plant pathology records found.'}</p>
                                     </div>
                                 )}
                             </div>
@@ -777,32 +777,32 @@ Provide a concise, practical, agronomically sound answer with specific dosages, 
                     {activeTab === 'opex' && (
                         <div className="space-y-6">
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-2">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{isKa ? 'სრული სახელფასო ფონდი' : 'Total Labor Payroll'}</p>
-                                    <p className="text-2xl font-black text-blue-600 dark:text-blue-400 italic">
+                                <div className="bg-white p-5 rounded-2xl border border-[#D8E3D4] shadow-2xs space-y-2">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-[#5C7867]">{isKa ? 'სრული სახელფასო ფონდი' : 'Total Labor Payroll'}</p>
+                                    <p className="text-2xl font-black text-blue-700 italic">
                                         GEL {metrics.totalLaborCost.toFixed(2)}
                                     </p>
-                                    <p className="text-xs text-slate-500">
+                                    <p className="text-xs text-[#5C7867]">
                                         {metrics.totalHoursLogged.toFixed(1)} {isKa ? 'ნამუშევარი საათი' : 'hours logged'}
                                     </p>
                                 </div>
 
-                                <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-2">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{isKa ? 'მასალების & ქიმიის ხარჯი' : 'Material & Chemical Cost'}</p>
-                                    <p className="text-2xl font-black text-amber-600 dark:text-amber-400 italic">
+                                <div className="bg-white p-5 rounded-2xl border border-[#D8E3D4] shadow-2xs space-y-2">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-[#5C7867]">{isKa ? 'მასალების & ქიმიის ხარჯი' : 'Material & Chemical Cost'}</p>
+                                    <p className="text-2xl font-black text-amber-700 italic">
                                         GEL {metrics.totalMaterialCost.toFixed(2)}
                                     </p>
-                                    <p className="text-xs text-slate-500">
+                                    <p className="text-xs text-[#5C7867]">
                                         {inventoryItems.length} {isKa ? 'ინვენტარის პოზიცია' : 'tracked inventory items'}
                                     </p>
                                 </div>
 
-                                <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-2">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{isKa ? 'სრული OPEX' : 'Total Gross OPEX'}</p>
-                                    <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 italic">
+                                <div className="bg-white p-5 rounded-2xl border border-[#D8E3D4] shadow-2xs space-y-2">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-[#5C7867]">{isKa ? 'სრული OPEX' : 'Total Gross OPEX'}</p>
+                                    <p className="text-2xl font-black text-emerald-700 italic">
                                         GEL {metrics.totalOpex.toFixed(2)}
                                     </p>
-                                    <p className="text-xs text-slate-500">
+                                    <p className="text-xs text-[#5C7867]">
                                         {metrics.completedCount} {isKa ? 'დასრულებულ მისიაზე' : 'across completed tasks'}
                                     </p>
                                 </div>
@@ -812,10 +812,10 @@ Provide a concise, practical, agronomically sound answer with specific dosages, 
 
                     {/* CHAT TAB */}
                     {activeTab === 'chat' && (
-                        <div className="flex flex-col h-[520px] bg-slate-50 dark:bg-slate-850 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                        <div className="flex flex-col h-[520px] bg-[#EEF3EA]/40 rounded-2xl border border-[#D8E3D4] overflow-hidden">
                             <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                                <div className="p-3.5 bg-indigo-50 dark:bg-indigo-950/40 rounded-2xl border border-indigo-100 dark:border-indigo-900/60 text-xs leading-relaxed text-indigo-900 dark:text-indigo-200">
-                                    <span className="font-bold flex items-center gap-1.5 mb-1 text-indigo-700 dark:text-indigo-300">
+                                <div className="p-3.5 bg-white rounded-2xl border border-[#D8E3D4] text-xs leading-relaxed text-[#163022] shadow-2xs">
+                                    <span className="font-bold flex items-center gap-1.5 mb-1 text-[#2D5A27]">
                                         <Sparkles size={14} /> {isKa ? 'AI აგრონომიული ასისტენტი მზად არის:' : 'AI Field Agronomist Ready:'}
                                     </span>
                                     {isKa 
@@ -831,17 +831,17 @@ Provide a concise, practical, agronomically sound answer with specific dosages, 
                                     >
                                         <div className={`max-w-[85%] p-3.5 rounded-2xl text-xs leading-relaxed ${
                                             msg.role === 'user' 
-                                                ? 'bg-indigo-600 text-white rounded-br-none shadow-md' 
-                                                : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-bl-none shadow-sm whitespace-pre-line'
+                                                ? 'bg-[#163022] text-white rounded-br-none shadow-md' 
+                                                : 'bg-white text-[#163022] border border-[#D8E3D4] rounded-bl-none shadow-2xs whitespace-pre-line'
                                         }`}>
                                             {msg.text}
                                         </div>
-                                        <span className="text-[9px] text-slate-400 mt-1 px-1">{msg.timestamp}</span>
+                                        <span className="text-[9px] text-[#5C7867] mt-1 px-1">{msg.timestamp}</span>
                                     </div>
                                 ))}
 
                                 {isChatSending && (
-                                    <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 text-xs font-bold p-2">
+                                    <div className="flex items-center gap-2 text-[#2D5A27] text-xs font-bold p-2">
                                         <RefreshCw size={13} className="animate-spin" />
                                         <span>{isKa ? 'AI აგრონომი აანალიზებს...' : 'Agronomist is analyzing...'}</span>
                                     </div>
@@ -850,19 +850,19 @@ Provide a concise, practical, agronomically sound answer with specific dosages, 
                             </div>
 
                             {/* Chat Input */}
-                            <div className="p-3 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex gap-2">
+                            <div className="p-3 bg-white border-t border-[#D8E3D4] flex gap-2">
                                 <input 
                                     type="text"
                                     value={chatInput}
                                     onChange={(e) => setChatInput(e.target.value)}
                                     onKeyDown={(e) => { if (e.key === 'Enter') handleSendChatMessage(); }}
                                     placeholder={isKa ? "ჰკითხეთ AI აგრონომს (მაგ: როდის ჯობია გასხვლა?)..." : "Ask agronomy assistant (e.g. when to prune?)..."}
-                                    className="flex-1 px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none focus:border-indigo-500 text-slate-900 dark:text-white"
+                                    className="flex-1 px-4 py-2.5 bg-[#FAFBF8] border border-[#D8E3D4] rounded-xl text-xs outline-none focus:border-[#2D5A27] text-[#163022]"
                                 />
                                 <button
                                     onClick={handleSendChatMessage}
                                     disabled={!chatInput.trim() || isChatSending}
-                                    className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors flex items-center gap-1.5 shadow-sm"
+                                    className="px-4 py-2.5 bg-white text-[#244130] border border-[#2D5A27] hover:bg-[#2D5A27] hover:text-white disabled:opacity-50 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
                                 >
                                     <Send size={13} />
                                     <span>{isKa ? 'გაგზავნა' : 'Send'}</span>
@@ -874,8 +874,8 @@ Provide a concise, practical, agronomically sound answer with specific dosages, 
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 bg-slate-50 dark:bg-slate-850 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0 text-xs">
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                <div className="p-4 bg-[#EEF3EA] border-t border-[#D8E3D4] flex items-center justify-between shrink-0 text-xs">
+                    <p className="text-[10px] text-[#5C7867] font-medium">
                         {isKa 
                             ? "AI რეკომენდაციები სინქრონიზებულია საველე რეესტრთან და კლინიკურ მონაცემებთან."
                             : "AI recommendations are synchronized with active field registry and clinical records."
@@ -883,7 +883,7 @@ Provide a concise, practical, agronomically sound answer with specific dosages, 
                     </p>
                     <button
                         onClick={onClose}
-                        className="px-5 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white rounded-xl font-bold transition-all shadow-sm"
+                        className="px-5 py-2 bg-white text-[#244130] border border-[#CFDCCB] hover:bg-[#163022] hover:text-white rounded-xl font-bold transition-all shadow-2xs cursor-pointer"
                     >
                         {isKa ? 'დახურვა' : 'Close'}
                     </button>

@@ -32,10 +32,12 @@ interface GlobalVoiceNotesModalProps {
         moduleName?: string, 
         tags?: string[], 
         isVoiceNote?: boolean, 
-        language?: string
+        language?: string,
+        dailyAgroAnalysis?: boolean
     ) => Promise<void>;
     onDeleteNote?: (noteId: string) => void;
     onDeleteMultipleNotes?: (noteIds: string[]) => void;
+    onUpdateNote?: (updatedNote: Note) => void;
 }
 
 const PRESET_TAGS = [
@@ -59,7 +61,8 @@ export const GlobalVoiceNotesModal: React.FC<GlobalVoiceNotesModalProps> = ({
     notes = [],
     onAddNote,
     onDeleteNote,
-    onDeleteMultipleNotes
+    onDeleteMultipleNotes,
+    onUpdateNote
 }) => {
     const { t } = useLanguage();
     const isKa = t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka';
@@ -69,6 +72,7 @@ export const GlobalVoiceNotesModal: React.FC<GlobalVoiceNotesModalProps> = ({
     const [selectedLanguage, setSelectedLanguage] = useState<'ka-GE' | 'en-US'>(isKa ? 'ka-GE' : 'en-US');
     const [selectedTags, setSelectedTags] = useState<string[]>([]);
     const [customTagInput, setCustomTagInput] = useState('');
+    const [dailyAgroAnalysis, setDailyAgroAnalysis] = useState(activeModuleName === 'Agronomy');
     const [isRecording, setIsRecording] = useState(false);
     const [recordingTime, setRecordingTime] = useState(0);
     const [searchQuery, setSearchQuery] = useState('');
@@ -208,7 +212,8 @@ export const GlobalVoiceNotesModal: React.FC<GlobalVoiceNotesModalProps> = ({
                 activeModuleName || 'General',
                 selectedTags,
                 true,
-                selectedLanguage
+                selectedLanguage,
+                dailyAgroAnalysis
             );
 
             toast.success(isKa ? 'ხმოვანი შენიშვნა წარმატებით შეინახა' : 'Global voice note saved successfully!');
@@ -561,6 +566,30 @@ export const GlobalVoiceNotesModal: React.FC<GlobalVoiceNotesModalProps> = ({
                                 )}
                             </div>
 
+                            {/* Daily Agro Analysis Checkbox */}
+                            <div className="p-3.5 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl flex items-center justify-between gap-3 transition-colors hover:bg-emerald-50">
+                                <label htmlFor="dailyAgroAnalysisCheck" className="flex items-center gap-2.5 cursor-pointer select-none flex-1">
+                                    <input
+                                        type="checkbox"
+                                        id="dailyAgroAnalysisCheck"
+                                        checked={dailyAgroAnalysis}
+                                        onChange={(e) => setDailyAgroAnalysis(e.target.checked)}
+                                        className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-600"
+                                    />
+                                    <div>
+                                        <span className="text-xs font-black text-emerald-950 flex items-center gap-1.5">
+                                            <span>🌱 {isKa ? 'დღიური აგრო-ანალიზი' : 'Daily Agro Analysis'}</span>
+                                            <span className="px-1.5 py-0.5 bg-emerald-200/70 text-emerald-800 text-[10px] font-bold rounded">AI Learning</span>
+                                        </span>
+                                        <p className="text-[11px] text-emerald-800/80 font-medium">
+                                            {isKa 
+                                                ? 'მონიშნეთ, რათა ეს შენიშვნა გაანალიზდეს ლაბორატორიის AI ინტელექტის მიერ და შეინახოს გამოცდილებაში'
+                                                : 'Mark for synthesis by Labs AI Intelligence Engine and future domain learning'}
+                                        </p>
+                                    </div>
+                                </label>
+                            </div>
+
                             {/* Save Action Bar */}
                             <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
                                 <button
@@ -701,9 +730,41 @@ export const GlobalVoiceNotesModal: React.FC<GlobalVoiceNotesModalProps> = ({
                                                         <span className="text-[11px] text-slate-400">
                                                             • {note.authorName || 'Field Manager'}
                                                         </span>
+
+                                                        {note.dailyAgroAnalysis && (
+                                                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-lg flex items-center gap-1 border border-emerald-300">
+                                                                🌱 {isKa ? 'დღიური აგრო' : 'Daily Agro'}
+                                                            </span>
+                                                        )}
                                                     </div>
 
                                                     <div className="flex items-center gap-1.5 shrink-0">
+                                                        {/* Daily Agro Analysis Toggle */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const updated = { ...note, dailyAgroAnalysis: !note.dailyAgroAnalysis };
+                                                                if (onUpdateNote) {
+                                                                    onUpdateNote(updated);
+                                                                } else {
+                                                                    window.dispatchEvent(new CustomEvent('agrimap_update_note', { detail: updated }));
+                                                                }
+                                                                toast.success(
+                                                                    updated.dailyAgroAnalysis
+                                                                        ? (isKa ? 'შენიშვნა მონიშნულია აგრო-ანალიზისთვის' : 'Marked for Daily Agro Analysis')
+                                                                        : (isKa ? 'მონიშვნა მოხსნილია' : 'Unmarked from Daily Agro Analysis')
+                                                                );
+                                                            }}
+                                                            className={`p-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                                                                note.dailyAgroAnalysis
+                                                                    ? 'bg-emerald-600 text-white border-emerald-700 shadow-2xs'
+                                                                    : 'text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 bg-white border-slate-200/80'
+                                                            }`}
+                                                            title={isKa ? "დღიური აგრო-ანალიზის მონიშვნა/მოხსნა" : "Toggle Daily Agro Analysis"}
+                                                        >
+                                                            <span>🌱</span>
+                                                        </button>
+
                                                         {/* Text to Speech Button */}
                                                         <button
                                                             type="button"
@@ -760,6 +821,20 @@ export const GlobalVoiceNotesModal: React.FC<GlobalVoiceNotesModalProps> = ({
                                                 <p className="text-sm font-medium text-slate-800 leading-relaxed bg-slate-50/70 p-3 rounded-xl border border-slate-100">
                                                     "{note.content}"
                                                 </p>
+
+                                                {note.aiAgroInsights && (
+                                                    <div className="p-3 bg-amber-50/90 border border-amber-200/80 rounded-xl text-xs text-amber-950">
+                                                        <div className="font-bold text-[10px] uppercase text-amber-800 flex items-center gap-1 mb-1">
+                                                            <span>🧠 {isKa ? 'AI აგრო-სინთეზის დასკვნა:' : 'AI Agro-Synthesis Insight:'}</span>
+                                                            {note.aiAnalyzedAt && (
+                                                                <span className="text-[9px] font-normal text-amber-700">
+                                                                    ({new Date(note.aiAnalyzedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <p className="leading-relaxed whitespace-pre-wrap">{note.aiAgroInsights}</p>
+                                                    </div>
+                                                )}
 
                                                 {/* Tags */}
                                                 {note.tags && note.tags.length > 0 && (

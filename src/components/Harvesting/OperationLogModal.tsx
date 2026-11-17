@@ -192,9 +192,9 @@ export const OperationLogModal: React.FC<OperationLogModalProps> = ({
     };
 
     return createPortal(
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-white">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-md z-[9999] flex items-center justify-center p-4">
+            <div className="bg-[#FAFBF8] border border-[#D8E3D4] text-[#163022] rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <div className="flex items-center justify-between p-6 border-b border-[#D8E3D4] bg-[#EEF3EA]">
                     <div>
                         <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Operation Log Manager</h2>
                         <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">{filteredEntries.length} Total Entries</p>

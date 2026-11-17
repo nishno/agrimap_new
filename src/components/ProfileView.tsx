@@ -1142,14 +1142,6 @@ const ProfileView: React.FC<ProfileViewProps> = (props) => {
 
                 <div className="pt-6 border-t flex flex-col gap-4">
                     <div className="flex flex-wrap items-center gap-3">
-                        {onOpenHomepage && (
-                            <button 
-                                onClick={onOpenHomepage} 
-                                className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-emerald-200 transition-all active:scale-95"
-                            >
-                                <Home size={16} /> Go to Homepage
-                            </button>
-                        )}
                         {onSetAppMode && (
                             <button 
                                 onClick={() => onSetAppMode('dashboard')} 
@@ -1160,7 +1152,7 @@ const ProfileView: React.FC<ProfileViewProps> = (props) => {
                         )}
                     </div>
 
-                    {/* Navigation & Documentation under "Go to Homepage" */}
+                    {/* Navigation & Documentation */}
                     <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex flex-wrap items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center flex-shrink-0">
@@ -1352,13 +1344,13 @@ const ProfileView: React.FC<ProfileViewProps> = (props) => {
                                 </button>
                             )}
 
-                            {onOpenHomepage && (
+                            {onSetAppMode && (
                                 <button 
-                                    onClick={onOpenHomepage}
+                                    onClick={() => onSetAppMode('dashboard')}
                                     className="px-5 py-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all flex items-center gap-2"
-                                    title="Go to Homepage"
+                                    title="Go to Dashboard"
                                 >
-                                    <Home size={14} /> Go to Homepage
+                                    <Home size={14} /> Go to Dashboard
                                 </button>
                             )}
 

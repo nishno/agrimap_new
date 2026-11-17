@@ -862,14 +862,14 @@ export const SystemFeedingTankMonitor: React.FC<SystemFeedingTankMonitorProps> =
 
                     {/* Quick Mode & Tank Actions */}
                     <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-                        <div className="bg-slate-800/80 backdrop-blur-md p-1.5 rounded-2xl border border-slate-700 flex items-center gap-1">
+                        <div className="bg-white p-1 rounded-2xl border border-[#CFDCCB] flex items-center gap-1 shadow-2xs">
                             <button
                                 type="button"
                                 onClick={() => setExecutionMode('MANUAL')}
-                                className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                                className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer border ${
                                     executionMode === 'MANUAL'
-                                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
-                                        : 'text-slate-400 hover:text-white'
+                                        ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs'
+                                        : 'bg-white text-[#244130] border-[#CFDCCB] hover:bg-indigo-600 hover:text-white'
                                 }`}
                             >
                                 🖐️ Manual
@@ -880,10 +880,10 @@ export const SystemFeedingTankMonitor: React.FC<SystemFeedingTankMonitorProps> =
                                     setExecutionMode('AUTO');
                                     handleExecuteAutoRun();
                                 }}
-                                className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                                className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer border ${
                                     executionMode === 'AUTO'
-                                        ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30'
-                                        : 'text-slate-400 hover:text-white'
+                                        ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
+                                        : 'bg-white text-[#244130] border-[#CFDCCB] hover:bg-emerald-600 hover:text-white'
                                 }`}
                             >
                                 ⚡ Auto Calc
@@ -893,7 +893,7 @@ export const SystemFeedingTankMonitor: React.FC<SystemFeedingTankMonitorProps> =
                         <button
                             type="button"
                             onClick={handleRefillAllFromRecipe}
-                            className="px-4 py-2.5 bg-emerald-600/30 hover:bg-emerald-600 text-emerald-200 hover:text-white border border-emerald-500/40 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                            className="px-4 py-2.5 bg-white text-emerald-800 border border-[#CFDCCB] hover:bg-emerald-600 hover:text-white hover:border-emerald-700 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
                             title="Refill all active tanks from selected purpose"
                         >
                             <ArrowPathIcon className="w-4 h-4" /> Refill All (სავსე)
@@ -902,7 +902,7 @@ export const SystemFeedingTankMonitor: React.FC<SystemFeedingTankMonitorProps> =
                         <button
                             type="button"
                             onClick={() => setIsAddTankOpen(true)}
-                            className="px-4 py-2.5 bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 hover:text-white border border-indigo-500/40 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                            className="px-4 py-2.5 bg-white text-indigo-800 border border-[#CFDCCB] hover:bg-indigo-600 hover:text-white hover:border-indigo-700 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
                         >
                             <PlusIcon className="w-4 h-4" /> + Add Tank / ავზის დამატება
                         </button>
@@ -910,17 +910,17 @@ export const SystemFeedingTankMonitor: React.FC<SystemFeedingTankMonitorProps> =
                 </div>
 
                 {/* Session Configuration Matrix */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6 pt-6 border-t border-slate-800/80 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6 pt-6 border-t border-[#D8E3D4] text-xs">
                     <div>
                         <div className="flex justify-between items-center mb-1.5">
-                            <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                            <label className="text-[10px] font-black uppercase tracking-wider text-[#4A6753]">
                                 1. Purpose / Recipe (რეცეპტი)
                             </label>
                             {activePlan?.tankConfigs && activePlan.tankConfigs.length > 0 && (
                                 <button
                                     type="button"
                                     onClick={() => handleApplyRecipeBlueprint()}
-                                    className="text-[10px] font-bold text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
+                                    className="text-[10px] font-bold text-emerald-700 hover:underline flex items-center gap-1 cursor-pointer"
                                 >
                                     📥 Load Blueprint / ჩატვირთვა
                                 </button>
@@ -929,7 +929,7 @@ export const SystemFeedingTankMonitor: React.FC<SystemFeedingTankMonitorProps> =
                         <select
                             value={selectedRecipeId}
                             onChange={e => handleRecipeSelect(e.target.value)}
-                            className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                            className="w-full bg-[#FAFBF8] border border-[#CFDCCB] rounded-xl px-3 py-2 text-xs font-bold text-[#163022] focus:border-emerald-600 focus:bg-white focus:outline-none"
                         >
                             <option value="">-- Custom Field Mix / თავისუფალი ნაზავი --</option>
                             {nutritionPlans.map(p => (
@@ -941,25 +941,25 @@ export const SystemFeedingTankMonitor: React.FC<SystemFeedingTankMonitorProps> =
                     </div>
 
                     <div>
-                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1.5">
+                        <label className="text-[10px] font-black uppercase tracking-wider text-[#4A6753] block mb-1.5">
                             2. Date of Feeding (თარიღი)
                         </label>
                         <input
                             type="date"
                             value={sessionDate}
                             onChange={e => setSessionDate(e.target.value)}
-                            className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                            className="w-full bg-[#FAFBF8] border border-[#CFDCCB] rounded-xl px-3 py-2 text-xs font-bold text-[#163022] focus:border-emerald-600 focus:bg-white focus:outline-none"
                         />
                     </div>
 
                     <div>
-                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1.5">
+                        <label className="text-[10px] font-black uppercase tracking-wider text-[#4A6753] block mb-1.5">
                             3. Operator in Charge (ოპერატორი)
                         </label>
                         <select
                             value={operatorId}
                             onChange={e => setOperatorId(e.target.value)}
-                            className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                            className="w-full bg-[#FAFBF8] border border-[#CFDCCB] rounded-xl px-3 py-2 text-xs font-bold text-[#163022] focus:border-emerald-600 focus:bg-white focus:outline-none"
                         >
                             <option value="">-- Select Operator / აირჩიეთ ოპერატორი --</option>
                             {employees.map(emp => (
@@ -971,15 +971,15 @@ export const SystemFeedingTankMonitor: React.FC<SystemFeedingTankMonitorProps> =
                     </div>
 
                     <div>
-                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1.5">
+                        <label className="text-[10px] font-black uppercase tracking-wider text-[#4A6753] block mb-1.5">
                             4. Target Water / EC & pH Specs / პარამეტრები
                         </label>
                         <div className="flex items-center gap-2">
-                            <span className="px-2.5 py-1.5 bg-slate-800 rounded-xl border border-slate-700 text-slate-300 font-bold text-[11px] flex-1 text-center">
-                                EC: <strong className="text-emerald-400">{activePlan?.targetEC || '1.6'}</strong>
+                            <span className="px-2.5 py-1.5 bg-[#EEF3EA] rounded-xl border border-[#D8E3D4] text-[#244130] font-bold text-[11px] flex-1 text-center">
+                                EC: <strong className="text-emerald-800">{activePlan?.targetEC || '1.6'}</strong>
                             </span>
-                            <span className="px-2.5 py-1.5 bg-slate-800 rounded-xl border border-slate-700 text-slate-300 font-bold text-[11px] flex-1 text-center">
-                                pH: <strong className="text-amber-400">{activePlan?.targetPH || '5.8'}</strong>
+                            <span className="px-2.5 py-1.5 bg-[#EEF3EA] rounded-xl border border-[#D8E3D4] text-[#244130] font-bold text-[11px] flex-1 text-center">
+                                pH: <strong className="text-amber-800">{activePlan?.targetPH || '5.8'}</strong>
                             </span>
                         </div>
                     </div>
@@ -988,16 +988,16 @@ export const SystemFeedingTankMonitor: React.FC<SystemFeedingTankMonitorProps> =
 
             {/* Active Cycle Progress & Summary Card */}
             {activeCycle.feedings.length > 0 && (
-                <div className="bg-gradient-to-br from-indigo-900/90 to-slate-900 rounded-3xl p-6 text-white shadow-xl border border-indigo-500/30">
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-indigo-800/60">
+                <div className="bg-[#FAFBF8] rounded-3xl p-6 text-[#163022] shadow-sm border border-[#D8E3D4]">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-[#D8E3D4]">
                         <div>
-                            <div className="flex items-center gap-2 text-emerald-400 text-xs font-black uppercase tracking-wider">
+                            <div className="flex items-center gap-2 text-emerald-800 text-xs font-black uppercase tracking-wider">
                                 <SparklesIcon className="w-4 h-4" /> Active Batch Cycle Progress / მიმდინარე ციკლის პროგრესი
                             </div>
-                            <h3 className="text-xl font-black mt-1">
+                            <h3 className="text-xl font-black mt-1 text-[#163022]">
                                 {activeCycle.feedings.length} Feeding{activeCycle.feedings.length === 1 ? '' : 's'} Made in this Batch
                             </h3>
-                            <p className="text-xs text-indigo-200">
+                            <p className="text-xs text-[#4A6753]">
                                 Purpose / მიზანი: <strong>{activeCycle.recipeName}</strong> • Total Water / წყალი: <strong>{cycleCumulativeStats.totalWater} L</strong> • Total Cost / ღირებულება: <strong>{formatCurrency(cycleCumulativeStats.totalCost)}</strong>
                             </p>
                         </div>
@@ -1006,14 +1006,14 @@ export const SystemFeedingTankMonitor: React.FC<SystemFeedingTankMonitorProps> =
                             <button
                                 type="button"
                                 onClick={() => setShowCycleCompleteModal(true)}
-                                className="px-4 py-2 bg-indigo-500 hover:bg-indigo-400 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                                className="px-4 py-2 bg-white text-[#244130] border border-[#CFDCCB] hover:bg-indigo-600 hover:text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
                             >
                                 📊 View Total Usage & Details / დეტალები
                             </button>
                             <button
                                 type="button"
                                 onClick={handleRefillAllFromRecipe}
-                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                                className="px-4 py-2 bg-white text-[#244130] border border-[#CFDCCB] hover:bg-emerald-600 hover:text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
                             >
                                 🔄 Start Next Cycle / ახალი ციკლი
                             </button>
@@ -1022,18 +1022,18 @@ export const SystemFeedingTankMonitor: React.FC<SystemFeedingTankMonitorProps> =
 
                     {/* Cumulative Material Totals Pill Matrix */}
                     <div className="mt-4">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-indigo-300 block mb-2">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-[#4A6753] block mb-2">
                             Total Cumulative Fertilizers Consumed Across All {activeCycle.feedings.length} Feedings / ჯამური სასუქები:
                         </span>
                         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
                             {cycleCumulativeStats.materialSummary.map((mat, idx) => (
-                                <div key={idx} className="p-2.5 bg-slate-800/80 rounded-xl border border-indigo-500/20 flex flex-col justify-between">
-                                    <div className="text-[11px] font-bold text-slate-200 truncate" title={mat.name}>
+                                <div key={idx} className="p-2.5 bg-white rounded-xl border border-[#D8E3D4] flex flex-col justify-between shadow-2xs">
+                                    <div className="text-[11px] font-bold text-[#163022] truncate" title={mat.name}>
                                         {mat.name}
                                     </div>
                                     <div className="mt-1 flex justify-between items-baseline">
-                                        <span className="text-sm font-black text-emerald-400">{mat.totalKg} kg</span>
-                                        <span className="text-[10px] text-slate-400 font-bold">{formatCurrency(mat.totalCost)}</span>
+                                        <span className="text-sm font-black text-emerald-800">{mat.totalKg} kg</span>
+                                        <span className="text-[10px] text-[#4A6753] font-bold">{formatCurrency(mat.totalCost)}</span>
                                     </div>
                                 </div>
                             ))}
@@ -1427,50 +1427,50 @@ export const SystemFeedingTankMonitor: React.FC<SystemFeedingTankMonitorProps> =
             </div>
 
             {/* Consumption Impact & Master Stock Charge Panel */}
-            <div className="bg-slate-900 rounded-3xl p-6 md:p-8 text-white shadow-2xl space-y-6">
+            <div className="bg-[#FAFBF8] rounded-3xl p-6 md:p-8 text-[#163022] shadow-sm border border-[#D8E3D4] space-y-6">
                 <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
                     <div>
-                        <div className="flex items-center gap-2 text-emerald-400 text-xs font-black uppercase tracking-wider">
+                        <div className="flex items-center gap-2 text-emerald-800 text-xs font-black uppercase tracking-wider">
                             <SparklesIcon className="w-4 h-4" /> Live Warehouse Stock Charge / საწყობიდან ჩამოწერა
                         </div>
-                        <h3 className="text-xl md:text-2xl font-black mt-1">
+                        <h3 className="text-xl md:text-2xl font-black mt-1 text-[#163022]">
                             Feeding Run #{activeCycle.feedings.length + 1} Stock Charge Summary / კვების ჩამოწერის შეჯამება
                         </h3>
-                        <p className="text-xs text-slate-400 mt-0.5">
+                        <p className="text-xs text-[#4A6753] mt-0.5">
                             Charges only fertilizers consumed from ACTIVE / IN USE tanks for this specific feeding. / ჩამოიწერება მხოლოდ აქტიური ავზებიდან რეალურად გახარჯული სასუქები.
                         </p>
                     </div>
 
                     <div className="text-right">
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Run Cost / ჯამური ღირებულება</div>
-                        <div className="text-2xl font-black text-amber-400">{formatCurrency(consumptionSummary.totalCost)}</div>
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-[#4A6753]">Total Run Cost / ჯამური ღირებულება</div>
+                        <div className="text-2xl font-black text-emerald-800">{formatCurrency(consumptionSummary.totalCost)}</div>
                     </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     {consumptionSummary.details.map(d => (
                         <div key={d.tankId} className={`p-4 rounded-2xl border space-y-2 ${
-                            d.isEnabled ? 'bg-slate-800 border-slate-700' : 'bg-slate-800/40 border-slate-800 opacity-60'
+                            d.isEnabled ? 'bg-white border-[#D8E3D4] shadow-2xs' : 'bg-slate-50 border-[#D8E3D4] opacity-60'
                         }`}>
                             <div className="flex justify-between items-center">
-                                <span className="font-bold text-xs text-white">{d.tankName}</span>
+                                <span className="font-bold text-xs text-[#163022]">{d.tankName}</span>
                                 <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
-                                    !d.isEnabled ? 'bg-slate-700 text-slate-400' :
-                                    d.isDepleted ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'
+                                    !d.isEnabled ? 'bg-slate-100 text-[#4A6753]' :
+                                    d.isDepleted ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-[#EEF3EA] text-emerald-800 border border-emerald-300'
                                 }`}>
                                     {!d.isEnabled ? 'Bypassed / გამოტოვებული' : d.isDepleted ? 'Depleted (0 L) / დაცლილი' : `${d.consumedLiters} L Used / გახარჯული`}
                                 </span>
                             </div>
 
-                            <div className="space-y-1 pt-2 border-t border-slate-700 text-xs">
+                            <div className="space-y-1 pt-2 border-t border-[#D8E3D4] text-xs">
                                 {d.consumedMaterials.map((m, idx) => (
                                     <div key={idx} className="flex justify-between items-center text-[11px]">
-                                        <span className="text-slate-300 truncate max-w-[130px]">{m.name}</span>
-                                        <span className="font-black text-emerald-400">{m.consumedKg} kg</span>
+                                        <span className="text-[#385342] truncate max-w-[130px]">{m.name}</span>
+                                        <span className="font-black text-emerald-800">{m.consumedKg} kg</span>
                                     </div>
                                 ))}
                                 {d.consumedMaterials.length === 0 && (
-                                    <div className="text-[10px] text-slate-500 italic">
+                                    <div className="text-[10px] text-[#4A6753] italic">
                                         {!d.isEnabled ? 'Tank is disabled / ავზი გათიშულია' : 'No consumption / ხარჯის გარეშე'}
                                     </div>
                                 )}
@@ -1480,8 +1480,8 @@ export const SystemFeedingTankMonitor: React.FC<SystemFeedingTankMonitorProps> =
                 </div>
 
                 {/* Final Execution Button */}
-                <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-4">
-                    <p className="text-xs text-slate-400 text-center sm:text-left">
+                <div className="pt-4 border-t border-[#D8E3D4] flex flex-col sm:flex-row justify-between items-center gap-4">
+                    <p className="text-xs text-[#4A6753] text-center sm:text-left">
                         * Pushing Finish completes 1 feeding run, logs treatment history with AC & pH, and writes down exact fertilizer kg from the warehouse. / ღილაკზე დაჭერით დასრულდება 1 კვება, აღირიცხება ისტორიაში და ჩამოიწერება სასუქები საწყობიდან.
                     </p>
                     <button

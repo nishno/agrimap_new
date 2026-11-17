@@ -333,9 +333,9 @@ export const BureaucracySection: React.FC<BureaucracySectionProps> = ({
                     <button
                         type="button"
                         onClick={() => setIsScannerOpen(true)}
-                        className="py-2.5 px-3.5 bg-slate-900 hover:bg-slate-800 active:scale-95 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+                        className="py-2.5 px-3.5 bg-white text-[#244130] border border-[#CFDCCB] hover:bg-[#163022] hover:text-white active:scale-95 rounded-xl text-xs font-black uppercase tracking-wider shadow-2xs transition-all flex items-center gap-2 cursor-pointer"
                     >
-                        <ScanLine size={15} className="text-emerald-400" />
+                        <ScanLine size={15} className="text-emerald-600" />
                         <span>{isKa ? 'სკანირება' : 'Scan'}</span>
                     </button>
 
@@ -832,17 +832,17 @@ export const BureaucracySection: React.FC<BureaucracySectionProps> = ({
 
             {/* Document Preview Modal */}
             {previewDoc && (
-                <div className="fixed inset-0 bg-black/80 z-[9999] flex items-center justify-center p-4 backdrop-blur-xs" onClick={() => setPreviewDoc(null)}>
-                    <div className="bg-white w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
-                        <div className="p-4 bg-slate-900 text-white flex justify-between items-center shrink-0">
+                <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4 backdrop-blur-md" onClick={() => setPreviewDoc(null)}>
+                    <div className="bg-[#FAFBF8] w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden border border-[#D8E3D4] flex flex-col max-h-[90vh] text-[#163022]" onClick={e => e.stopPropagation()}>
+                        <div className="p-4 bg-[#EEF3EA] text-[#163022] border-b border-[#D8E3D4] flex justify-between items-center shrink-0">
                             <div>
-                                <h3 className="text-sm font-black tracking-tight">{previewDoc.title}</h3>
-                                <p className="text-[10px] text-slate-400">{previewDoc.category} • {previewDoc.date}</p>
+                                <h3 className="text-sm font-black tracking-tight text-[#163022]">{previewDoc.title}</h3>
+                                <p className="text-[10px] text-[#5C7867]">{previewDoc.category} • {previewDoc.date}</p>
                             </div>
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={() => window.print()}
-                                    className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                                    className="p-2 rounded-xl bg-white hover:bg-[#163022] hover:text-white text-[#244130] border border-[#CFDCCB] text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-all"
                                 >
                                     <Printer size={14} />
                                     <span>{isKa ? 'ბეჭდვა' : 'Print'}</span>
@@ -852,12 +852,12 @@ export const BureaucracySection: React.FC<BureaucracySectionProps> = ({
                                     download={previewDoc.title}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center gap-1.5"
+                                    className="p-2 rounded-xl bg-white hover:bg-[#163022] hover:text-white text-[#244130] border border-[#CFDCCB] text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-all"
                                 >
                                     <Download size={14} />
                                     <span>{isKa ? 'გადმოწერა' : 'Download'}</span>
                                 </a>
-                                <button onClick={() => setPreviewDoc(null)} className="p-2 rounded-xl text-slate-400 hover:text-white cursor-pointer">
+                                <button onClick={() => setPreviewDoc(null)} className="p-2 rounded-xl text-[#5C7867] hover:text-[#163022] hover:bg-white/60 cursor-pointer transition-colors">
                                     <X size={18} />
                                 </button>
                             </div>

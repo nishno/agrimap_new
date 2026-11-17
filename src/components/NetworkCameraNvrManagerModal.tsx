@@ -346,25 +346,25 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
     ];
 
     return (
-        <div className="fixed inset-0 z-[2500] flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="relative w-full max-w-5xl bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+        <div className="fixed inset-0 z-[2500] flex items-center justify-center p-3 sm:p-5 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="relative w-full max-w-5xl bg-[#FAFBF8] border border-[#D8E3D4] rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] text-[#163022]">
                 
                 {/* Header */}
-                <div className="p-4 sm:p-5 border-b border-slate-800 bg-slate-950/90 flex items-center justify-between">
+                <div className="p-4 sm:p-5 border-b border-[#D8E3D4] bg-[#EEF3EA] flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-cyan-600/20 border border-cyan-500/40 rounded-2xl text-cyan-400">
+                        <div className="p-2.5 bg-white border border-[#D8E3D4] rounded-2xl text-cyan-700 shadow-2xs">
                             <ServerIcon size={22} />
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400 flex items-center gap-1">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-blue-700 flex items-center gap-1">
                                     <WifiIcon size={12} /> {isKa ? 'ლოკალური ქსელი & NVR / DVR ჰაბი' : 'Local Network & Online NVR / DVR Hub'}
                                 </span>
-                                <span className="px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800/60 text-[10px] font-mono font-bold">
+                                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-mono font-bold">
                                     {currentCameras.length} {isKa ? 'კამერა რუკაზე' : 'Cameras Active'}
                                 </span>
                             </div>
-                            <h3 className="text-base sm:text-lg font-black uppercase tracking-wide text-white mt-0.5">
+                            <h3 className="text-base sm:text-lg font-black uppercase tracking-wide text-[#163022] mt-0.5">
                                 {isKa ? 'ქსელის სკანერი, NVR / DVR წვდომა & პირდაპირი ეთერი (Live View)' : 'Network Scanner, Online NVR / DVR Access & Live View'}
                             </h3>
                         </div>
@@ -372,20 +372,20 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
 
                     <button
                         onClick={onClose}
-                        className="p-2 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white transition-colors cursor-pointer"
+                        className="p-2 bg-white hover:bg-[#EEF3EA] border border-[#CFDCCB] rounded-xl text-[#4A6753] hover:text-[#163022] transition-colors cursor-pointer shadow-2xs"
                     >
                         <CloseIcon size={18} />
                     </button>
                 </div>
 
                 {/* Navigation Tabs: SCAN | ONLINE NVR | LIVE VIEW */}
-                <div className="flex border-b border-slate-800 bg-slate-950/70 px-4 text-xs font-black uppercase tracking-wider">
+                <div className="flex border-b border-[#D8E3D4] bg-[#FAFBF8] px-4 text-xs font-black uppercase tracking-wider">
                     <button
                         onClick={() => setActiveTab('scan')}
                         className={`py-3 px-4 border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
                             activeTab === 'scan'
-                                ? 'border-cyan-500 text-cyan-300 bg-cyan-500/10'
-                                : 'border-transparent text-slate-400 hover:text-slate-200'
+                                ? 'border-emerald-600 text-emerald-900 bg-[#EEF3EA]'
+                                : 'border-transparent text-[#4A6753] hover:text-[#163022]'
                         }`}
                     >
                         <SearchIcon size={14} />
@@ -395,8 +395,8 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
                         onClick={() => setActiveTab('nvr')}
                         className={`py-3 px-4 border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
                             activeTab === 'nvr'
-                                ? 'border-cyan-500 text-cyan-300 bg-cyan-500/10'
-                                : 'border-transparent text-slate-400 hover:text-slate-200'
+                                ? 'border-emerald-600 text-emerald-900 bg-[#EEF3EA]'
+                                : 'border-transparent text-[#4A6753] hover:text-[#163022]'
                         }`}
                     >
                         <ServerIcon size={14} />
@@ -406,8 +406,8 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
                         onClick={() => setActiveTab('live_view')}
                         className={`py-3 px-4 border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
                             activeTab === 'live_view'
-                                ? 'border-cyan-500 text-cyan-300 bg-cyan-500/10'
-                                : 'border-transparent text-slate-400 hover:text-slate-200'
+                                ? 'border-emerald-600 text-emerald-900 bg-[#EEF3EA]'
+                                : 'border-transparent text-[#4A6753] hover:text-[#163022]'
                         }`}
                     >
                         <VideoIcon size={14} />
@@ -417,17 +417,17 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
                 </div>
 
                 {/* Modal Content Body */}
-                <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 text-xs text-slate-300 custom-scrollbar">
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 text-xs text-[#244130] bg-[#F5F8F4] custom-scrollbar">
                     
                     {/* ==================== TAB 1: LOCAL NETWORK SCANNER ==================== */}
                     {activeTab === 'scan' && (
                         <div className="space-y-4">
                             {/* Subnet Input & Scan Controls */}
-                            <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 space-y-3">
+                            <div className="p-4 bg-white rounded-2xl border border-[#D8E3D4] space-y-3 shadow-2xs">
                                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                                     <div className="flex items-center gap-2 flex-1">
                                         <div className="flex flex-col flex-1">
-                                            <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">
+                                            <label className="text-[10px] font-black uppercase text-[#4A6753] block mb-1">
                                                 {isKa ? 'ქვექსელის დიაპაზონი (Subnet CIDR)' : 'Target Subnet Range (CIDR)'}
                                             </label>
                                             <div className="flex items-center gap-2">
@@ -435,7 +435,7 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
                                                     type="text"
                                                     value={subnetInput}
                                                     onChange={(e) => setSubnetInput(e.target.value)}
-                                                    className="w-full sm:w-64 px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl font-mono text-white text-xs font-bold outline-none focus:border-cyan-500"
+                                                    className="w-full sm:w-64 px-3.5 py-2 bg-[#FAFBF8] border border-[#CFDCCB] rounded-xl font-mono text-[#163022] text-xs font-bold outline-none focus:border-emerald-600"
                                                     placeholder="192.168.1.0/24"
                                                 />
                                                 <div className="flex gap-1">
@@ -444,7 +444,7 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
                                                             key={preset}
                                                             type="button"
                                                             onClick={() => setSubnetInput(preset)}
-                                                            className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] font-mono cursor-pointer"
+                                                            className="px-2 py-1 bg-white hover:bg-[#EEF3EA] text-[#244130] border border-[#CFDCCB] rounded-lg text-[10px] font-mono cursor-pointer transition-all duration-200"
                                                         >
                                                             {preset.split('.')[2]}.x
                                                         </button>
@@ -458,10 +458,10 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
                                         type="button"
                                         disabled={isScanning}
                                         onClick={handleStartScan}
-                                        className={`px-5 py-2.5 rounded-xl font-black uppercase tracking-wider text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg active:scale-95 ${
+                                        className={`px-5 py-2.5 rounded-xl font-black uppercase tracking-wider text-xs flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer shadow-2xs active:scale-95 ${
                                             isScanning 
-                                                ? 'bg-slate-800 text-slate-400 cursor-not-allowed'
-                                                : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-cyan-950/50'
+                                                ? 'bg-[#EEF3EA] text-[#4A6753] border border-[#D8E3D4] cursor-not-allowed'
+                                                : 'bg-white hover:bg-emerald-600 text-[#244130] hover:text-white border border-[#CFDCCB] hover:border-emerald-600'
                                         }`}
                                     >
                                         <RefreshIcon size={14} className={isScanning ? 'animate-spin' : ''} />
@@ -472,13 +472,13 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
                                 {/* Progress Bar */}
                                 {isScanning && (
                                     <div className="space-y-1.5 pt-2">
-                                        <div className="flex justify-between text-[10px] font-mono text-cyan-400">
+                                        <div className="flex justify-between text-[10px] font-mono text-blue-700 font-bold">
                                             <span>{scanStatusText}</span>
                                             <span>{scanProgress}%</span>
                                         </div>
-                                        <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+                                        <div className="w-full h-2 bg-[#EEF3EA] rounded-full overflow-hidden border border-[#D8E3D4]">
                                             <div 
-                                                className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-150"
+                                                className="h-full bg-gradient-to-r from-blue-500 to-emerald-500 transition-all duration-150"
                                                 style={{ width: `${scanProgress}%` }}
                                             />
                                         </div>
@@ -489,16 +489,16 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
                             {/* Search Filter & Header */}
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
-                                    <SearchIcon size={14} className="text-slate-400" />
+                                    <SearchIcon size={14} className="text-[#4A6753]" />
                                     <input
                                         type="text"
                                         value={searchFilter}
                                         onChange={(e) => setSearchFilter(e.target.value)}
                                         placeholder={isKa ? "ფილტრი: IP, Hikvision, NVR..." : "Filter devices by IP, model, brand..."}
-                                        className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white outline-none w-56 focus:border-cyan-500"
+                                        className="bg-white border border-[#CFDCCB] rounded-xl px-3 py-1.5 text-xs text-[#163022] outline-none w-56 focus:border-emerald-600 shadow-2xs"
                                     />
                                 </div>
-                                <span className="text-[11px] font-mono text-slate-400">
+                                <span className="text-[11px] font-mono text-[#4A6753] font-bold">
                                     {isKa ? `ნაპოვნია ${filteredDevices.length} მოწყობილობა` : `Discovered ${filteredDevices.length} Devices`}
                                 </span>
                             </div>
@@ -510,32 +510,32 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
                                     return (
                                         <div 
                                             key={device.id}
-                                            className="p-3.5 bg-slate-950/80 rounded-2xl border border-slate-800 hover:border-slate-700 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                                            className="p-3.5 bg-white rounded-2xl border border-[#D8E3D4] hover:border-[#B5CBB0] transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
                                         >
                                             <div className="flex items-start gap-3">
                                                 <div className={`p-2.5 rounded-xl border mt-0.5 ${
                                                     isNvr 
-                                                        ? 'bg-blue-600/20 border-blue-500/40 text-blue-400' 
-                                                        : 'bg-emerald-600/20 border-emerald-500/40 text-emerald-400'
+                                                        ? 'bg-blue-100 border-blue-300 text-blue-800' 
+                                                        : 'bg-emerald-100 border-emerald-300 text-emerald-800'
                                                 }`}>
                                                     {isNvr ? <ServerIcon size={18} /> : <CameraIcon size={18} />}
                                                 </div>
                                                 <div>
                                                     <div className="flex items-center gap-2">
-                                                        <span className="font-black text-sm text-white">{device.alias}</span>
+                                                        <span className="font-black text-sm text-[#163022]">{device.alias}</span>
                                                         <span className={`px-2 py-0.5 rounded-md text-[9px] font-mono font-bold border ${
                                                             isNvr 
-                                                                ? 'bg-blue-950 text-blue-300 border-blue-800/60' 
-                                                                : 'bg-emerald-950 text-emerald-300 border-emerald-800/60'
+                                                                ? 'bg-blue-50 text-blue-900 border-blue-200' 
+                                                                : 'bg-emerald-50 text-emerald-900 border-emerald-200'
                                                         }`}>
                                                             {device.brand} • {device.type}
                                                         </span>
-                                                        <span className="text-[10px] text-emerald-400 font-mono font-bold flex items-center gap-1">
+                                                        <span className="text-[10px] text-emerald-700 font-mono font-bold flex items-center gap-1">
                                                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                                                             {device.pingMs}ms
                                                         </span>
                                                     </div>
-                                                    <div className="text-[11px] text-slate-400 font-mono mt-1 space-x-3">
+                                                    <div className="text-[11px] text-[#4A6753] font-mono mt-1 space-x-3">
                                                         <span><b>IP:</b> {device.ip}</span>
                                                         <span><b>MAC:</b> {device.mac}</span>
                                                         <span><b>Ports:</b> {device.httpPort}/{device.rtspPort}/{device.serverPort}</span>
@@ -549,7 +549,7 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
                                                     <button
                                                         type="button"
                                                         onClick={() => handleImportAllFromNvr(device)}
-                                                        className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-emerald-950/50 cursor-pointer active:scale-95 transition-all"
+                                                        className="px-3.5 py-2 bg-white hover:bg-emerald-600 text-[#244130] hover:text-white border border-[#CFDCCB] hover:border-emerald-600 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95 transition-all duration-200"
                                                         title="Import all camera channels from this NVR/DVR onto plantation map"
                                                     >
                                                         <DownloadIcon size={13} className="stroke-[2.5]" />
@@ -581,7 +581,7 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
                                                             onImportAllCameras([...currentCameras, cam]);
                                                             toast.success(isKa ? 'კამერა დაემატა რუკაზე!' : 'Camera deployed to map!');
                                                         }}
-                                                        className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all"
+                                                        className="px-3 py-2 bg-white hover:bg-blue-600 text-[#244130] hover:text-white border border-[#CFDCCB] hover:border-blue-600 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all duration-200"
                                                     >
                                                         <PlusIcon size={13} />
                                                         <span>{isKa ? 'რუკაზე დამატება' : 'Deploy to Map'}</span>
@@ -598,40 +598,40 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
                     {/* ==================== TAB 2: ONLINE NVR / DVR ACCESS ==================== */}
                     {activeTab === 'nvr' && (
                         <div className="space-y-4">
-                            <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 space-y-4">
-                                <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                            <div className="p-4 bg-white rounded-2xl border border-[#D8E3D4] shadow-xs space-y-4">
+                                <div className="flex items-center justify-between border-b border-[#D8E3D4] pb-2.5">
                                     <div className="flex items-center gap-2">
-                                        <ServerIcon size={16} className="text-cyan-400" />
-                                        <span className="font-black uppercase tracking-wider text-slate-100 text-xs">
+                                        <ServerIcon size={16} className="text-emerald-700" />
+                                        <span className="font-black uppercase tracking-wider text-[#163022] text-xs">
                                             {isKa ? 'ონლაინ NVR / DVR აპარატურული პარამეტრები' : 'Online NVR / DVR Gateway Credentials'}
                                         </span>
                                     </div>
-                                    <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-950/80 px-2.5 py-0.5 rounded-lg border border-emerald-800/40">
+                                    <span className="text-[10px] font-mono font-bold text-emerald-800 bg-[#EEF3EA] px-2.5 py-0.5 rounded-lg border border-emerald-600/30">
                                         Status: {nvrConfig.isVerified ? 'VERIFIED (ONLINE)' : 'UNVERIFIED'}
                                     </span>
                                 </div>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                                     <div>
-                                        <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">
+                                        <label className="text-[10px] font-black uppercase text-[#4A6753] block mb-1">
                                             {isKa ? 'NVR / DVR დასახელება' : 'Device Alias'}
                                         </label>
                                         <input
                                             type="text"
                                             value={nvrConfig.alias}
                                             onChange={(e) => setNvrConfig(prev => ({ ...prev, alias: e.target.value }))}
-                                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs font-bold outline-none focus:border-cyan-500"
+                                            className="w-full px-3 py-2 bg-[#FAFBF8] border border-[#CFDCCB] rounded-xl text-[#163022] text-xs font-bold outline-none focus:border-emerald-600 focus:bg-white"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">
+                                        <label className="text-[10px] font-black uppercase text-[#4A6753] block mb-1">
                                             {isKa ? 'ბრენდი & პროტოკოლი' : 'Manufacturer & Protocol'}
                                         </label>
                                         <select
                                             value={nvrConfig.brand}
                                             onChange={(e) => setNvrConfig(prev => ({ ...prev, brand: e.target.value }))}
-                                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs font-bold outline-none focus:border-cyan-500"
+                                            className="w-full px-3 py-2 bg-[#FAFBF8] border border-[#CFDCCB] rounded-xl text-[#163022] text-xs font-bold outline-none focus:border-emerald-600 focus:bg-white"
                                         >
                                             <option value="Hikvision">Hikvision (ISAPI / SADP 4K)</option>
                                             <option value="Dahua">Dahua (DH-RPC / DMSS / WizSense)</option>
@@ -642,13 +642,13 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
                                     </div>
 
                                     <div>
-                                        <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">
+                                        <label className="text-[10px] font-black uppercase text-[#4A6753] block mb-1">
                                             {isKa ? 'არხების რაოდენობა' : 'Channels Count'}
                                         </label>
                                         <select
                                             value={nvrConfig.channelsCount}
                                             onChange={(e) => setNvrConfig(prev => ({ ...prev, channelsCount: Number(e.target.value) }))}
-                                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs font-bold outline-none focus:border-cyan-500"
+                                            className="w-full px-3 py-2 bg-[#FAFBF8] border border-[#CFDCCB] rounded-xl text-[#163022] text-xs font-bold outline-none focus:border-emerald-600 focus:bg-white"
                                         >
                                             <option value={4}>4 {isKa ? 'არხი (4 Cameras)' : 'Channels'}</option>
                                             <option value={8}>8 {isKa ? 'არხი (8 Cameras)' : 'Channels'}</option>
@@ -660,50 +660,50 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
 
                                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                                     <div>
-                                        <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">
+                                        <label className="text-[10px] font-black uppercase text-[#4A6753] block mb-1">
                                             {isKa ? 'NVR ჰოსტი (IP ან DDNS)' : 'Host (IP / DDNS)'}
                                         </label>
                                         <input
                                             type="text"
                                             value={nvrConfig.host}
                                             onChange={(e) => setNvrConfig(prev => ({ ...prev, host: e.target.value }))}
-                                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl font-mono text-white text-xs outline-none focus:border-cyan-500"
+                                            className="w-full px-3 py-2 bg-[#FAFBF8] border border-[#CFDCCB] rounded-xl font-mono text-[#163022] text-xs outline-none focus:border-emerald-600 focus:bg-white"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">
+                                        <label className="text-[10px] font-black uppercase text-[#4A6753] block mb-1">
                                             {isKa ? 'RTSP პორტი' : 'RTSP Port'}
                                         </label>
                                         <input
                                             type="number"
                                             value={nvrConfig.rtspPort}
                                             onChange={(e) => setNvrConfig(prev => ({ ...prev, rtspPort: Number(e.target.value) }))}
-                                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl font-mono text-white text-xs outline-none focus:border-cyan-500"
+                                            className="w-full px-3 py-2 bg-[#FAFBF8] border border-[#CFDCCB] rounded-xl font-mono text-[#163022] text-xs outline-none focus:border-emerald-600 focus:bg-white"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">
+                                        <label className="text-[10px] font-black uppercase text-[#4A6753] block mb-1">
                                             {isKa ? 'მომხმარებელი' : 'Username'}
                                         </label>
                                         <input
                                             type="text"
                                             value={nvrConfig.username}
                                             onChange={(e) => setNvrConfig(prev => ({ ...prev, username: e.target.value }))}
-                                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl font-mono text-white text-xs outline-none focus:border-cyan-500"
+                                            className="w-full px-3 py-2 bg-[#FAFBF8] border border-[#CFDCCB] rounded-xl font-mono text-[#163022] text-xs outline-none focus:border-emerald-600 focus:bg-white"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">
+                                        <label className="text-[10px] font-black uppercase text-[#4A6753] block mb-1">
                                             {isKa ? 'პაროლი' : 'Password'}
                                         </label>
                                         <input
                                             type="password"
                                             value={nvrConfig.password}
                                             onChange={(e) => setNvrConfig(prev => ({ ...prev, password: e.target.value }))}
-                                            className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl font-mono text-white text-xs outline-none focus:border-cyan-500"
+                                            className="w-full px-3 py-2 bg-[#FAFBF8] border border-[#CFDCCB] rounded-xl font-mono text-[#163022] text-xs outline-none focus:border-emerald-600 focus:bg-white"
                                         />
                                     </div>
                                 </div>
@@ -715,13 +715,13 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
                                             type="button"
                                             disabled={isVerifyingNvr}
                                             onClick={handleVerifyNvr}
-                                            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-all border border-slate-700"
+                                            className="px-4 py-2 bg-white text-[#244130] border border-[#CFDCCB] hover:bg-emerald-600 hover:text-white hover:border-emerald-700 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-all shadow-2xs"
                                         >
                                             <RefreshIcon size={13} className={isVerifyingNvr ? 'animate-spin' : ''} />
                                             <span>{isVerifyingNvr ? (isKa ? 'მოწმდება...' : 'Verifying...') : (isKa ? 'კავშირის ტესტი' : 'Test Connection')}</span>
                                         </button>
                                         {verificationStep > 0 && (
-                                            <span className="text-[11px] font-mono text-cyan-400">
+                                            <span className="text-[11px] font-mono text-emerald-700 font-bold">
                                                 {verificationStep === 1 && 'Ping Host OK...'}
                                                 {verificationStep === 2 && 'ISAPI Handshake OK...'}
                                                 {verificationStep === 3 && '16 Channels Discovered!'}
@@ -733,7 +733,7 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
                                     <button
                                         type="button"
                                         onClick={() => handleImportAllFromNvr()}
-                                        className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-xl shadow-emerald-950/60 cursor-pointer active:scale-95 transition-all"
+                                        className="px-5 py-2.5 bg-white text-[#163022] border-2 border-emerald-600 hover:bg-gradient-to-r hover:from-emerald-600 hover:to-teal-600 hover:text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-xs cursor-pointer active:scale-95 transition-all"
                                     >
                                         <DownloadIcon size={15} className="stroke-[3]" />
                                         <span>
@@ -751,20 +751,20 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
                     {activeTab === 'live_view' && (
                         <div className="space-y-4">
                             {/* Live View Controls Header */}
-                            <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-950 p-3 rounded-2xl border border-slate-800">
+                            <div className="flex flex-wrap items-center justify-between gap-2 bg-[#EEF3EA] p-3 rounded-2xl border border-[#D8E3D4]">
                                 <div className="flex items-center gap-3">
-                                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                                        <VideoIcon size={14} className="text-cyan-400" />
+                                    <span className="text-xs font-bold text-[#163022] flex items-center gap-1.5">
+                                        <VideoIcon size={14} className="text-emerald-700" />
                                         <span>{isKa ? 'ცოცხალი მატრიცა' : 'Live Stream Matrix'}</span>
                                     </span>
-                                    <span className="font-mono text-[10px] text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded-lg border border-emerald-800/40">
+                                    <span className="font-mono text-[10px] text-emerald-800 bg-white px-2 py-0.5 rounded-lg border border-[#D8E3D4]">
                                         {liveTime}
                                     </span>
                                 </div>
 
                                 <div className="flex items-center gap-2">
                                     {/* Grid layout toggles */}
-                                    <div className="flex bg-slate-900 rounded-xl p-1 border border-slate-800">
+                                    <div className="flex bg-white rounded-xl p-1 border border-[#D8E3D4]">
                                         {(['1x1', '2x2', '3x3'] as const).map(grid => (
                                             <button
                                                 key={grid}
@@ -772,8 +772,8 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
                                                 onClick={() => setLiveGridLayout(grid)}
                                                 className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer ${
                                                     liveGridLayout === grid 
-                                                        ? 'bg-cyan-600 text-white shadow-sm' 
-                                                        : 'text-slate-400 hover:text-slate-200'
+                                                        ? 'bg-emerald-600 text-white shadow-xs' 
+                                                        : 'text-[#4A6753] hover:text-[#163022] hover:bg-[#EEF3EA]'
                                                 }`}
                                             >
                                                 {grid}
@@ -787,8 +787,8 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
                                         onClick={() => setAiDetectionOverlay(!aiDetectionOverlay)}
                                         className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer border ${
                                             aiDetectionOverlay 
-                                                ? 'bg-indigo-950 text-indigo-300 border-indigo-700/60' 
-                                                : 'bg-slate-900 text-slate-400 border-slate-800'
+                                                ? 'bg-indigo-600 text-white border-indigo-700' 
+                                                : 'bg-white text-[#244130] border-[#CFDCCB] hover:bg-indigo-600 hover:text-white'
                                         }`}
                                     >
                                         <SparklesIcon size={12} />
@@ -801,8 +801,8 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
                                         onClick={() => setIsNightModeActive(!isNightModeActive)}
                                         className={`p-1.5 rounded-xl border transition-all cursor-pointer ${
                                             isNightModeActive 
-                                                ? 'bg-amber-950 text-amber-300 border-amber-700/60' 
-                                                : 'bg-slate-900 text-slate-400 border-slate-800'
+                                                ? 'bg-amber-600 text-white border-amber-700' 
+                                                : 'bg-white text-[#244130] border-[#CFDCCB] hover:bg-amber-600 hover:text-white'
                                         }`}
                                         title="Night Vision Filter"
                                     >
@@ -823,7 +823,7 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
                                     <div 
                                         key={cam.id}
                                         onClick={() => onSelectCameraForDetail?.(cam)}
-                                        className="relative bg-black rounded-2xl overflow-hidden border border-slate-800 group hover:border-cyan-500/80 transition-all cursor-pointer aspect-video flex flex-col justify-between p-3 select-none"
+                                        className="relative bg-black rounded-2xl overflow-hidden border border-[#D8E3D4] group hover:border-emerald-600 transition-all cursor-pointer aspect-video flex flex-col justify-between p-3 select-none shadow-sm"
                                         style={{
                                             filter: isNightModeActive ? 'grayscale(100%) contrast(140%) brightness(90%)' : 'none'
                                         }}
@@ -876,14 +876,14 @@ const NetworkCameraNvrManagerModalContent: React.FC<NetworkCameraNvrManagerModal
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 border-t border-slate-800 bg-slate-950/90 flex items-center justify-between">
-                    <span className="text-xs text-slate-400 font-mono">
+                <div className="p-4 border-t border-[#D8E3D4] bg-[#EEF3EA] flex items-center justify-between">
+                    <span className="text-xs text-[#4A6753] font-mono font-bold">
                         {currentCameras.length} {isKa ? 'კამერა ინტეგრირებულია მეურნეობაში' : 'Cameras deployed in farm network'}
                     </span>
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                        className="px-5 py-2 bg-white text-[#244130] border border-[#CFDCCB] hover:bg-[#163022] hover:text-white hover:border-[#163022] rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs"
                     >
                         {isKa ? 'დახურვა' : 'Close'}
                     </button>

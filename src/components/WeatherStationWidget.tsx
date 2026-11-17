@@ -3,7 +3,7 @@ import {
     CloudRain, Sun, Wind, Droplets, Thermometer, Compass, 
     ArrowRight, MapPin, Sparkles, RefreshCw, AlertTriangle, 
     Layers, Plus, Check, ChevronDown, BarChart2, ShieldCheck, 
-    ExternalLink, Calendar, HelpCircle 
+    ExternalLink, Calendar, HelpCircle, Eye, EyeOff 
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { safeStorage } from '../services/storageService';
@@ -21,7 +21,8 @@ import {
     getHistoricalWeatherLogs,
     askWeatherAiAnalysis
 } from '../services/weatherService';
-import type { PlantationFeature } from '../types';
+import { PlantationFeature } from '../types';
+import { AiSourceBadge } from './AiSourceBadge';
 
 export interface WeatherStationWidgetProps {
     onNavigateMode?: (mode: string) => void;
@@ -34,8 +35,28 @@ export const WeatherStationWidget: React.FC<WeatherStationWidgetProps> = ({
     plantationFeatures = [],
     activeOrgId
 }) => {
-    const { t } = useLanguage();
-    const isKa = true; // Support localization directly
+    const { language, t } = useLanguage();
+    const isKa = language === 'ka';
+    const [isWidgetHidden, setIsWidgetHidden] = useState<boolean>(() => {
+        try {
+            return safeStorage.getItem('agrimap_weather_widget_hidden') === 'true';
+        } catch (_) {
+            return false;
+        }
+    });
+
+    const toggleWidgetHidden = (explicit?: boolean) => {
+        setIsWidgetHidden(prev => {
+            const next = typeof explicit === 'boolean' ? explicit : !prev;
+            try { safeStorage.setItem('agrimap_weather_widget_hidden', String(next)); } catch (_) {}
+            toast.info(
+                next
+                    ? (isKa ? 'ამინდის პანელი დამალულია' : 'Weather tools hidden')
+                    : (isKa ? 'ამინდის პანელი ჩართულია' : 'Weather tools visible')
+            );
+            return next;
+        });
+    };
 
     const [locations, setLocations] = useState<WeatherLocation[]>(getSavedWeatherLocations());
     const primaryDefault = resolvePrimaryPlantationWeatherLocation(plantationFeatures, activeOrgId);
@@ -146,6 +167,35 @@ export const WeatherStationWidget: React.FC<WeatherStationWidgetProps> = ({
         }
     };
 
+    if (isWidgetHidden) {
+        return (
+            <div className="bg-white/95 px-4 py-3 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="p-2 bg-sky-50 text-sky-600 rounded-xl border border-sky-100 shrink-0">
+                        <CloudRain size={16} />
+                    </div>
+                    <div className="min-w-0">
+                        <span className="text-xs font-black text-slate-700 block truncate">
+                            {isKa ? 'ამინდის პანელი დამალულია' : 'Weather tools hidden'}
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-400 truncate block">
+                            {currentLocation.name}{weatherData ? ` · ${weatherData.tempC}°C` : ''}
+                        </span>
+                    </div>
+                </div>
+                <button
+                    type="button"
+                    onClick={() => toggleWidgetHidden(false)}
+                    className="px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-[11px] font-black flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+                    title={isKa ? 'ამინდის პანელის ჩვენება' : 'Show Weather Tools'}
+                >
+                    <Eye size={13} />
+                    <span>{isKa ? 'ჩვენება' : 'Show'}</span>
+                </button>
+            </div>
+        );
+    }
+
     return (
         <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 h-full flex flex-col justify-between overflow-hidden">
             <div>
@@ -208,9 +258,18 @@ export const WeatherStationWidget: React.FC<WeatherStationWidgetProps> = ({
                             onClick={() => loadWeather(currentLocation, false)}
                             disabled={isLoading}
                             className="p-1.5 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-700 transition-all cursor-pointer"
-                            title="Refresh weather"
+                            title={isKa ? 'ამინდის განახლება' : 'Refresh weather'}
                         >
                             <RefreshCw size={14} className={isLoading ? 'animate-spin text-sky-500' : ''} />
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => toggleWidgetHidden(true)}
+                            className="p-1.5 hover:bg-rose-50 rounded-xl text-slate-400 hover:text-rose-600 transition-all cursor-pointer"
+                            title={isKa ? 'ამინდის პანელის დამალვა' : 'Hide Weather Tools'}
+                        >
+                            <EyeOff size={14} />
                         </button>
                     </div>
                 </div>
@@ -375,26 +434,43 @@ export const WeatherStationWidget: React.FC<WeatherStationWidgetProps> = ({
                 )}
 
                 {/* AI Microclimate Analysis Result Card */}
-                {aiAnalysisResult && (
-                    <div className="mt-3 p-3.5 bg-gradient-to-br from-indigo-50/80 to-purple-50/80 border border-indigo-200/80 rounded-2xl text-xs space-y-2 animate-in fade-in duration-200">
-                        <div className="flex items-center justify-between">
-                            <span className="font-black text-indigo-950 uppercase text-[10px] flex items-center gap-1.5">
-                                <Sparkles size={13} className="text-indigo-600" />
-                                AI აგრო-ანალიზი & სენსორების რეკომენდაცია
-                            </span>
-                            <button
-                                type="button"
-                                onClick={() => setAiAnalysisResult(null)}
-                                className="text-[10px] text-slate-400 hover:text-slate-700"
-                            >
-                                ✕
-                            </button>
+                {aiAnalysisResult && (() => {
+                    const isLocal = aiAnalysisResult.includes('⚠️') || 
+                                    aiAnalysisResult.includes('ლოკალური') || 
+                                    aiAnalysisResult.includes('Local') || 
+                                    aiAnalysisResult.includes('Autonomous');
+                    return (
+                        <div className={`mt-3 p-3.5 rounded-2xl text-xs space-y-2 animate-in fade-in duration-200 transition-all ${
+                            isLocal
+                                ? 'bg-amber-50 border-2 border-amber-400 text-amber-950 shadow-md'
+                                : 'bg-gradient-to-br from-indigo-50/80 to-purple-50/80 border border-indigo-200/80 text-slate-800'
+                        }`}>
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                    <AiSourceBadge 
+                                        source={isLocal ? 'local' : 'cloud'}
+                                        isLocal={isLocal}
+                                        reason="Weather microclimate guidance served via Local Autonomous Knowledge Engine."
+                                    />
+                                    <span className={`font-black uppercase text-[10px] flex items-center gap-1.5 ${isLocal ? 'text-amber-900' : 'text-indigo-950'}`}>
+                                        <Sparkles size={13} className={isLocal ? 'text-amber-600' : 'text-indigo-600'} />
+                                        AI აგრო-ანალიზი
+                                    </span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setAiAnalysisResult(null)}
+                                    className="text-[10px] text-slate-400 hover:text-slate-700 cursor-pointer p-1"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                            <div className={`text-[11px] leading-relaxed max-h-48 overflow-y-auto whitespace-pre-line font-medium pr-1 ${isLocal ? 'text-amber-950' : 'text-slate-700'}`}>
+                                {aiAnalysisResult}
+                            </div>
                         </div>
-                        <div className="text-slate-700 text-[11px] leading-relaxed max-h-48 overflow-y-auto whitespace-pre-line font-medium pr-1">
-                            {aiAnalysisResult}
-                        </div>
-                    </div>
-                )}
+                    );
+                })()}
             </div>
 
             {/* Bottom Actions & LABS Navigation */}

@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GeoBlueBerry · AgriMap Pro | Digital Precision Agriculture</title>
+    <meta name="description" content="Mapping the Future of Farming — Stock, Agronomy & Smart Logistics. Georgian Precision Agriculture Digital Platform." />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Serif:ital,wght@0,400;0,700;0,900;1,400&display=swap" rel="stylesheet" />
+    <style>
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: #FAFBF8;
+            color: #1D3224;
+        }
+        .font-serif-editorial {
+            font-family: 'Noto Serif', Georgia, serif;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col bg-[#FAFBF8] text-[#1D3224] antialiased">
+
+    <!-- Top Website Header Navbar -->
+    <header class="sticky top-0 z-30 px-6 md:px-10 py-4 bg-[#FAFBF8]/95 backdrop-blur-md border-b border-[#E3EBE0] flex items-center justify-between">
+        <!-- Logo Left -->
+        <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-full bg-[#1E3B2B] text-white flex items-center justify-center shadow-sm">
+                <svg class="w-5 h-5 text-[#86D49C]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
+                </svg>
+            </div>
+            <div>
+                <span class="text-xl md:text-2xl font-black tracking-tight text-[#163022] font-serif-editorial block leading-none">
+                    GeoBlueBerry
+                </span>
+                <span class="text-[10px] uppercase tracking-wider text-[#4A7258] font-bold block leading-none mt-1">
+                    AgriMap Pro · sonik G2.0.1.4
+                </span>
+            </div>
+        </div>
+
+        <!-- Center Navigation Links -->
+        <nav class="hidden lg:flex items-center gap-7 text-[13px] font-medium text-[#385342]">
+            <a href="/" data-i18n="nav_plantations" class="hover:text-[#163022] transition-colors">Our Plantations</a>
+            <a href="/" data-i18n="nav_blueberries" class="hover:text-[#163022] transition-colors">Our Blueberries</a>
+            <a href="/" data-i18n="nav_export" class="hover:text-[#163022] transition-colors">Export &amp; Stock</a>
+            <a href="/" class="inline-flex items-center gap-1 hover:text-[#163022] font-semibold text-[#1E3B2B] transition-colors">
+                <span>AgriMap</span>
+                <span>↗</span>
+            </a>
+        </nav>
+
+        <!-- Right Actions -->
+        <div class="flex items-center gap-3">
+            <a href="/" class="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#1E3B2B] hover:bg-[#142A1E] text-white text-xs font-semibold tracking-wide transition-all shadow-xs">
+                <span data-i18n="btn_quote">Request a Quote</span>
+                <span>↗</span>
+            </a>
+
+            <button
+                type="button"
+                id="langToggleBtn"
+                onclick="toggleLanguage()"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#CFDCCB] bg-white text-[#22402E] text-xs font-semibold hover:bg-[#F2F7EF] transition-colors cursor-pointer shadow-2xs"
+            >
+                <span id="langLabel">English</span>
+                <span class="text-[#5A7E67] text-[10px]">▼</span>
+            </button>
+
+            <a
+                href="/"
+                class="inline-flex items-center gap-1.5 px-4 py-2 rounded-full border border-[#CFDCCB] bg-white hover:bg-[#EEF4EB] text-[#1E3B2B] text-xs font-bold transition-colors"
+                title="Open AgriMap Dashboard"
+            >
+                <span data-i18n="btn_open_app">Dashboard</span>
+                <span>→</span>
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Showcase Body -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-5 sm:px-8 md:px-12 py-8 md:py-10 space-y-12">
+
+        <!-- Section 1: Hero Container -->
+        <section class="bg-[#EDF2E8] border border-[#DCE4D6] rounded-[2rem] p-6 sm:p-10 relative overflow-hidden shadow-xs">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative z-10">
+                <!-- Left Hero Copy -->
+                <div class="lg:col-span-7 space-y-5">
+                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/80 border border-[#CBD8C6] text-[#28573A] text-xs font-bold uppercase tracking-wider">
+                        <span>✦</span>
+                        <span data-i18n="hero_badge">Digital Agriculture · AgriMap Pro</span>
+                    </div>
+
+                    <h1 id="heroTitle" class="text-2xl sm:text-4xl md:text-5xl font-black text-[#142A1E] font-serif-editorial leading-[1.15] tracking-tight">
+                        Mapping the Future of Farming — Stock, <span class="text-[#2B6843] italic font-normal">Agronomy</span> &amp; Smart Logistics
+                    </h1>
+
+                    <p id="heroDesc" class="text-sm md:text-base text-[#385342] font-normal leading-relaxed max-w-2xl">
+                        AgriMap Pro seamlessly interconnects field operations, fertilizer treatments, and spray records directly with real-time warehouse inventory. Logging any agronomy event instantly deducts stock balances, calculates per-hectare cost allocations, and consolidates high-precision reporting.
+                    </p>
+
+                    <div class="flex flex-wrap items-center gap-3.5 pt-2">
+                        <a
+                            href="/"
+                            class="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-2xl bg-[#1E3B2B] hover:bg-[#142A1E] text-white font-bold text-sm tracking-wide transition-all shadow-md"
+                        >
+                            <span data-i18n="btn_launch">Launch Application Dashboard</span>
+                            <span>↗</span>
+                        </a>
+
+                        <a
+                            href="/"
+                            class="inline-flex items-center gap-2 px-5 py-3.5 rounded-2xl bg-white hover:bg-[#F2F7EF] border border-[#CBD8C6] text-[#20422F] font-bold text-sm transition-all shadow-2xs"
+                        >
+                            <span>🛍️</span>
+                            <span data-i18n="btn_market">Market &amp; Produce</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Right Feature Grid -->
+                <div class="lg:col-span-5 grid grid-cols-2 gap-3 sm:gap-4">
+                    <div class="p-4 sm:p-5 rounded-2xl bg-white/90 border border-[#D5E1D0] space-y-1.5 shadow-2xs">
+                        <span class="text-xl text-[#2B6843] font-light block">◎</span>
+                        <p data-i18n="tile1_title" class="text-sm font-black text-[#163022]">GIS Field Mapping</p>
+                        <p data-i18n="tile1_desc" class="text-xs text-[#52705D] leading-snug">Precise parcel, row, and crop zoning.</p>
+                    </div>
+
+                    <div class="p-4 sm:p-5 rounded-2xl bg-white/90 border border-[#D5E1D0] space-y-1.5 shadow-2xs">
+                        <span class="text-xl text-[#2B6843] font-light block">❄</span>
+                        <p data-i18n="tile2_title" class="text-sm font-black text-[#163022]">Cold Chain &amp; Scales</p>
+                        <p data-i18n="tile2_desc" class="text-xs text-[#52705D] leading-snug">Bluetooth scale capture &amp; QR tagging.</p>
+                    </div>
+
+                    <div class="p-4 sm:p-5 rounded-2xl bg-white/90 border border-[#D5E1D0] space-y-1.5 shadow-2xs">
+                        <span class="text-xl text-[#2B6843] font-light block">↗</span>
+                        <p data-i18n="tile3_title" class="text-sm font-black text-[#163022]">Export &amp; Trading</p>
+                        <p data-i18n="tile3_desc" class="text-xs text-[#52705D] leading-snug">Direct grower-to-buyer transactions.</p>
+                    </div>
+
+                    <div class="p-4 sm:p-5 rounded-2xl bg-white/90 border border-[#D5E1D0] space-y-1.5 shadow-2xs">
+                        <span class="text-xl text-[#2B6843] font-light block">☷</span>
+                        <p data-i18n="tile4_title" class="text-sm font-black text-[#163022]">100% Auto Depletion</p>
+                        <p data-i18n="tile4_desc" class="text-xs text-[#52705D] leading-snug">Zero-error real-time stock deductions.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 2: Split Showcase -->
+        <section class="grid grid-cols-1 lg:grid-cols-12 gap-8 md:gap-12 items-center">
+            <!-- Left Column: Orchard Image + Hotspots -->
+            <div class="lg:col-span-6">
+                <div class="relative rounded-[2rem] overflow-hidden border border-[#D8E3D4] shadow-xl bg-slate-100 group">
+                    <img
+                        src="/assets/aistudio/FERE_7cfe5525.jpg"
+                        alt="AgriMap Plantation"
+                        class="w-full h-[380px] sm:h-[460px] object-cover object-bottom transition-transform duration-700 group-hover:scale-[1.02]"
+                    />
+
+                    <div class="absolute top-4 left-4 bg-white/90 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/60 shadow-sm">
+                        <span class="text-xs font-bold text-[#1E3B2B] flex items-center gap-1.5">
+                            <span class="w-2 h-2 rounded-full bg-[#34A853] animate-pulse"></span>
+                            <span data-i18n="img_badge">Your orchard. In a single network.</span>
+                        </span>
+                    </div>
+
+                    <div class="absolute top-[32%] left-[24%] bg-[#1E3B2B]/90 backdrop-blur-md text-white px-2.5 py-1 rounded-xl text-[10px] font-bold flex items-center gap-1.5 shadow-md border border-white/30">
+                        <span class="w-1.5 h-1.5 rounded-full bg-[#86D49C]"></span>
+                        <span data-i18n="hotspot_soil">Soil Sensor</span>
+                    </div>
+
+                    <div class="absolute top-[52%] right-[18%] bg-[#1E3B2B]/90 backdrop-blur-md text-white px-2.5 py-1 rounded-xl text-[10px] font-bold flex items-center gap-1.5 shadow-md border border-white/30">
+                        <span class="w-1.5 h-1.5 rounded-full bg-[#4FC3F7]"></span>
+                        <span data-i18n="hotspot_weather">Weather Station</span>
+                    </div>
+
+                    <div class="absolute bottom-[28%] left-[28%] bg-[#1E3B2B]/90 backdrop-blur-md text-white px-2.5 py-1 rounded-xl text-[10px] font-bold flex items-center gap-1.5 shadow-md border border-white/30">
+                        <span class="w-1.5 h-1.5 rounded-full bg-[#FFD54F]"></span>
+                        <span data-i18n="hotspot_harvest">Harvest Intake</span>
+                    </div>
+
+                    <div class="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur-md rounded-2xl p-4 border border-[#DCE4D6] shadow-lg flex items-center gap-3.5">
+                        <div class="w-9 h-9 rounded-xl bg-[#EDF2E8] text-[#1E3B2B] flex items-center justify-center shrink-0 font-bold">
+                            ⚡
+                        </div>
+                        <div>
+                            <p data-i18n="img_card_title" class="text-xs sm:text-sm font-black text-[#163022]">
+                                Plantation Monitoring &amp; Management.
+                            </p>
+                            <p data-i18n="img_card_desc" class="text-[11px] text-[#557060]">
+                                All operational data in a unified platform.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Editorial Copy -->
+            <div class="lg:col-span-6 space-y-6">
+                <div class="space-y-3">
+                    <span data-i18n="sec2_kicker" class="text-xs font-black uppercase tracking-widest text-[#4C755B]">
+                        DISCOVER AGRIMAP
+                    </span>
+                    <h2 id="sec2Title" class="text-3xl sm:text-4xl md:text-5xl font-black text-[#142A1E] font-serif-editorial leading-[1.15]">
+                        Management.<br />
+                        <span class="italic font-normal text-[#2B6843]">Data-driven</span> decisions.
+                    </h2>
+                </div>
+
+                <div class="space-y-4 text-sm sm:text-base text-[#385342] leading-relaxed font-normal">
+                    <p data-i18n="sec2_p1">
+                        Create a comprehensive digital twin of your plantation with AgriMap. Connect IoT sensors, surveillance cameras, drones, and microclimate stations to see exactly what is happening in your soil and rows.
+                    </p>
+                    <p data-i18n="sec2_p2">
+                        Manage every production phase, analyze data with embedded artificial intelligence, and streamline harvest recording with batch QR codes and automated Bluetooth scale capture.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+                    <div class="p-3 bg-[#EDF2E8] border border-[#DCE4D6] rounded-2xl text-center">
+                        <span class="text-xl font-black text-[#1E3B2B] block">100%</span>
+                        <span data-i18n="metric_stock" class="text-[10px] font-bold text-[#557060] uppercase">Auto Stock</span>
+                    </div>
+                    <div class="p-3 bg-[#EDF2E8] border border-[#DCE4D6] rounded-2xl text-center">
+                        <span class="text-xl font-black text-[#2B6843] block">GIS</span>
+                        <span data-i18n="metric_gis" class="text-[10px] font-bold text-[#557060] uppercase">Field GIS</span>
+                    </div>
+                    <div class="p-3 bg-[#EDF2E8] border border-[#DCE4D6] rounded-2xl text-center">
+                        <span class="text-xl font-black text-[#1E3B2B] block">AI</span>
+                        <span data-i18n="metric_ai" class="text-[10px] font-bold text-[#557060] uppercase">Agro AI</span>
+                    </div>
+                    <div class="p-3 bg-[#EDF2E8] border border-[#DCE4D6] rounded-2xl text-center">
+                        <span class="text-xl font-black text-[#2B6843] block">OPEX</span>
+                        <span data-i18n="metric_opex" class="text-[10px] font-bold text-[#557060] uppercase">Reports</span>
+                    </div>
+                </div>
+
+                <div class="pt-2">
+                    <a href="/" class="inline-flex items-center gap-2 text-sm font-bold text-[#1E3B2B] hover:text-[#2B6843] transition-colors">
+                        <span data-i18n="sec2_cta">Learn more about digital plantation management</span>
+                        <span>→</span>
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 3: Core Platform Capabilities -->
+        <section class="space-y-6 pt-6 border-t border-[#E3EBE0]">
+            <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                <div>
+                    <span data-i18n="sec3_kicker" class="text-xs font-black uppercase tracking-widest text-[#4C755B]">
+                        Core Platform Capabilities &amp; Regional Services
+                    </span>
+                    <h3 data-i18n="sec3_title" class="text-2xl sm:text-3xl font-black text-[#163022] font-serif-editorial mt-1">
+                        Integrated Precision Agriculture Ecosystem
+                    </h3>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <span data-i18n="region_label" class="text-xs font-semibold text-[#52705D] shrink-0">Region:</span>
+                    <select id="regionSelect" class="px-3.5 py-2 rounded-xl bg-white border border-[#CBD8C6] text-xs font-bold text-[#1E3B2B] outline-none cursor-pointer hover:border-[#1E3B2B] transition-colors shadow-2xs">
+                        <option value="all">All Regions / ყველა რეგიონი</option>
+                        <option value="guria">Guria (Ozurgeti, Lanchkhuti)</option>
+                        <option value="samegrelo">Samegrelo (Zugdidi, Senaki)</option>
+                        <option value="kakheti">Kakheti (Kvareli, Telavi)</option>
+                        <option value="imereti">Imereti (Tskaltubo, Samtredia)</option>
+                        <option value="kartli">Kvemo &amp; Shida Kartli</option>
+                        <option value="adjara">Adjara (Kobuleti, Chakvi)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <a href="/" class="p-6 rounded-3xl bg-[#FAFBF8] border border-[#DCE4D6] hover:border-[#1E3B2B] hover:shadow-md transition-all group space-y-3 block">
+                    <div class="w-11 h-11 rounded-2xl bg-[#EDF2E8] group-hover:bg-[#1E3B2B] text-[#1E3B2B] group-hover:text-white transition-colors flex items-center justify-center text-lg">🔍</div>
+                    <h4 data-i18n="card1_title" class="text-base font-black text-[#163022] group-hover:text-[#2B6843] transition-colors">Regional Services &amp; Provider Search</h4>
+                    <p data-i18n="card1_desc" class="text-xs text-[#4F6C5B] leading-relaxed">Discover and offer localized agricultural services across Georgian regions: soil lab testing, drone precision spraying, harvesting equipment, and cold-storage logistics.</p>
+                    <div class="pt-2 flex items-center gap-1.5 text-xs font-bold text-[#1E3B2B] group-hover:underline">
+                        <span data-i18n="card1_cta">Explore Services</span> <span>↗</span>
+                    </div>
+                </a>
+
+                <a href="/" class="p-6 rounded-3xl bg-[#FAFBF8] border border-[#DCE4D6] hover:border-[#1E3B2B] hover:shadow-md transition-all group space-y-3 block">
+                    <div class="w-11 h-11 rounded-2xl bg-[#EDF2E8] group-hover:bg-[#1E3B2B] text-[#1E3B2B] group-hover:text-white transition-colors flex items-center justify-center text-lg">🛍️</div>
+                    <h4 data-i18n="card2_title" class="text-base font-black text-[#163022] group-hover:text-[#2B6843] transition-colors">Agro Market &amp; Crop Variety Search</h4>
+                    <p data-i18n="card2_desc" class="text-xs text-[#4F6C5B] leading-relaxed">Buy and sell agricultural harvest by crop and specific variety on the interactive map. AI assistant matches buyers and producers directly for price and volume transparency.</p>
+                    <div class="pt-2 flex items-center gap-1.5 text-xs font-bold text-[#1E3B2B] group-hover:underline">
+                        <span data-i18n="card2_cta">Open Marketplace</span> <span>↗</span>
+                    </div>
+                </a>
+
+                <a href="/" class="p-6 rounded-3xl bg-[#FAFBF8] border border-[#DCE4D6] hover:border-[#1E3B2B] hover:shadow-md transition-all group space-y-3 block">
+                    <div class="w-11 h-11 rounded-2xl bg-[#EDF2E8] group-hover:bg-[#1E3B2B] text-[#1E3B2B] group-hover:text-white transition-colors flex items-center justify-center text-lg">💬</div>
+                    <h4 data-i18n="card3_title" class="text-base font-black text-[#163022] group-hover:text-[#2B6843] transition-colors">Communicator &amp; Knowledge Forum</h4>
+                    <p data-i18n="card3_desc" class="text-xs text-[#4F6C5B] leading-relaxed">Unified communication between field workers, farm owners, sellers, and buyers to stabilize commodity pricing and maintain certified export quality standards.</p>
+                    <div class="pt-2 flex items-center gap-1.5 text-xs font-bold text-[#1E3B2B] group-hover:underline">
+                        <span data-i18n="card3_cta">Open Forum</span> <span>↗</span>
+                    </div>
+                </a>
+
+                <a href="/" class="p-6 rounded-3xl bg-[#FAFBF8] border border-[#DCE4D6] hover:border-[#1E3B2B] hover:shadow-md transition-all group space-y-3 block">
+                    <div class="w-11 h-11 rounded-2xl bg-[#EDF2E8] group-hover:bg-[#1E3B2B] text-[#1E3B2B] group-hover:text-white transition-colors flex items-center justify-center text-lg">✨</div>
+                    <h4 data-i18n="card4_title" class="text-base font-black text-[#163022] group-hover:text-[#2B6843] transition-colors">Agro AI Analytics &amp; Offline LAN Knowledge</h4>
+                    <p data-i18n="card4_desc" class="text-xs text-[#4F6C5B] leading-relaxed">AI assistance in every module: photo disease diagnosis, soil prescriptions, and centralized offline God AI knowledge running on your local network farm node.</p>
+                    <div class="pt-2 flex items-center gap-1.5 text-xs font-bold text-[#1E3B2B] group-hover:underline">
+                        <span data-i18n="card4_cta">Launch AI Analyst</span> <span>↗</span>
+                    </div>
+                </a>
+
+                <a href="/" class="p-6 rounded-3xl bg-[#FAFBF8] border border-[#DCE4D6] hover:border-[#1E3B2B] hover:shadow-md transition-all group space-y-3 block">
+                    <div class="w-11 h-11 rounded-2xl bg-[#EDF2E8] group-hover:bg-[#1E3B2B] text-[#1E3B2B] group-hover:text-white transition-colors flex items-center justify-center text-lg">🚁</div>
+                    <h4 data-i18n="card5_title" class="text-base font-black text-[#163022] group-hover:text-[#2B6843] transition-colors">IoT Cameras, Drones &amp; GPS 3D Models</h4>
+                    <p data-i18n="card5_desc" class="text-xs text-[#4F6C5B] leading-relaxed">Live WebRTC camera feeds, drone orthophoto elevation models, and GPS ID-card tracking for precision labor productivity and work quality control.</p>
+                    <div class="pt-2 flex items-center gap-1.5 text-xs font-bold text-[#1E3B2B] group-hover:underline">
+                        <span data-i18n="card5_cta">View Hardware Labs</span> <span>↗</span>
+                    </div>
+                </a>
+
+                <a href="/" class="p-6 rounded-3xl bg-[#FAFBF8] border border-[#DCE4D6] hover:border-[#1E3B2B] hover:shadow-md transition-all group space-y-3 block">
+                    <div class="w-11 h-11 rounded-2xl bg-[#EDF2E8] group-hover:bg-[#1E3B2B] text-[#1E3B2B] group-hover:text-white transition-colors flex items-center justify-center text-lg">⚖️</div>
+                    <h4 data-i18n="card6_title" class="text-base font-black text-[#163022] group-hover:text-[#2B6843] transition-colors">Plantation System &amp; Stock Auto-Depletion</h4>
+                    <p data-i18n="card6_desc" class="text-xs text-[#4F6C5B] leading-relaxed">Hardware scale bridge (Yaohua/CAS), auto-tare deduction, harvest QR codes, and zero-error stock deduction when chemical or fertilizer runs are executed.</p>
+                    <div class="pt-2 flex items-center gap-1.5 text-xs font-bold text-[#1E3B2B] group-hover:underline">
+                        <span data-i18n="card6_cta">Harvest Intake</span> <span>↗</span>
+                    </div>
+                </a>
+            </div>
+        </section>
+    </main>
+
+    <!-- Clean Website Footer Bar -->
+    <footer class="px-6 md:px-10 py-5 bg-[#EDF2E8] border-t border-[#DCE4D6] flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div class="flex items-center gap-3 text-xs text-[#456852]">
+            <span class="font-bold text-[#163022]">AgriMap Pro</span>
+            <span>•</span>
+            <span data-i18n="footer_subtitle">Georgian Precision Agriculture Digital Platform</span>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <a
+                href="https://agrimappro.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white hover:bg-[#F2F7EF] border border-[#CBD8C6] text-xs font-bold text-[#1E3B2B] transition-colors shadow-2xs"
+            >
+                <span>AGRIMAPPRO.COM</span>
+                <span>↗</span>
+            </a>
+
+            <a
+                href="/"
+                class="inline-flex items-center gap-2 px-6 py-2 rounded-xl bg-[#1E3B2B] hover:bg-[#142A1E] text-white text-xs font-bold tracking-wide transition-all shadow-xs"
+            >
+                <span data-i18n="btn_launch_short">Launch Dashboard</span>
+                <span>→</span>
+            </a>
+        </div>
+    </footer>
+
+    <script>
+        var currentLang = 'en';
+        var copy = {
+            en: {
+                langLabel: 'English',
+                nav_plantations: 'Our Plantations',
+                nav_blueberries: 'Our Blueberries',
+                nav_export: 'Export & Stock',
+                btn_quote: 'Request a Quote',
+                btn_open_app: 'Dashboard',
+                hero_badge: 'Digital Agriculture · AgriMap Pro',
+                hero_title_html: 'Mapping the Future of Farming — Stock, <span class="text-[#2B6843] italic font-normal">Agronomy</span> &amp; Smart Logistics',
+                hero_desc: 'AgriMap Pro seamlessly interconnects field operations, fertilizer treatments, and spray records directly with real-time warehouse inventory. Logging any agronomy event instantly deducts stock balances, calculates per-hectare cost allocations, and consolidates high-precision reporting.',
+                btn_launch: 'Launch Application Dashboard',
+                btn_market: 'Market & Produce',
+                tile1_title: 'GIS Field Mapping',
+                tile1_desc: 'Precise parcel, row, and crop zoning.',
+                tile2_title: 'Cold Chain & Scales',
+                tile2_desc: 'Bluetooth scale capture & QR tagging.',
+                tile3_title: 'Export & Trading',
+                tile3_desc: 'Direct grower-to-buyer transactions.',
+                tile4_title: '100% Auto Depletion',
+                tile4_desc: 'Zero-error real-time stock deductions.',
+                img_badge: 'Your orchard. In a single network.',
+                hotspot_soil: 'Soil Sensor',
+                hotspot_weather: 'Weather Station',
+                hotspot_harvest: 'Harvest Intake',
+                img_card_title: 'Plantation Monitoring & Management.',
+                img_card_desc: 'All operational data in a unified platform.',
+                sec2_kicker: 'DISCOVER AGRIMAP',
+                sec2_title_html: 'Management.<br /><span class="italic font-normal text-[#2B6843]">Data-driven</span> decisions.',
+                sec2_p1: 'Create a comprehensive digital twin of your plantation with AgriMap. Connect IoT sensors, surveillance cameras, drones, and microclimate stations to see exactly what is happening in your soil and rows.',
+                sec2_p2: 'Manage every production phase, analyze data with embedded artificial intelligence, and streamline harvest recording with batch QR codes and automated Bluetooth scale capture.',
+                metric_stock: 'Auto Stock',
+                metric_gis: 'Field GIS',
+                metric_ai: 'Agro AI',
+                metric_opex: 'Reports',
+                sec2_cta: 'Learn more about digital plantation management',
+                sec3_kicker: 'Core Platform Capabilities & Regional Services',
+                sec3_title: 'Integrated Precision Agriculture Ecosystem',
+                region_label: 'Region:',
+                card1_title: 'Regional Services & Provider Search',
+                card1_desc: 'Discover and offer localized agricultural services across Georgian regions: soil lab testing, drone precision spraying, harvesting equipment, and cold-storage logistics.',
+                card1_cta: 'Explore Services',
+                card2_title: 'Agro Market & Crop Variety Search',
+                card2_desc: 'Buy and sell agricultural harvest by crop and specific variety on the interactive map. AI assistant matches buyers and producers directly for price and volume transparency.',
+                card2_cta: 'Open Marketplace',
+                card3_title: 'Communicator & Knowledge Forum',
+                card3_desc: 'Unified communication between field workers, farm owners, sellers, and buyers to stabilize commodity pricing and maintain certified export quality standards.',
+                card3_cta: 'Open Forum',
+                card4_title: 'Agro AI Analytics & Offline LAN Knowledge',
+                card4_desc: 'AI assistance in every module: photo disease diagnosis, soil prescriptions, and centralized offline God AI knowledge running on your local network farm node.',
+                card4_cta: 'Launch AI Analyst',
+                card5_title: 'IoT Cameras, Drones & GPS 3D Models',
+                card5_desc: 'Live WebRTC camera feeds, drone orthophoto elevation models, and GPS ID-card tracking for precision labor productivity and work quality control.',
+                card5_cta: 'View Hardware Labs',
+                card6_title: 'Plantation System & Stock Auto-Depletion',
+                card6_desc: 'Hardware scale bridge (Yaohua/CAS), auto-tare deduction, harvest QR codes, and zero-error stock deduction when chemical or fertilizer runs are executed.',
+                card6_cta: 'Harvest Intake',
+                footer_subtitle: 'Georgian Precision Agriculture Digital Platform',
+                btn_launch_short: 'Launch Dashboard'
+            },
+            ka: {
+                langLabel: 'ქართული',
+                nav_plantations: 'ჩვენი ბაღები',
+                nav_blueberries: 'ჩვენი მოცვი',
+                nav_export: 'ექსპორტი & საწყობი',
+                btn_quote: 'მოითხოვეთ შეთავაზება',
+                btn_open_app: 'დაშბორდი',
+                hero_badge: 'ციფრული სოფლის მეურნეობა · AGRIMAP PRO',
+                hero_title_html: 'სრული აგრონომიული კონტროლი, მარაგების <span class="text-[#2B6843] italic font-normal">ავტო-ჩამოწერა</span> და ანალიტიკა',
+                hero_desc: 'AgriMap Pro ავტომატურად აკავშირებს მცენარეთა მკურნალობას, სასუქებსა და პესტიციდებს საწყობის ნაშთებთან. ნებისმიერი აგრო-ღონისძიების შესრულებისას მარაგი მყისიერად ჩამოიწერება, ხარჯები ნაწილდება ნაკვეთებზე და გენერირდება სრული სტატისტიკური ანგარიშგება.',
+                btn_launch: 'აპლიკაციის დაშბორდზე გადასვლა',
+                btn_market: 'ბაზარი & პროდუქცია',
+                tile1_title: 'GIS ნაკვეთების რუკა',
+                tile1_desc: 'საზღვრების, რიგებისა და ჯიშების ზუსტი ზონირება.',
+                tile2_title: 'საცივრე & ამწონი',
+                tile2_desc: 'ავტომატური აწონვა, ტარის მოჭრა და QR იარლიყები.',
+                tile3_title: 'ექსპორტი & მარკეტი',
+                tile3_desc: 'B2B გაყიდვები პირდაპირ მწარმოებლიდან.',
+                tile4_title: '100% ავტო-ჩამოწერა',
+                tile4_desc: 'საწყობის ნაშთების მყისიერი განახლება.',
+                img_badge: 'თქვენი ბაღი. ერთიან ქსელში.',
+                hotspot_soil: 'ნიადაგის სენსორი',
+                hotspot_weather: 'მეტეოსადგური',
+                hotspot_harvest: 'მოსავლის აღრიცხვა',
+                img_card_title: 'პლანტაციის მონიტორინგი და მართვა.',
+                img_card_desc: 'საოპერაციო მონაცემები ერთ პლატფორმაზე.',
+                sec2_kicker: 'გაიცანით AGRIMAP',
+                sec2_title_html: 'მართვა.<br /><span class="italic font-normal text-[#2B6843]">მონაცემებზე დაფუძნებული</span> გადაწყვეტილებები.',
+                sec2_p1: 'შექმენით თქვენი პლანტაციის ციფრული ტყუპი AgriMap-ით. დააკავშირეთ IoT მოწყობილობები, კამერები, დრონები და მეტეოსადგურები, რათა უკეთ დაინახოთ, რა ხდება თქვენს მიწაზე.',
+                sec2_p2: 'მართეთ ყოველი ეტაპი, გააანალიზეთ მონაცემები ხელოვნური ინტელექტით და გაამარტივეთ მოსავლის აღრიცხვა QR კოდებითა და ავტომატური აწონვით.',
+                metric_stock: 'ავტო-ჩამოწერა',
+                metric_gis: 'ნაკვეთის რუკა',
+                metric_ai: 'აგრონომი',
+                metric_opex: 'რეპორტინგი',
+                sec2_cta: 'გაიგეთ მეტი პლანტაციის ციფრული მართვის შესახებ',
+                sec3_kicker: 'პლატფორმის ძირითადი მიმართულებები & სერვისები',
+                sec3_title: 'ყველა აგრო-ინსტრუმენტი ერთ ეკოსისტემაში',
+                region_label: 'რეგიონი:',
+                card1_title: 'სერვისების შეთავაზება & ძიება რეგიონებში',
+                card1_desc: 'იპოვეთ და შესთავაზეთ აგრონომიული სერვისები საქართველოს რეგიონების მიხედვით: ნიადაგის ლაბორატორია, დრონით წამლობა, ტექნიკა და საცივრეები.',
+                card1_cta: 'სერვისების გახსნა',
+                card2_title: 'აგრო მარკეტი & ჯიშების ძიება რუკაზე',
+                card2_desc: 'პროდუქციის ყიდვა-გაყიდვა კულტურებისა და ჯიშების მიხედვით (მოცვი, თხილი, ყურძენი). AI ასისტენტი ეხმარება მყიდველებსა და ფერმერებს პირდაპირ გარიგებაში.',
+                card2_cta: 'მარკეტზე გადასვლა',
+                card3_title: 'კომუნიკატორი & ცოდნის ფორუმი',
+                card3_desc: 'ცოცხალი კავშირი თანამშრომლებს, კომპანიებს, მყიდველებსა და გამყიდველებს შორის ფასების სტაბილიზაციის, ხარისხის სტანდარტებისა და გამოცდილების გაზიარებისთვის.',
+                card3_cta: 'ფორუმის ნახვა',
+                card4_title: 'აგრო ანალიტიკა & ლოკალური God AI',
+                card4_desc: 'AI ასისტენტი ყველა მოდულში: დაავადებების ამოცნობა ფოტოთი, წამლობის რეცეპტები და ლოკალური God AI ბაზა, რომელიც ინტერნეტის გარეშეც მუშაობს ფერმის ლოკალურ სერვერზე.',
+                card4_cta: 'AI ანალიტიკოსის გახსნა',
+                card5_title: 'IoT კამერები, დრონები & GPS 3D მოდელი',
+                card5_desc: 'პირდაპირი WebRTC ვიდეო სტრიმინგი, დრონის ორთოფოტო რუკები, 3D რელიეფის მოდელირება და მკრეფავთა GPS ID-ბარათები შრომის ხარისხის ზუსტი მონიტორინგისთვის.',
+                card5_cta: 'ტელემეტრიის ლაბორატორია',
+                card6_title: 'პლანტაციის მართვა & საწყობის ავტო-ჩამოწერა',
+                card6_desc: 'ციფრული სასწორები (Yaohua / CAS), ავტომატური აწონვა, ტარის გამოკლება და QR იარლიყები. სასუქისა და წამლობის შეტანისას საწყობი ავტომატურად ჩამოიწერება.',
+                card6_cta: 'მოსავლის აღრიცხვა',
+                footer_subtitle: 'საქართველოს ციფრული აგრონომიული ინფრასტრუქტურა',
+                btn_launch_short: 'აპლიკაციის დაშბორდზე გადასვლა'
+            }
+        };
+
+        function toggleLanguage() {
+            currentLang = currentLang === 'en' ? 'ka' : 'en';
+            var t = copy[currentLang];
+            document.getElementById('langLabel').textContent = t.langLabel;
+            document.getElementById('heroTitle').innerHTML = t.hero_title_html;
+            document.getElementById('heroDesc').textContent = t.hero_desc;
+            document.getElementById('sec2Title').innerHTML = t.sec2_title_html;
+
+            var nodes = document.querySelectorAll('[data-i18n]');
+            for (var i = 0; i < nodes.length; i++) {
+                var key = nodes[i].getAttribute('data-i18n');
+                if (t[key]) {
+                    nodes[i].textContent = t[key];
+                }
+            }
+        }
+    </script>
+</body>
+</html>

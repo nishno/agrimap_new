@@ -8,7 +8,11 @@ import {
     generateDocumentComparison, 
     generateSoilAnalysis,
     executeGeminiCall,
-    getActiveGeminiApiKey
+    getActiveGeminiApiKey,
+    isLocalAiDisabled,
+    checkAndDeductAiCredit,
+    PRIMARY_GEMINI_MODEL,
+    openAiManagementConsole
 } from '../services/geminiService';
 import { exportToExcel } from '../utils/excelExporter';
 import { safeStorage } from '../services/storageService';
@@ -419,29 +423,22 @@ Download full slide presentations in **PDF**, **PowerPoint PPTX**, or **Interact
         };
     }
 
-    // 15. Default enterprise-aware fallback
+    // 15. Dynamic query-aware synthesis
     const taskCount = (context?.workAssignments || []).length;
     const harvestCount = (context?.harvestEntries || []).length;
     const notesCount = (context?.notes || []).length;
+    const topicSummary = (command || '').slice(0, 80);
 
     return {
-        text: `🌾 **Gemini 2.5 Knowledge Engine — AI System Navigator & Copilot**
+        text: `🌾 **AgriMap Operational Agronomic Engine (Attached Company: ${orgName})**
 
-Connected to attached company: **${orgName}** (Operating within company data radius).
+**Operational Directive for**: "${topicSummary}"
 
-**Active Enterprise State**:
-- **Work Assignments**: ${taskCount} active tasks
-- **Harvest Sessions**: ${harvestCount} records logged
-- **Field & Voice Notes**: ${notesCount} observations recorded
-
-**Ready to Assist You With Technical & Application Details**:
-- **GIS Satellite Mapping**: Locating parcels via GPS or Cadastral code, tracing boundaries, auto-calculating hectares.
-- **Active Standing Register**: Adding transport vehicles (🚜) and materials (📦) to active tasks.
-- **Harvest & Weigh Station**: 6 electronic scale protocols, 0.35kg tare auto-deduction, QR picker scanning, and cold-chain timing.
-- **Stock & Warehouse**: Automated FIFO packaging and chemical depletion.
-- **HR & Workforce**: Piece-rate compensation tariffs ($/kg), attendance rosters, and payroll exports.
-- **Plant Disease AI & Agronomy**: Spray intervals, Bt biological timings, and nutrition plans.
-- **Root AI Assistant**: Multi-company macro benchmarks across all enterprises (authorized for Root Admins).${noticeFooter}`,
+- **Active Operations In Scope**: ${taskCount} active work tasks, ${harvestCount} harvest batches logged, ${notesCount} field observations.
+- **Field & Irrigation Directives**: Maintain soil moisture tension between 15-25 kPa. For acid-loving crops (blueberries), verify soil pH is buffered between 4.5 - 5.2 to prevent iron chlorosis.
+- **Weigh Station & Scales**: Ensure 0.35kg auto-tare crate deduction is enabled on field scales with worker QR badge scanning and 45-minute cold chain compliance.
+- **Stock & Packaging**: Real-time FIFO auto-deduction is active for packaging crates and applied agro-chemicals.
+- **AI Cloud Reasoning**: To enable multi-turn Gemini 3.8 Flash live cloud reasoning, configure an active API key with available credits in AI Settings or add credits at https://ai.studio/projects.${noticeFooter}`,
         action: { type: 'none' }
     };
 };
@@ -688,10 +685,20 @@ export const useAiAssistant = (language: string) => {
                 }
             }
             
+            const isLocal = Boolean(response?.isAutonomousFallback || response?.source === 'local' || response?.modelUsed === 'autonomous-agri-core');
+            const fallbackReason = response?.fallbackReason || (isLocal ? 'Autonomous Agricultural Knowledge Core active' : undefined);
+            const fallbackCode = response?.fallbackCode || response?.upstreamNotice?.code || (isLocal ? 402 : undefined);
+
             const botMsg: AssistantMessage = { 
                 id: (Date.now() + 1).toString(), 
                 type: 'bot', 
                 text: replyText, 
+                source: isLocal ? 'local' : 'cloud',
+                isAutonomousFallback: isLocal,
+                fallbackReason,
+                fallbackCode,
+                upstreamNotice: response?.upstreamNotice,
+                modelUsed: response?.modelUsed || (isLocal ? 'autonomous-agri-core' : PRIMARY_GEMINI_MODEL)
             };
             setAssistantMessages(prev => [...prev, botMsg]);
 
@@ -726,14 +733,47 @@ export const useAiAssistant = (language: string) => {
             }
         } catch (error: any) {
             const errStr = error?.message || String(error);
-            console.warn("[AI Assistant] Remote Gemini call unavailable, falling back to autonomous local agronomy engine:", errStr);
+            console.warn("[AI Assistant] Remote Gemini call encountered error:", errStr);
+
+            if (isLocalAiDisabled()) {
+                const failMsg = `⚠️ **Cloud Gemini API Error**: ${errStr}\n\n*Notice: Local AI fallback is currently **DISABLED** in Labs Intelligence. To resolve this:*\n1. Check or update your **Gemini API Key** in Labs > Intelligence or ⚙️ AI Settings.\n2. Or re-enable **Local Autonomous AI** in Labs > Intelligence to use offline knowledge.`;
+                const botMsg: AssistantMessage = {
+                    id: (Date.now() + 1).toString(),
+                    type: 'bot',
+                    text: failMsg,
+                    source: 'cloud',
+                    isAutonomousFallback: false,
+                    fallbackReason: `Strict Cloud Gemini API mode: ${errStr}`,
+                    fallbackCode: 500,
+                    modelUsed: 'gemini-error'
+                };
+                setAssistantMessages(prev => [...prev, botMsg]);
+                return;
+            }
             
             const autonomous = generateAutonomousAssistantResponse(command, context, effectiveMode, errStr);
+            const isPrepayment = errStr.includes('402') || errStr.includes('prepayment');
+            const isQuota = errStr.includes('429') || errStr.includes('RESOURCE_EXHAUSTED');
+            const isKey = errStr.includes('400') || errStr.includes('API_KEY');
+
+            const fallbackReason = isPrepayment
+                ? 'Google Gemini prepayment credits depleted ($0 balance on AI Studio project).'
+                : isQuota
+                ? 'Gemini request quota or rate limit exceeded (HTTP 429).'
+                : isKey
+                ? 'Invalid or expired Gemini API key.'
+                : errStr || 'Answered via Local Knowledge Engine.';
+            const fallbackCode = isPrepayment ? 402 : isQuota ? 429 : 500;
             
             const botMsg: AssistantMessage = { 
                 id: (Date.now() + 1).toString(), 
                 type: 'bot', 
-                text: autonomous.text 
+                text: autonomous.text,
+                source: 'local',
+                isAutonomousFallback: true,
+                fallbackReason,
+                fallbackCode,
+                modelUsed: 'autonomous-agri-core'
             };
             setAssistantMessages(prev => [...prev, botMsg]);
 

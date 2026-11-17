@@ -40,21 +40,21 @@ export const OnlineUsersModal: React.FC<OnlineUsersModalProps> = ({
     };
 
     return (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[3500] flex items-center justify-center p-3 sm:p-6 animate-fadeIn" onClick={onClose}>
-            <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border border-slate-100" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-md z-[3500] flex items-center justify-center p-3 sm:p-6 animate-fadeIn" onClick={onClose}>
+            <div className="bg-[#FAFBF8] w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border border-[#D8E3D4] text-[#163022]" onClick={e => e.stopPropagation()}>
                 {/* Header */}
-                <div className="p-5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex justify-between items-center flex-shrink-0">
+                <div className="p-5 bg-[#EEF3EA] text-[#163022] border-b border-[#D8E3D4] flex justify-between items-center flex-shrink-0">
                     <div className="flex items-center gap-3">
-                        <div className="p-3 bg-emerald-500/20 text-emerald-400 rounded-2xl border border-emerald-500/30 flex items-center justify-center relative">
+                        <div className="p-3 bg-white text-[#2D5A27] rounded-2xl border border-[#D8E3D4] shadow-2xs flex items-center justify-center relative">
                             <Users size={22} />
-                            <span className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-slate-900 animate-pulse"></span>
+                            <span className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white animate-pulse"></span>
                         </div>
                         <div>
-                            <h2 className="text-base font-black uppercase tracking-tight text-white flex items-center gap-2">
+                            <h2 className="text-base font-black uppercase tracking-tight text-[#163022] flex items-center gap-2">
                                 {isKa ? 'აქტიური ონლაინ მომხმარებლები' : 'Active Online Team Members'}
                             </h2>
-                            <p className="text-[11px] text-slate-300 font-bold uppercase tracking-wider flex items-center gap-1.5 mt-0.5">
-                                <Wifi size={12} className="text-emerald-400" />
+                            <p className="text-[11px] text-[#5C7867] font-bold uppercase tracking-wider flex items-center gap-1.5 mt-0.5">
+                                <Wifi size={12} className="text-emerald-600" />
                                 {eventName ? `${eventName} (${eventId || ''})` : (isKa ? 'ლაივ მონიტორინგი' : 'Live Session Monitoring')}
                             </p>
                         </div>
@@ -155,15 +155,15 @@ export const OnlineUsersModal: React.FC<OnlineUsersModalProps> = ({
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-slate-500">
-                    <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <div className="p-4 bg-[#EEF3EA] border-t border-[#D8E3D4] flex items-center justify-between text-xs font-bold text-[#5C7867]">
+                    <span className="flex items-center gap-1 text-[11px] text-[#5C7867]">
                         <Smartphone size={13} />
                         {isKa ? 'ტაბლეტის სესიის მონიტორინგი' : 'Tablet session sync enabled'}
                     </span>
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black uppercase text-xs tracking-wider transition-colors cursor-pointer"
+                        className="px-5 py-2 bg-white hover:bg-[#F0F5EE] text-[#244130] border border-[#CFDCCB] rounded-xl font-bold uppercase text-xs tracking-wider transition-all cursor-pointer shadow-2xs"
                     >
                         {isKa ? 'დახურვა' : 'Close'}
                     </button>

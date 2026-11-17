@@ -3,11 +3,11 @@ import type { User, LocalServerConfig } from '../types';
 import { BellIcon, UserCircleIcon, FolderIcon, SaveIcon, NetworkIcon, CloudIcon } from './Icons';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAppTheme } from '../contexts/ThemeContext';
-import { Ticket, ChevronDown, BookOpen, Search, Sparkles } from 'lucide-react';
+import { Ticket, ChevronDown, BookOpen, Search, Sparkles, MoreHorizontal, Eye } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { APP_VERSION_NAME, APP_CLASSIC_VERSION_NAME, UiVersionMode, getUiVersionMode, setUiVersionMode } from '../utils/version';
-import { getEffectiveUserAiQuota } from '../services/geminiService';
+import { getEffectiveUserAiQuota, triggerAiDiagnosticsModal } from '../services/geminiService';
 
 
 interface HeaderProps {
@@ -144,7 +144,7 @@ const Header: React.FC<HeaderProps> = ({
                     type="button" 
                     onClick={onOpenHomepage} 
                     className="font-black text-emerald-500 hover:text-emerald-400 text-base sm:text-lg uppercase tracking-tighter transition-colors cursor-pointer text-left"
-                    title="Go to Homepage / Startup Showcase"
+                    title={language === 'ka' ? 'მთავარი დაფა' : 'Go to Dashboard'}
                 >
                     AgriMap
                 </button>
@@ -459,18 +459,24 @@ const Header: React.FC<HeaderProps> = ({
                         <button onClick={() => { onOpenProjects(); setIsDropdownOpen(false); }} className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-3 font-bold transition-colors ${isDark ? 'hover:bg-slate-800' : 'hover:bg-green-50'}`}>
                             <FolderIcon className="h-4 w-4 text-emerald-400" /> My Projects
                         </button>
-                        {onOpenHomepage && (
-                            <button onClick={() => { onOpenHomepage(); setIsDropdownOpen(false); }} className={`w-full text-left px-4 py-2.5 text-sm text-emerald-400 flex items-center gap-3 font-bold transition-colors ${isDark ? 'hover:bg-slate-800' : 'hover:bg-emerald-50'}`}>
-                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                                {language === 'ka' ? 'მთავარი / წარდგენა' : 'Go to Homepage'}
-                            </button>
-                        )}
                         {onOpenHelp && (
                             <button onClick={() => { onOpenHelp(); setIsDropdownOpen(false); }} className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-3 font-bold transition-colors ${isDark ? 'hover:bg-slate-800 text-indigo-300' : 'hover:bg-indigo-50 text-indigo-700'}`}>
                                 <BookOpen className="h-4 w-4 text-indigo-400" />
                                 {language === 'ka' ? 'დახმარება და გზამკვლევი' : 'Help & Architecture Guide'}
                             </button>
                         )}
+                        <button 
+                            type="button"
+                            onClick={() => { 
+                                window.dispatchEvent(new CustomEvent('agrimap_toggle_floating_dock')); 
+                                setIsDropdownOpen(false); 
+                            }} 
+                            className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-3 font-bold transition-colors ${isDark ? 'hover:bg-slate-800 text-emerald-300' : 'hover:bg-emerald-50 text-emerald-800'}`}
+                            title={language === 'ka' ? "მცურავი ხელსაწყოების პანელის ჩართვა / გამორთვა" : "Enable / Disable Floating Tools Dock"}
+                        >
+                            <MoreHorizontal className="h-4 w-4 text-emerald-500" />
+                            {language === 'ka' ? 'ხელსაწყოების პანელი (...)' : 'Floating Tools Dock (...)'}
+                        </button>
                         <div className={`my-1 border-t ${isDark ? 'border-slate-800' : 'border-gray-100'}`} />
                         <button onClick={() => { onLogout(); setIsDropdownOpen(false); }} className={`w-full text-left px-4 py-2.5 text-sm text-red-400 font-bold transition-colors ${isDark ? 'hover:bg-slate-800' : 'hover:bg-red-50'}`}>
                             {t('auth.logout')}
@@ -488,18 +494,24 @@ const Header: React.FC<HeaderProps> = ({
                         <button onClick={() => { onRegister(); setIsDropdownOpen(false); }} className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-3 font-bold transition-colors ${isDark ? 'hover:bg-slate-800' : 'hover:bg-green-50'}`}>
                             <FolderIcon className="h-4 w-4 text-emerald-400" /> Register
                         </button>
-                        {onOpenHomepage && (
-                            <button onClick={() => { onOpenHomepage(); setIsDropdownOpen(false); }} className={`w-full text-left px-4 py-2.5 text-sm text-emerald-400 flex items-center gap-3 font-bold transition-colors ${isDark ? 'hover:bg-slate-800' : 'hover:bg-emerald-50'}`}>
-                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                                {language === 'ka' ? 'მთავარი / წარდგენა' : 'Go to Homepage'}
-                            </button>
-                        )}
                         {onOpenHelp && (
                             <button onClick={() => { onOpenHelp(); setIsDropdownOpen(false); }} className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-3 font-bold transition-colors ${isDark ? 'hover:bg-slate-800 text-indigo-300' : 'hover:bg-indigo-50 text-indigo-700'}`}>
                                 <BookOpen className="h-4 w-4 text-indigo-400" />
                                 {language === 'ka' ? 'დახმარება და გზამკვლევი' : 'Help & Architecture Guide'}
                             </button>
                         )}
+                        <button 
+                            type="button"
+                            onClick={() => { 
+                                window.dispatchEvent(new CustomEvent('agrimap_toggle_floating_dock')); 
+                                setIsDropdownOpen(false); 
+                            }} 
+                            className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-3 font-bold transition-colors ${isDark ? 'hover:bg-slate-800 text-emerald-300' : 'hover:bg-emerald-50 text-emerald-800'}`}
+                            title={language === 'ka' ? "მცურავი ხელსაწყოების პანელის ჩართვა / გამორთვა" : "Enable / Disable Floating Tools Dock"}
+                        >
+                            <MoreHorizontal className="h-4 w-4 text-emerald-500" />
+                            {language === 'ka' ? 'ხელსაწყოების პანელი (...)' : 'Floating Tools Dock (...)'}
+                        </button>
                         </>
                     )}
                     <div className={`border-t my-1 ${isDark ? 'border-slate-800' : 'border-gray-100'}`}></div>
@@ -511,7 +523,7 @@ const Header: React.FC<HeaderProps> = ({
                             ? 'text-slate-400 hover:text-emerald-400 bg-slate-950/60 hover:bg-slate-800' 
                             : 'text-slate-400 hover:text-emerald-600 bg-slate-50/50 hover:bg-emerald-50/30'
                         }`}
-                        title="Click to Open Homepage Showcase"
+                        title={language === 'ka' ? 'დაფაზე გადასვლა' : 'Go to Dashboard'}
                     >
                         {APP_VERSION_NAME}
                     </button>

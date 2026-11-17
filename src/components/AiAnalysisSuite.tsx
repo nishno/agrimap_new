@@ -13,10 +13,12 @@ import {
 import { 
   analyzePlantDisease, 
   analyzeAgriImage, 
-  generateDocumentComparison 
+  generateDocumentComparison,
+  triggerAiDiagnosticsModal 
 } from '../services/geminiService';
 import { useLanguage } from '../contexts/LanguageContext';
 import { toast } from 'sonner';
+import { AiSourceBadge } from './AiSourceBadge';
 
 interface AiAnalysisSuiteProps {
   mode?: 'compact' | 'full';
@@ -477,14 +479,25 @@ export const AiAnalysisSuite: React.FC<AiAnalysisSuiteProps> = ({
           </div>
         </div>
 
-        {onClose && (
-          <button 
-            onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => triggerAiDiagnosticsModal()}
+            className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+            title="AI Diagnostics & Key Configuration"
           >
-            <X size={16} />
+            <Cpu size={12} className="text-emerald-600" />
+            <span>AI Gateway</span>
           </button>
-        )}
+          {onClose && (
+            <button 
+              onClick={onClose}
+              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+            >
+              <X size={16} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Primary Tool Switcher Tabs */}
@@ -615,17 +628,33 @@ export const AiAnalysisSuite: React.FC<AiAnalysisSuiteProps> = ({
             </div>
 
             {/* Diagnostic Result Card */}
-            {(activeDiseaseResult || (selectedRecord && selectedRecord.type === 'disease')) && (
-              <div className="p-3 bg-red-50/80 rounded-xl border border-red-200 space-y-2 text-xs">
-                <div className="flex items-center justify-between border-b border-red-200/80 pb-2">
-                  <div className="flex items-center gap-1.5">
-                    <AlertTriangle size={15} className="text-red-600" />
-                    <span className="font-black text-red-950 uppercase tracking-tight">
+            {(activeDiseaseResult || (selectedRecord && selectedRecord.type === 'disease')) && (() => {
+              const raw = activeDiseaseResult || selectedRecord?.rawAiResult;
+              const isLocal = Boolean(raw?.isAutonomousFallback || raw?.diagnosticSource?.includes('Autonomous'));
+              return (
+              <div className={`p-3 rounded-xl border space-y-2 text-xs transition-all ${
+                isLocal 
+                  ? 'bg-amber-50 border-2 border-amber-400 text-amber-950 shadow-md'
+                  : 'bg-red-50/80 border-red-200 text-slate-800'
+              }`}>
+                <div className="flex items-center justify-between border-b border-black/10 pb-2 gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <AiSourceBadge 
+                      source={isLocal ? 'local' : 'cloud'}
+                      isLocal={isLocal}
+                      reason="Plant disease diagnostic served via Autonomous Clinical Agronomic Engine."
+                      isKa={isKa}
+                      compact
+                    />
+                    <AlertTriangle size={15} className={isLocal ? 'text-amber-600' : 'text-red-600'} />
+                    <span className="font-black uppercase tracking-tight">
                       {activeDiseaseResult?.diseaseName || selectedRecord?.title}
                     </span>
                   </div>
                   {activeDiseaseResult?.confidence && (
-                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-red-200 text-red-800">
+                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black ${
+                      isLocal ? 'bg-amber-200 text-amber-900' : 'bg-red-200 text-red-800'
+                    }`}>
                       {(activeDiseaseResult.confidence * 100).toFixed(0)}% Match
                     </span>
                   )}
@@ -650,7 +679,8 @@ export const AiAnalysisSuite: React.FC<AiAnalysisSuiteProps> = ({
                   </ul>
                 </div>
               </div>
-            )}
+              );
+            })()}
           </div>
         )}
 

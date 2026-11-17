@@ -700,34 +700,34 @@ export const HarvestEventHistoryModal: React.FC<HarvestEventHistoryModalProps> =
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-[3500] flex items-center justify-center p-2 sm:p-4 animate-fadeIn" onClick={onClose}>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-md z-[3500] flex items-center justify-center p-2 sm:p-4 animate-fadeIn" onClick={onClose}>
             <div 
-                className="bg-white rounded-2xl shadow-2xl border border-slate-200/80 w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden transition-all duration-200"
+                className="bg-[#FAFBF8] rounded-2xl shadow-2xl border border-[#D8E3D4] w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden transition-all duration-200 text-[#163022]"
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header Bar */}
-                <div className="bg-slate-900 text-white p-4 sm:p-5 flex items-center justify-between border-b border-slate-800">
+                <div className="bg-[#EEF3EA] text-[#163022] p-4 sm:p-5 flex items-center justify-between border-b border-[#D8E3D4]">
                     <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
+                        <div className="h-10 w-10 rounded-xl bg-white border border-[#D8E3D4] flex items-center justify-center text-[#2D5A27] shadow-2xs">
                             <History className="h-5 w-5" />
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
-                                <h2 className="text-base sm:text-lg font-black text-white tracking-wide">
+                                <h2 className="text-base sm:text-lg font-black text-[#163022] tracking-wide">
                                     {isKa ? 'აქტივობა & აუდიტის ლოგი' : 'Activity & Audit Log'}
                                 </h2>
-                                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 font-semibold">
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-white text-[#2D5A27] border border-[#D8E3D4] font-semibold shadow-2xs">
                                     {event.name}
                                 </span>
                             </div>
-                            <p className="text-xs text-slate-400 mt-0.5">
+                            <p className="text-xs text-[#5C7867] mt-0.5">
                                 {isKa ? 'ყველა ოპერაციის, ჩანაწერისა და ვერსიის სრული გამჭვირვალე ისტორია' : 'Complete transparent trace of state versions & every scan operation'}
                             </p>
                         </div>
                     </div>
                     <button 
                         onClick={onClose}
-                        className="h-9 w-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-all border border-slate-700/60 cursor-pointer"
+                        className="h-9 w-9 rounded-xl bg-white hover:bg-[#F0F5EE] text-[#5C7867] hover:text-[#163022] flex items-center justify-center transition-all border border-[#CFDCCB] cursor-pointer shadow-2xs"
                         title="Close"
                     >
                         <XIcon className="h-5 w-5" />
@@ -1004,15 +1004,15 @@ export const HarvestEventHistoryModal: React.FC<HarvestEventHistoryModalProps> =
                 </div>
 
                 {/* Footer Info */}
-                <div className="p-3 sm:p-4 bg-slate-900 border-t border-slate-800 text-white flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2 text-slate-400 text-[11px]">
-                        <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                <div className="p-3 sm:p-4 bg-[#EEF3EA] border-t border-[#D8E3D4] text-[#163022] flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2 text-[#5C7867] text-[11px]">
+                        <ShieldCheck className="h-4 w-4 text-emerald-600" />
                         <span>{isKa ? 'IndexedDB & Firestore ავტომატური უსაფრთხო სინქრონიზაცია' : 'Immutable audit trail persisted via IndexedDB & Firestore'}</span>
                     </div>
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs border border-slate-700 cursor-pointer transition-all"
+                        className="px-4 py-1.5 rounded-xl bg-white hover:bg-[#F0F5EE] text-[#244130] font-bold text-xs border border-[#CFDCCB] cursor-pointer transition-all shadow-2xs"
                     >
                         {isKa ? 'დახურვა' : 'Close'}
                     </button>

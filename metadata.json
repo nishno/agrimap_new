@@ -1,12 +1,9 @@
 {
-  "name": "AgriMap Pro v14",
-  "description": "Advanced agricultural management platform with live harvest monitoring, payroll controls, and post-harvest supply chain routing.",
-  "requestFramePermissions": [
-    "microphone",
-    "camera",
-    "geolocation"
-  ],
-  "majorCapabilities": [
+  "name": "AgriMap Pro V2",
+  "description": "Comprehensive agricultural GIS, plantation management, weigh station, and autonomous agronomic intelligence suite.",
+  "requestFeedback": false,
+  "userFacing": true,
+  "capabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]
 }

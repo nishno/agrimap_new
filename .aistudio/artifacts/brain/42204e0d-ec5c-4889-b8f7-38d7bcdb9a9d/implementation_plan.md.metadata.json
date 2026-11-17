@@ -1,6 +1,0 @@
-{
-  "summary":  "Master Plan & Architectural Recommendations for AgriMap Pro sonik G2.0.1.4:\n- Comprehensive comparison between main and demo-preview branches\n- Whole-application version switching triggered directly by the sidebar logo badge\n- Full-application modern UI integration across all 12 operational modules\n- Pure Georgian translation unification using the 15,000+ key i18n dictionary\n- Recommendations for system architecture, state synchronization, and zero-pill calm design",
-  "updatedAt":  "2026-10-30T15:55:10.747902691Z",
-  "requestFeedback":  true,
-  "userFacing":  true
-}

@@ -511,22 +511,22 @@ System.Console.WriteLine($"Connect with LibVLCSharp: {rtspUrl}");`
     const currentCode = CODE_SNIPPETS[selectedTopic]?.[selectedLanguage] || '// No code example available';
 
     return (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in select-none">
-            <div className="bg-slate-900 border border-slate-700/80 rounded-[2.5rem] w-full max-w-4xl shadow-2xl text-white flex flex-col max-h-[92vh] overflow-hidden">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-md p-4 animate-in fade-in select-none">
+            <div className="bg-[#FAFBF8] border border-[#D8E3D4] rounded-[2.5rem] w-full max-w-4xl shadow-2xl text-[#163022] flex flex-col max-h-[92vh] overflow-hidden">
                 {/* Header */}
-                <div className="p-6 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+                <div className="p-6 border-b border-[#D8E3D4] flex items-center justify-between bg-[#EEF3EA]">
                     <div className="flex items-center gap-3">
-                        <div className="p-3 bg-indigo-600/20 text-indigo-400 rounded-2xl border border-indigo-500/30">
+                        <div className="p-3 bg-white text-emerald-700 rounded-2xl border border-[#CFDCCB] shadow-2xs">
                             <BookOpen size={22} />
                         </div>
                         <div>
-                            <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400 block">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-800 block">
                                 Developer & System Admin Reference Guide
                             </span>
-                            <h3 className="text-lg font-black uppercase text-white tracking-tight">
+                            <h3 className="text-lg font-black uppercase text-[#163022] tracking-tight">
                                 Hikvision DS-7716NI NVR: Local Subnet Discovery & ISAPI Control
                             </h3>
-                            <p className="text-xs text-slate-400 mt-0.5">
+                            <p className="text-xs text-[#4A6753] mt-0.5">
                                 Production-grade SADP (UDP 37020), ONVIF WS-Discovery (UDP 3702), HTTP Digest Authentication, and RTSP Stream Syntax
                             </p>
                         </div>
@@ -534,43 +534,51 @@ System.Console.WriteLine($"Connect with LibVLCSharp: {rtspUrl}");`
 
                     <button
                         onClick={onClose}
-                        className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all cursor-pointer"
+                        className="p-2.5 rounded-xl bg-white text-[#244130] border border-[#CFDCCB] hover:bg-[#163022] hover:text-white transition-all cursor-pointer shadow-2xs"
                     >
                         <X size={18} />
                     </button>
                 </div>
 
                 {/* Sub-Header Topic Selector */}
-                <div className="px-6 py-3 bg-slate-950/40 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div className="px-6 py-3 bg-[#FAFBF8] border-b border-[#D8E3D4] flex flex-wrap items-center justify-between gap-3 text-xs">
                     <div className="flex items-center gap-1.5 overflow-x-auto">
                         <button
                             onClick={() => setSelectedTopic('sadp_discovery')}
-                            className={`px-3 py-1.5 rounded-xl font-black uppercase tracking-wider text-[11px] transition-all flex items-center gap-1.5 ${
-                                selectedTopic === 'sadp_discovery' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                            className={`px-3 py-1.5 rounded-xl font-black uppercase tracking-wider text-[11px] transition-all flex items-center gap-1.5 cursor-pointer border ${
+                                selectedTopic === 'sadp_discovery' 
+                                    ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs' 
+                                    : 'bg-white text-[#244130] border-[#CFDCCB] hover:bg-emerald-600 hover:text-white'
                             }`}
                         >
                             <Radio size={13} /> 1. SADP UDP 37020
                         </button>
                         <button
                             onClick={() => setSelectedTopic('onvif_discovery')}
-                            className={`px-3 py-1.5 rounded-xl font-black uppercase tracking-wider text-[11px] transition-all flex items-center gap-1.5 ${
-                                selectedTopic === 'onvif_discovery' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                            className={`px-3 py-1.5 rounded-xl font-black uppercase tracking-wider text-[11px] transition-all flex items-center gap-1.5 cursor-pointer border ${
+                                selectedTopic === 'onvif_discovery' 
+                                    ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs' 
+                                    : 'bg-white text-[#244130] border-[#CFDCCB] hover:bg-emerald-600 hover:text-white'
                             }`}
                         >
                             <Layers size={13} /> 2. ONVIF WS-Discovery
                         </button>
                         <button
                             onClick={() => setSelectedTopic('isapi_auth')}
-                            className={`px-3 py-1.5 rounded-xl font-black uppercase tracking-wider text-[11px] transition-all flex items-center gap-1.5 ${
-                                selectedTopic === 'isapi_auth' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                            className={`px-3 py-1.5 rounded-xl font-black uppercase tracking-wider text-[11px] transition-all flex items-center gap-1.5 cursor-pointer border ${
+                                selectedTopic === 'isapi_auth' 
+                                    ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs' 
+                                    : 'bg-white text-[#244130] border-[#CFDCCB] hover:bg-emerald-600 hover:text-white'
                             }`}
                         >
                             <ShieldCheck size={13} /> 3. ISAPI Digest Auth
                         </button>
                         <button
                             onClick={() => setSelectedTopic('rtsp_stream')}
-                            className={`px-3 py-1.5 rounded-xl font-black uppercase tracking-wider text-[11px] transition-all flex items-center gap-1.5 ${
-                                selectedTopic === 'rtsp_stream' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                            className={`px-3 py-1.5 rounded-xl font-black uppercase tracking-wider text-[11px] transition-all flex items-center gap-1.5 cursor-pointer border ${
+                                selectedTopic === 'rtsp_stream' 
+                                    ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs' 
+                                    : 'bg-white text-[#244130] border-[#CFDCCB] hover:bg-emerald-600 hover:text-white'
                             }`}
                         >
                             <Video size={13} /> 4. RTSP Video Streams
@@ -578,13 +586,15 @@ System.Console.WriteLine($"Connect with LibVLCSharp: {rtspUrl}");`
                     </div>
 
                     {/* Language Switcher */}
-                    <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-[10px] font-black uppercase font-mono">
+                    <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-[#D8E3D4] text-[10px] font-black uppercase font-mono shadow-2xs">
                         {(['python', 'nodejs', 'go', 'csharp'] as const).map(lang => (
                             <button
                                 key={lang}
                                 onClick={() => setSelectedLanguage(lang)}
-                                className={`px-2.5 py-1 rounded-lg transition-all ${
-                                    selectedLanguage === lang ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                                    selectedLanguage === lang 
+                                        ? 'bg-emerald-600 text-white shadow-2xs' 
+                                        : 'text-[#4A6753] hover:text-[#163022] hover:bg-[#EEF3EA]'
                                 }`}
                             >
                                 {lang === 'csharp' ? 'C#' : lang === 'nodejs' ? 'Node.js' : lang}
@@ -597,107 +607,107 @@ System.Console.WriteLine($"Connect with LibVLCSharp: {rtspUrl}");`
                 <div className="p-6 overflow-y-auto space-y-4 flex-1 custom-scrollbar">
                     {/* Topic Explanatory Box */}
                     {selectedTopic === 'sadp_discovery' && (
-                        <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 text-xs space-y-2">
-                            <h4 className="font-black uppercase text-blue-400 tracking-wider">
+                        <div className="p-4 bg-white rounded-2xl border border-[#D8E3D4] text-xs space-y-2 shadow-xs">
+                            <h4 className="font-black uppercase text-emerald-800 tracking-wider">
                                 📡 How Hikvision SADP Protocol Works (Port 37020 UDP)
                             </h4>
-                            <p className="text-slate-300 leading-relaxed">
+                            <p className="text-[#385342] leading-relaxed">
                                 SADP (Search Active Devices Protocol) is Hikvision's proprietary L2/L3 UDP broadcast protocol.
-                                Your client sends a UDP packet containing XML <code className="text-amber-400">&lt;Probe&gt;</code> to multicast IP <code className="text-emerald-400">239.255.255.250:37020</code> or broadcast <code className="text-emerald-400">255.255.255.255:37020</code>.
+                                Your client sends a UDP packet containing XML <code className="bg-[#EEF3EA] text-emerald-900 px-1 py-0.5 rounded font-mono">&lt;Probe&gt;</code> to multicast IP <code className="bg-[#EEF3EA] text-emerald-900 px-1 py-0.5 rounded font-mono">239.255.255.250:37020</code> or broadcast <code className="bg-[#EEF3EA] text-emerald-900 px-1 py-0.5 rounded font-mono">255.255.255.255:37020</code>.
                                 All active Hikvision NVRs (including DS-7716NI, DS-7616NI) and IP cameras immediately respond with their IP, Subnet Mask, Gateway, MAC Address, HTTP Port, SDK Port (8000), Software Version, and Activation Status—even if on a different subnet before initial configuration.
                             </p>
                         </div>
                     )}
 
                     {selectedTopic === 'onvif_discovery' && (
-                        <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 text-xs space-y-2">
-                            <h4 className="font-black uppercase text-blue-400 tracking-wider">
+                        <div className="p-4 bg-white rounded-2xl border border-[#D8E3D4] text-xs space-y-2 shadow-xs">
+                            <h4 className="font-black uppercase text-emerald-800 tracking-wider">
                                 🌐 How ONVIF WS-Discovery Works (Port 3702 UDP)
                             </h4>
-                            <p className="text-slate-300 leading-relaxed">
-                                ONVIF uses the OASIS WS-Discovery specification over UDP multicast at <code className="text-emerald-400">239.255.255.250:3702</code>.
-                                It queries <code className="text-amber-400">dn:NetworkVideoTransmitter</code>. Any ONVIF Profile S/T/G compliant NVR or IP camera returns its device service endpoint URL (e.g., <code className="text-slate-200">http://192.168.1.120:80/onvif/device_service</code>).
+                            <p className="text-[#385342] leading-relaxed">
+                                ONVIF uses the OASIS WS-Discovery specification over UDP multicast at <code className="bg-[#EEF3EA] text-emerald-900 px-1 py-0.5 rounded font-mono">239.255.255.250:3702</code>.
+                                It queries <code className="bg-[#EEF3EA] text-emerald-900 px-1 py-0.5 rounded font-mono">dn:NetworkVideoTransmitter</code>. Any ONVIF Profile S/T/G compliant NVR or IP camera returns its device service endpoint URL (e.g., <code className="bg-[#EEF3EA] text-[#163022] px-1 py-0.5 rounded font-mono">http://192.168.1.120:80/onvif/device_service</code>).
                             </p>
                         </div>
                     )}
 
                     {selectedTopic === 'isapi_auth' && (
-                        <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 text-xs space-y-2">
-                            <h4 className="font-black uppercase text-blue-400 tracking-wider">
+                        <div className="p-4 bg-white rounded-2xl border border-[#D8E3D4] text-xs space-y-2 shadow-xs">
+                            <h4 className="font-black uppercase text-emerald-800 tracking-wider">
                                 🔐 HTTP Digest Authentication & ISAPI Endpoints
                             </h4>
-                            <p className="text-slate-300 leading-relaxed">
+                            <p className="text-[#385342] leading-relaxed">
                                 Hikvision cameras and NVRs strictly enforce <strong>HTTP Digest Authentication (RFC 2617 / RFC 7616)</strong> for ISAPI.
                                 Key production endpoints:
                             </p>
-                            <ul className="list-disc pl-5 space-y-1 text-slate-300">
-                                <li><code className="text-emerald-400">GET /ISAPI/System/deviceInfo</code>: Model number, serial, firmware version, and MAC address.</li>
-                                <li><code className="text-emerald-400">GET /ISAPI/ContentMgmt/InputProxy/channels</code>: Returns all physical & IP cameras mapped to the 16 channels of the DS-7716NI NVR.</li>
-                                <li><code className="text-emerald-400">GET /ISAPI/System/status</code>: Real-time CPU, RAM, and storage health.</li>
-                                <li><code className="text-emerald-400">PUT /ISAPI/PTZCtrl/channels/1/continuous</code>: Pan/Tilt/Zoom motor movement commands.</li>
+                            <ul className="list-disc pl-5 space-y-1 text-[#385342]">
+                                <li><code className="bg-[#EEF3EA] text-emerald-900 px-1 py-0.5 rounded font-mono">GET /ISAPI/System/deviceInfo</code>: Model number, serial, firmware version, and MAC address.</li>
+                                <li><code className="bg-[#EEF3EA] text-emerald-900 px-1 py-0.5 rounded font-mono">GET /ISAPI/ContentMgmt/InputProxy/channels</code>: Returns all physical & IP cameras mapped to the 16 channels of the DS-7716NI NVR.</li>
+                                <li><code className="bg-[#EEF3EA] text-emerald-900 px-1 py-0.5 rounded font-mono">GET /ISAPI/System/status</code>: Real-time CPU, RAM, and storage health.</li>
+                                <li><code className="bg-[#EEF3EA] text-emerald-900 px-1 py-0.5 rounded font-mono">PUT /ISAPI/PTZCtrl/channels/1/continuous</code>: Pan/Tilt/Zoom motor movement commands.</li>
                             </ul>
                         </div>
                     )}
 
                     {selectedTopic === 'rtsp_stream' && (
-                        <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 text-xs space-y-2">
-                            <h4 className="font-black uppercase text-blue-400 tracking-wider">
+                        <div className="p-4 bg-white rounded-2xl border border-[#D8E3D4] text-xs space-y-2 shadow-xs">
+                            <h4 className="font-black uppercase text-emerald-800 tracking-wider">
                                 🎥 Standard Hikvision RTSP URL Syntax
                             </h4>
-                            <p className="text-slate-300 leading-relaxed">
+                            <p className="text-[#385342] leading-relaxed">
                                 The RTSP URL specifies the channel number and the stream quality track:
                             </p>
-                            <div className="p-3 bg-slate-900 rounded-xl font-mono text-[11px] space-y-1.5 text-slate-200">
+                            <div className="p-3 bg-[#FAFBF8] border border-[#D8E3D4] rounded-xl font-mono text-[11px] space-y-1.5 text-[#163022]">
                                 <div>
-                                    <span className="text-slate-500">Main Stream (4K / 1080p High Quality):</span><br />
-                                    <code className="text-emerald-400">rtsp://user:pass@host:554/Streaming/Channels/&lt;Channel&gt;01</code> (e.g. 101 for CH1, 1601 for CH16)
+                                    <span className="text-[#4A6753]">Main Stream (4K / 1080p High Quality):</span><br />
+                                    <code className="text-emerald-800 font-bold">rtsp://user:pass@host:554/Streaming/Channels/&lt;Channel&gt;01</code> (e.g. 101 for CH1, 1601 for CH16)
                                 </div>
                                 <div>
-                                    <span className="text-slate-500">Sub Stream (Low Latency / WebRTC / Mobile):</span><br />
-                                    <code className="text-blue-400">rtsp://user:pass@host:554/Streaming/Channels/&lt;Channel&gt;02</code> (e.g. 102 for CH1, 1602 for CH16)
+                                    <span className="text-[#4A6753]">Sub Stream (Low Latency / WebRTC / Mobile):</span><br />
+                                    <code className="text-emerald-700 font-bold">rtsp://user:pass@host:554/Streaming/Channels/&lt;Channel&gt;02</code> (e.g. 102 for CH1, 1602 for CH16)
                                 </div>
                                 <div>
-                                    <span className="text-slate-500">Zero Channel (Multi-screen Matrix):</span><br />
-                                    <code className="text-purple-400">rtsp://user:pass@host:554/Streaming/Channels/001</code>
+                                    <span className="text-[#4A6753]">Zero Channel (Multi-screen Matrix):</span><br />
+                                    <code className="text-purple-800 font-bold">rtsp://user:pass@host:554/Streaming/Channels/001</code>
                                 </div>
                             </div>
                         </div>
                     )}
 
                     {/* Code Display Area */}
-                    <div className="relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 shadow-inner">
-                        <div className="px-4 py-2 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between text-xs font-mono">
+                    <div className="relative rounded-2xl overflow-hidden border border-[#D8E3D4] bg-[#163022] shadow-inner">
+                        <div className="px-4 py-2 bg-[#0E2016] border-b border-[#244130] flex items-center justify-between text-xs font-mono">
                             <div className="flex items-center gap-2">
-                                <Code2 size={14} className="text-indigo-400" />
-                                <span className="text-slate-400 uppercase">
+                                <Code2 size={14} className="text-emerald-400" />
+                                <span className="text-emerald-300 uppercase">
                                     {selectedLanguage.toUpperCase()} IMPLEMENTATION
                                 </span>
                             </div>
 
                             <button
                                 onClick={() => copyCode(currentCode)}
-                                className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-mono flex items-center gap-1.5 transition-all"
+                                className="px-3 py-1 bg-white text-[#244130] border border-[#CFDCCB] hover:bg-emerald-600 hover:text-white rounded-lg text-xs font-mono flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
                             >
                                 {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
                                 {copied ? 'Copied!' : 'Copy Code'}
                             </button>
                         </div>
 
-                        <pre className="p-4 text-xs font-mono text-emerald-300/90 overflow-x-auto leading-relaxed custom-scrollbar max-h-96">
+                        <pre className="p-4 text-xs font-mono text-emerald-300 overflow-x-auto leading-relaxed custom-scrollbar max-h-96">
                             <code>{currentCode}</code>
                         </pre>
                     </div>
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 border-t border-slate-800 flex items-center justify-between bg-slate-950/60">
-                    <span className="text-[10px] text-slate-500 font-mono">
+                <div className="p-4 border-t border-[#D8E3D4] flex items-center justify-between bg-[#EEF3EA]">
+                    <span className="text-[10px] text-[#4A6753] font-mono font-bold">
                         RFC 2617 Digest Auth • OASIS WS-Discovery • Hikvision ISAPI v2.0
                     </span>
 
                     <button
                         onClick={onClose}
-                        className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black uppercase tracking-wider"
+                        className="px-5 py-2 bg-white text-[#244130] border border-[#CFDCCB] hover:bg-emerald-700 hover:text-white hover:border-emerald-800 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer shadow-2xs"
                     >
                         Done
                     </button>

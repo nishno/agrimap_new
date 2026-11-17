@@ -131,36 +131,36 @@ export const RealDroneLiveLinkModal: React.FC<RealDroneLiveLinkModalProps> = ({
     };
 
     return (
-        <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-2 sm:p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/50 backdrop-blur-md p-2 sm:p-4 animate-in fade-in duration-200">
             <div className={`
                 ${isMaximized ? 'w-full h-full rounded-none' : 'w-full max-w-6xl h-[90vh] max-h-[860px] rounded-3xl'}
-                bg-slate-950 border border-cyan-500/50 shadow-2xl flex flex-col overflow-hidden text-slate-200 transition-all
+                bg-[#FAFBF8] border border-[#D8E3D4] shadow-2xl flex flex-col overflow-hidden text-[#163022] transition-all
             `}>
                 {/* 1. MODAL HEADER & TELEMETRY STATUS */}
-                <div className="p-3 sm:p-4 bg-slate-900/90 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                <div className="p-3 sm:p-4 bg-[#EEF3EA] border-b border-[#D8E3D4] flex flex-wrap items-center justify-between gap-3 shrink-0">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-2xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 shadow-inner">
+                        <div className="p-2 rounded-2xl bg-white text-[#2D5A27] border border-[#D8E3D4] shadow-2xs">
                             <Navigation size={20} className="rotate-45" />
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
-                                <h3 className="text-sm sm:text-base font-black uppercase tracking-wider text-slate-100 flex items-center gap-2">
+                                <h3 className="text-sm sm:text-base font-black uppercase tracking-wider text-[#163022] flex items-center gap-2">
                                     <span>{isKa ? 'დრონის პირდაპირი ბმული & მისია' : 'Real Drone Link & Cockpit HUD'}</span>
-                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-700 font-mono font-bold">
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-white text-[#2D5A27] border border-[#D8E3D4] font-mono font-bold shadow-2xs">
                                         DJI Matrice 350 RTK
                                     </span>
                                 </h3>
-                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-emerald-950/80 border border-emerald-500/50 text-emerald-400 text-[10px] font-mono font-bold">
-                                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-800 text-[10px] font-mono font-bold">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                                     <span>LINK ACTIVE</span>
                                 </div>
                             </div>
-                            <p className="text-[11px] text-slate-400 font-mono flex items-center gap-2 flex-wrap">
+                            <p className="text-[11px] text-[#5C7867] font-mono flex items-center gap-2 flex-wrap">
                                 <span>🌿 {mission.plantationName}</span>
                                 <span>•</span>
                                 <span>📍 {mission.sectorName}</span>
                                 <span>•</span>
-                                <span className="text-cyan-400 font-bold">
+                                <span className="text-[#2D5A27] font-bold">
                                     {isKa ? 'თხრილები:' : 'Active Trenches:'} #{mission.selectedTrenches.join(', #')}
                                 </span>
                             </p>
@@ -169,20 +169,20 @@ export const RealDroneLiveLinkModal: React.FC<RealDroneLiveLinkModalProps> = ({
 
                     {/* Quick Telemetry Indicators */}
                     <div className="flex items-center gap-2 flex-wrap text-xs font-mono">
-                        <div className="px-2.5 py-1 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-1.5" title="MAVLink Telemetry Ping">
-                            <Radio size={12} className="text-cyan-400" />
-                            <span className="text-slate-400">LAT:</span>
-                            <span className="text-cyan-300 font-bold">{pingMs}ms</span>
+                        <div className="px-2.5 py-1 rounded-xl bg-white border border-[#D8E3D4] flex items-center gap-1.5 shadow-2xs" title="MAVLink Telemetry Ping">
+                            <Radio size={12} className="text-emerald-600" />
+                            <span className="text-[#5C7867]">LAT:</span>
+                            <span className="text-[#163022] font-bold">{pingMs}ms</span>
                         </div>
-                        <div className="px-2.5 py-1 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-1.5" title="Signal Strength">
-                            <Wifi size={12} className="text-emerald-400" />
-                            <span className="text-emerald-300 font-bold">{signalDbm} dBm</span>
+                        <div className="px-2.5 py-1 rounded-xl bg-white border border-[#D8E3D4] flex items-center gap-1.5 shadow-2xs" title="Signal Strength">
+                            <Wifi size={12} className="text-emerald-600" />
+                            <span className="text-[#163022] font-bold">{signalDbm} dBm</span>
                         </div>
-                        <div className="px-2.5 py-1 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-1.5" title="Battery Level">
-                            <Battery size={14} className={mission.batteryPct > 25 ? 'text-emerald-400' : 'text-red-400 animate-pulse'} />
-                            <span className="font-bold text-white">{mission.batteryPct}%</span>
+                        <div className="px-2.5 py-1 rounded-xl bg-white border border-[#D8E3D4] flex items-center gap-1.5 shadow-2xs" title="Battery Level">
+                            <Battery size={14} className={mission.batteryPct > 25 ? 'text-emerald-600' : 'text-red-500 animate-pulse'} />
+                            <span className="font-bold text-[#163022]">{mission.batteryPct}%</span>
                         </div>
-                        <div className="px-2.5 py-1 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-1.5 text-amber-300" title="GPS Status">
+                        <div className="px-2.5 py-1 rounded-xl bg-white border border-[#D8E3D4] flex items-center gap-1.5 text-amber-700 shadow-2xs" title="GPS Status">
                             <Globe size={12} />
                             <span className="font-bold">RTK 3D (24 Sats)</span>
                         </div>
@@ -192,7 +192,7 @@ export const RealDroneLiveLinkModal: React.FC<RealDroneLiveLinkModalProps> = ({
                             <button
                                 type="button"
                                 onClick={() => setIsMaximized(!isMaximized)}
-                                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
+                                className="p-1.5 text-[#5C7867] hover:text-[#163022] rounded-lg hover:bg-white/80 cursor-pointer transition-colors"
                                 title={isMaximized ? 'Restore Size' : 'Maximize Window'}
                             >
                                 {isMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
@@ -200,7 +200,7 @@ export const RealDroneLiveLinkModal: React.FC<RealDroneLiveLinkModalProps> = ({
                             <button
                                 type="button"
                                 onClick={onClose}
-                                className="p-1.5 text-slate-400 hover:text-red-400 rounded-lg hover:bg-slate-800 cursor-pointer"
+                                className="p-1.5 text-[#5C7867] hover:text-red-600 rounded-lg hover:bg-white/80 cursor-pointer transition-colors"
                                 title="Close Cockpit"
                             >
                                 <X size={18} />
@@ -210,15 +210,15 @@ export const RealDroneLiveLinkModal: React.FC<RealDroneLiveLinkModalProps> = ({
                 </div>
 
                 {/* 2. NAVIGATION TABS */}
-                <div className="px-4 py-2 bg-slate-950 border-b border-slate-800 flex items-center justify-between text-xs shrink-0">
+                <div className="px-4 py-2 bg-[#FAFBF8] border-b border-[#D8E3D4] flex items-center justify-between text-xs shrink-0">
                     <div className="flex items-center gap-1">
                         <button
                             type="button"
                             onClick={() => setActiveTab('cockpit')}
                             className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                                 activeTab === 'cockpit'
-                                    ? 'bg-cyan-600 text-white shadow-md shadow-cyan-900/40 font-black'
-                                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                                    ? 'bg-white text-[#244130] border border-[#2D5A27] shadow-2xs font-black'
+                                    : 'text-[#5C7867] hover:text-[#163022] hover:bg-white/60'
                             }`}
                         >
                             <Video size={13} />
@@ -229,8 +229,8 @@ export const RealDroneLiveLinkModal: React.FC<RealDroneLiveLinkModalProps> = ({
                             onClick={() => setActiveTab('telemetry')}
                             className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                                 activeTab === 'telemetry'
-                                    ? 'bg-cyan-600 text-white shadow-md shadow-cyan-900/40 font-black'
-                                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                                    ? 'bg-white text-[#244130] border border-[#2D5A27] shadow-2xs font-black'
+                                    : 'text-[#5C7867] hover:text-[#163022] hover:bg-white/60'
                             }`}
                         >
                             <Activity size={13} />
@@ -241,8 +241,8 @@ export const RealDroneLiveLinkModal: React.FC<RealDroneLiveLinkModalProps> = ({
                             onClick={() => setActiveTab('link_settings')}
                             className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                                 activeTab === 'link_settings'
-                                    ? 'bg-cyan-600 text-white shadow-md shadow-cyan-900/40 font-black'
-                                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                                    ? 'bg-white text-[#244130] border border-[#2D5A27] shadow-2xs font-black'
+                                    : 'text-[#5C7867] hover:text-[#163022] hover:bg-white/60'
                             }`}
                         >
                             <Settings size={13} />
@@ -253,29 +253,29 @@ export const RealDroneLiveLinkModal: React.FC<RealDroneLiveLinkModalProps> = ({
                             onClick={() => setActiveTab('gallery')}
                             className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                                 activeTab === 'gallery'
-                                    ? 'bg-cyan-600 text-white shadow-md shadow-cyan-900/40 font-black'
-                                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                                    ? 'bg-white text-[#244130] border border-[#2D5A27] shadow-2xs font-black'
+                                    : 'text-[#5C7867] hover:text-[#163022] hover:bg-white/60'
                             }`}
                         >
                             <Camera size={13} />
                             <span>{isKa ? 'გადაღებული ფოტოები' : 'Captured Aerials'}</span>
-                            <span className="px-1.5 py-0.2 rounded-full bg-slate-800 text-[10px] text-cyan-300">
+                            <span className="px-1.5 py-0.2 rounded-full bg-white text-[10px] text-[#2D5A27] border border-[#D8E3D4] font-bold">
                                 {capturedPhotos.length}
                             </span>
                         </button>
                     </div>
 
                     {/* Camera Spectrum Toggles: RGB, NDVI, Thermal */}
-                    <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-[10px]">
+                    <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-[#D8E3D4] text-[10px] shadow-2xs">
                         {(['rgb', 'ndvi', 'thermal'] as const).map((spec, specIdx) => (
                             <button
                                 key={`drone-spec-${spec}-${specIdx}`}
                                 type="button"
                                 onClick={() => setCameraSpectrum(spec)}
-                                className={`px-2 py-0.5 rounded-lg font-mono font-bold uppercase transition-all ${
+                                className={`px-2 py-0.5 rounded-lg font-mono font-bold uppercase transition-all cursor-pointer ${
                                     cameraSpectrum === spec
-                                        ? spec === 'thermal' ? 'bg-orange-600 text-white shadow' : spec === 'ndvi' ? 'bg-emerald-600 text-white shadow' : 'bg-cyan-600 text-white shadow'
-                                        : 'text-slate-400 hover:text-white'
+                                        ? spec === 'thermal' ? 'bg-orange-600 text-white shadow' : spec === 'ndvi' ? 'bg-emerald-600 text-white shadow' : 'bg-[#163022] text-white shadow'
+                                        : 'text-[#5C7867] hover:text-[#163022]'
                                 }`}
                             >
                                 {spec}
@@ -405,9 +405,9 @@ export const RealDroneLiveLinkModal: React.FC<RealDroneLiveLinkModalProps> = ({
                                         <button
                                             type="button"
                                             onClick={handleTakeSnapshot}
-                                            className="px-3 py-2 bg-slate-900/90 hover:bg-slate-800 text-white rounded-xl border border-slate-700 font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-lg active:scale-95 transition-all"
+                                            className="px-3 py-2 bg-white text-[#244130] hover:bg-[#163022] hover:text-white rounded-xl border border-[#CFDCCB] font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-lg active:scale-95 transition-all"
                                         >
-                                            <Camera size={14} className="text-cyan-400" />
+                                            <Camera size={14} className="text-emerald-600" />
                                             <span>Snapshot</span>
                                         </button>
                                         <button
@@ -415,11 +415,11 @@ export const RealDroneLiveLinkModal: React.FC<RealDroneLiveLinkModalProps> = ({
                                             onClick={handleToggleRecording}
                                             className={`px-3 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-lg active:scale-95 transition-all ${
                                                 mission.isRecordingVideo
-                                                    ? 'bg-red-600 text-white'
-                                                    : 'bg-slate-900/90 hover:bg-slate-800 text-white border border-slate-700'
+                                                    ? 'bg-rose-600 text-white'
+                                                    : 'bg-white text-[#244130] hover:bg-rose-600 hover:text-white border border-[#CFDCCB]'
                                             }`}
                                         >
-                                            <Film size={14} className={mission.isRecordingVideo ? 'text-white' : 'text-red-400'} />
+                                            <Film size={14} className={mission.isRecordingVideo ? 'text-white' : 'text-rose-600'} />
                                             <span>{mission.isRecordingVideo ? 'Stop REC' : 'Record 4K'}</span>
                                         </button>
                                     </div>
@@ -432,7 +432,7 @@ export const RealDroneLiveLinkModal: React.FC<RealDroneLiveLinkModalProps> = ({
                                             className={`px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-lg active:scale-95 transition-all cursor-pointer ${
                                                 mission.isSimulating
                                                     ? 'bg-amber-600 hover:bg-amber-500 text-white'
-                                                    : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-cyan-900/50'
+                                                    : 'bg-white text-[#244130] border border-[#2D5A27] hover:bg-[#2D5A27] hover:text-white'
                                             }`}
                                         >
                                             {mission.isSimulating ? <Pause size={14} /> : <Play size={14} />}
@@ -442,7 +442,7 @@ export const RealDroneLiveLinkModal: React.FC<RealDroneLiveLinkModalProps> = ({
                                         <button
                                             type="button"
                                             onClick={handleReturnToHome}
-                                            className="px-3.5 py-2 bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-slate-700 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+                                            className="px-3.5 py-2 bg-white text-[#244130] border border-[#CFDCCB] hover:bg-[#163022] hover:text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all shadow-md"
                                             title="Return to Home Point"
                                         >
                                             <RotateCcw size={13} />
@@ -611,10 +611,10 @@ export const RealDroneLiveLinkModal: React.FC<RealDroneLiveLinkModalProps> = ({
                     </div>
 
                     {/* RIGHT SIDE MISSION CONTROLS & GIMBAL PANEL */}
-                    <div className="w-full lg:w-80 bg-slate-950 border-t lg:border-t-0 lg:border-l border-slate-800 p-4 space-y-4 text-xs overflow-y-auto shrink-0">
+                    <div className="w-full lg:w-80 bg-[#EEF3EA] border-t lg:border-t-0 lg:border-l border-[#D8E3D4] p-4 space-y-4 text-xs overflow-y-auto shrink-0 text-[#163022]">
                         {/* Selected Trenches Config */}
                         <div className="space-y-2">
-                            <span className="font-black uppercase tracking-wider text-[11px] text-slate-300 block">
+                            <span className="font-black uppercase tracking-wider text-[11px] text-[#163022] block">
                                 {isKa ? 'თხრილების შერჩევა (Trenches):' : 'Survey Trenches (#1 - #5):'}
                             </span>
                             <div className="flex gap-1.5">
@@ -627,8 +627,8 @@ export const RealDroneLiveLinkModal: React.FC<RealDroneLiveLinkModalProps> = ({
                                             onClick={() => onToggleTrench && onToggleTrench(tNum)}
                                             className={`flex-1 py-1.5 rounded-xl font-mono font-black text-xs transition-all cursor-pointer ${
                                                 isSelected
-                                                    ? 'bg-amber-500 text-slate-950 shadow-md ring-1 ring-amber-300'
-                                                    : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-white'
+                                                    ? 'bg-[#2D5A27] text-white shadow-2xs'
+                                                    : 'bg-white text-[#244130] border border-[#CFDCCB] hover:bg-[#F0F5EE]'
                                             }`}
                                         >
                                             #{tNum}
@@ -639,10 +639,10 @@ export const RealDroneLiveLinkModal: React.FC<RealDroneLiveLinkModalProps> = ({
                         </div>
 
                         {/* Gimbal Pitch Slider */}
-                        <div className="space-y-1.5 bg-slate-900/80 p-3 rounded-2xl border border-slate-800">
+                        <div className="space-y-1.5 bg-white p-3 rounded-2xl border border-[#D8E3D4] shadow-2xs">
                             <div className="flex justify-between items-center text-[11px]">
-                                <span className="font-bold text-slate-300">Gimbal Pitch Angle</span>
-                                <span className="font-mono text-cyan-400 font-bold">{mission.gimbalPitchDeg}°</span>
+                                <span className="font-bold text-[#163022]">Gimbal Pitch Angle</span>
+                                <span className="font-mono text-[#2D5A27] font-bold">{mission.gimbalPitchDeg}°</span>
                             </div>
                             <input
                                 type="range"
@@ -651,9 +651,9 @@ export const RealDroneLiveLinkModal: React.FC<RealDroneLiveLinkModalProps> = ({
                                 step="5"
                                 value={mission.gimbalPitchDeg}
                                 onChange={(e) => onUpdateMission({ gimbalPitchDeg: Number(e.target.value) })}
-                                className="w-full accent-cyan-400 cursor-pointer"
+                                className="w-full accent-[#2D5A27] cursor-pointer"
                             />
-                            <div className="flex justify-between text-[9px] font-mono text-slate-500">
+                            <div className="flex justify-between text-[9px] font-mono text-[#5C7867]">
                                 <span>-90° (Nadir)</span>
                                 <span>-45° (Oblique)</span>
                                 <span>0° (Horizon)</span>
@@ -661,10 +661,10 @@ export const RealDroneLiveLinkModal: React.FC<RealDroneLiveLinkModalProps> = ({
                         </div>
 
                         {/* Flight Altitude Slider */}
-                        <div className="space-y-1.5 bg-slate-900/80 p-3 rounded-2xl border border-slate-800">
+                        <div className="space-y-1.5 bg-white p-3 rounded-2xl border border-[#D8E3D4] shadow-2xs">
                             <div className="flex justify-between items-center text-[11px]">
-                                <span className="font-bold text-slate-300">Cruise Altitude (AGL)</span>
-                                <span className="font-mono text-cyan-400 font-bold">{mission.currentAlt}m</span>
+                                <span className="font-bold text-[#163022]">Cruise Altitude (AGL)</span>
+                                <span className="font-mono text-[#2D5A27] font-bold">{mission.currentAlt}m</span>
                             </div>
                             <input
                                 type="range"
@@ -673,15 +673,15 @@ export const RealDroneLiveLinkModal: React.FC<RealDroneLiveLinkModalProps> = ({
                                 step="1"
                                 value={mission.currentAlt}
                                 onChange={(e) => onUpdateMission({ currentAlt: Number(e.target.value), altitudeM: Number(e.target.value) })}
-                                className="w-full accent-cyan-400 cursor-pointer"
+                                className="w-full accent-[#2D5A27] cursor-pointer"
                             />
                         </div>
 
                         {/* Flight Speed Slider */}
-                        <div className="space-y-1.5 bg-slate-900/80 p-3 rounded-2xl border border-slate-800">
+                        <div className="space-y-1.5 bg-white p-3 rounded-2xl border border-[#D8E3D4] shadow-2xs">
                             <div className="flex justify-between items-center text-[11px]">
-                                <span className="font-bold text-slate-300">Flight Speed</span>
-                                <span className="font-mono text-emerald-400 font-bold">{mission.speedMs} m/s</span>
+                                <span className="font-bold text-[#163022]">Flight Speed</span>
+                                <span className="font-mono text-emerald-700 font-bold">{mission.speedMs} m/s</span>
                             </div>
                             <input
                                 type="range"
@@ -690,24 +690,24 @@ export const RealDroneLiveLinkModal: React.FC<RealDroneLiveLinkModalProps> = ({
                                 step="1"
                                 value={mission.speedMs}
                                 onChange={(e) => onUpdateMission({ speedMs: Number(e.target.value) })}
-                                className="w-full accent-emerald-400 cursor-pointer"
+                                className="w-full accent-emerald-600 cursor-pointer"
                             />
                         </div>
 
                         {/* Live Telemetry Health Checklist */}
-                        <div className="p-3 bg-slate-900/80 rounded-2xl border border-slate-800 space-y-1.5 text-[11px]">
-                            <span className="font-bold text-slate-300 block uppercase text-[10px]">Pre-Flight Telemetry Check</span>
-                            <div className="flex items-center justify-between text-slate-400">
+                        <div className="p-3 bg-white rounded-2xl border border-[#D8E3D4] space-y-1.5 text-[11px] shadow-2xs">
+                            <span className="font-bold text-[#163022] block uppercase text-[10px]">Pre-Flight Telemetry Check</span>
+                            <div className="flex items-center justify-between text-[#5C7867]">
                                 <span>RTK Differential Satellites:</span>
-                                <span className="text-emerald-400 font-mono font-bold">24 (Fixed)</span>
+                                <span className="text-emerald-700 font-mono font-bold">24 (Fixed)</span>
                             </div>
-                            <div className="flex items-center justify-between text-slate-400">
+                            <div className="flex items-center justify-between text-[#5C7867]">
                                 <span>Obstacle Avoidance Sensors:</span>
-                                <span className="text-emerald-400 font-mono font-bold">Omni ACTIVE</span>
+                                <span className="text-emerald-700 font-mono font-bold">Omni ACTIVE</span>
                             </div>
-                            <div className="flex items-center justify-between text-slate-400">
+                            <div className="flex items-center justify-between text-[#5C7867]">
                                 <span>Geofence Boundary:</span>
-                                <span className="text-emerald-400 font-mono font-bold">Enforced (Agrobari)</span>
+                                <span className="text-emerald-700 font-mono font-bold">Enforced (Agrobari)</span>
                             </div>
                         </div>
                     </div>

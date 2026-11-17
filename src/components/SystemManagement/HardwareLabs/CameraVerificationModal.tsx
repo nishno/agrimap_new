@@ -239,65 +239,65 @@ export const CameraVerificationModal: React.FC<CameraVerificationModalProps> = (
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in select-none">
-            <div className="bg-slate-900 border border-slate-700/80 rounded-[2.5rem] w-full max-w-3xl shadow-2xl text-white flex flex-col max-h-[94vh] overflow-hidden">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in select-none">
+            <div className="bg-[#FAFBF8] border border-[#D8E3D4] rounded-[2.5rem] w-full max-w-3xl shadow-2xl text-[#163022] flex flex-col max-h-[94vh] overflow-hidden">
                 {/* Header */}
-                <div className="p-6 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+                <div className="p-6 border-b border-[#D8E3D4] flex items-center justify-between bg-[#EEF3EA]">
                     <div className="flex items-center gap-3">
-                        <div className="p-3 bg-blue-600/20 text-blue-400 rounded-2xl border border-blue-500/30">
-                            <Radio size={22} className="animate-pulse text-blue-400" />
+                        <div className="p-3 bg-white text-blue-600 rounded-2xl border border-[#D8E3D4] shadow-2xs">
+                            <Radio size={22} className="animate-pulse text-blue-600" />
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-black uppercase tracking-widest text-blue-400 block">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-blue-700 block">
                                     Real Device 3-Phase Verification Engine
                                 </span>
-                                <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
                                     Port {accessPort} (Access Port)
                                 </span>
                             </div>
-                            <h3 className="text-lg font-black uppercase text-white tracking-tight">
+                            <h3 className="text-lg font-black uppercase text-[#163022] tracking-tight">
                                 Connect & Authenticate: {target.alias || activeHost}
                             </h3>
-                            <p className="text-xs text-slate-400 font-mono mt-0.5 flex flex-wrap gap-2">
-                                <span>{activeHost.startsWith('192.168.') ? '🏢 LAN IP:' : '🌐 WAN Host:'} <strong className="text-cyan-300">{activeHost}</strong></span>
-                                <span className="text-slate-600">•</span>
-                                <span>Access/SDK Port: <strong className="text-amber-400">{accessPort}</strong></span>
-                                <span className="text-slate-600">•</span>
-                                <span>HTTP: <strong className="text-slate-300">{httpPort}</strong></span>
-                                <span className="text-slate-600">•</span>
-                                <span>RTSP: <strong className="text-emerald-400">{rtspPort}</strong></span>
+                            <p className="text-xs text-[#4A6753] font-mono mt-0.5 flex flex-wrap gap-2">
+                                <span>{activeHost.startsWith('192.168.') ? '🏢 LAN IP:' : '🌐 WAN Host:'} <strong className="text-blue-700">{activeHost}</strong></span>
+                                <span className="text-[#8FA895]">•</span>
+                                <span>Access/SDK Port: <strong className="text-amber-700">{accessPort}</strong></span>
+                                <span className="text-[#8FA895]">•</span>
+                                <span>HTTP: <strong className="text-[#163022]">{httpPort}</strong></span>
+                                <span className="text-[#8FA895]">•</span>
+                                <span>RTSP: <strong className="text-emerald-700">{rtspPort}</strong></span>
                             </p>
                         </div>
                     </div>
 
                     <button
                         onClick={onClose}
-                        className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all cursor-pointer"
+                        className="p-2.5 rounded-xl bg-white hover:bg-[#EEF3EA] text-[#4A6753] hover:text-[#163022] border border-[#CFDCCB] transition-all cursor-pointer"
                     >
                         <X size={18} />
                     </button>
                 </div>
 
                 {/* Body Content */}
-                <div className="p-6 overflow-y-auto space-y-5 flex-1 custom-scrollbar">
+                <div className="p-6 overflow-y-auto space-y-5 flex-1 custom-scrollbar bg-[#F5F8F4]">
                     {/* CREDENTIALS BAR */}
-                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div className="bg-white p-4 rounded-2xl border border-[#D8E3D4] grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs shadow-2xs">
                         <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                            <label className="text-[10px] font-bold text-[#4A6753] uppercase block mb-1">
                                 Device Username
                             </label>
                             <input
                                 type="text"
                                 value={username}
                                 onChange={(e) => setUsername(e.target.value)}
-                                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono text-xs focus:ring-1 focus:ring-blue-500 outline-none"
+                                className="w-full px-3 py-2 bg-[#FAFBF8] border border-[#CFDCCB] rounded-xl text-[#163022] font-mono text-xs focus:ring-1 focus:ring-[#163022] outline-none"
                                 placeholder="admin"
                             />
                         </div>
 
                         <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                            <label className="text-[10px] font-bold text-[#4A6753] uppercase block mb-1">
                                 Device Password
                             </label>
                             <div className="relative">
@@ -305,13 +305,13 @@ export const CameraVerificationModal: React.FC<CameraVerificationModalProps> = (
                                     type={showPassword ? 'text' : 'password'}
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono text-xs pr-9 focus:ring-1 focus:ring-blue-500 outline-none"
+                                    className="w-full px-3 py-2 bg-[#FAFBF8] border border-[#CFDCCB] rounded-xl text-[#163022] font-mono text-xs pr-9 focus:ring-1 focus:ring-[#163022] outline-none"
                                     placeholder="Enter password"
                                 />
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#4A6753] hover:text-[#163022]"
                                 >
                                     {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                                 </button>
@@ -322,27 +322,27 @@ export const CameraVerificationModal: React.FC<CameraVerificationModalProps> = (
                     {/* PHASE 1: REACHABILITY & PORT AUDIT */}
                     <div className={`p-4 rounded-2xl border transition-all ${
                         phase1Status === 'success' 
-                            ? 'bg-emerald-950/20 border-emerald-500/40 text-emerald-100'
+                            ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
                             : phase1Status === 'failed'
-                            ? 'bg-red-950/20 border-red-500/40 text-red-100'
+                            ? 'bg-red-50 border-red-300 text-red-950'
                             : phase1Status === 'running'
-                            ? 'bg-blue-950/20 border-blue-500/40 text-blue-100 animate-pulse'
-                            : 'bg-slate-950 border-slate-800 text-slate-400'
+                            ? 'bg-blue-50 border-blue-300 text-blue-950 animate-pulse'
+                            : 'bg-white border-[#D8E3D4] text-[#244130]'
                     }`}>
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2.5">
                                 <div className={`w-7 h-7 rounded-xl flex items-center justify-center font-black text-xs ${
                                     phase1Status === 'success' ? 'bg-emerald-600 text-white' :
                                     phase1Status === 'failed' ? 'bg-red-600 text-white' :
-                                    phase1Status === 'running' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'
+                                    phase1Status === 'running' ? 'bg-blue-600 text-white' : 'bg-[#EEF3EA] text-[#244130] border border-[#D8E3D4]'
                                 }`}>
                                     1
                                 </div>
                                 <div>
-                                    <h4 className="text-xs font-black uppercase text-white">
+                                    <h4 className="text-xs font-black uppercase text-[#163022]">
                                         Phase 1: Host Reachability & Port Audit
                                     </h4>
-                                    <p className="text-[10px] text-slate-400">
+                                    <p className="text-[10px] text-[#4A6753]">
                                         Target IP: {activeHost} • Access Port: {accessPort} • HTTP: {httpPort} • RTSP: {rtspPort}
                                     </p>
                                 </div>
@@ -380,14 +380,14 @@ export const CameraVerificationModal: React.FC<CameraVerificationModalProps> = (
                     {/* PHASE 2: AUTHENTICATION & ACCURATE DEVICE DETAILS */}
                     <div className={`p-4 rounded-2xl border transition-all ${
                         phase2Status === 'success' 
-                            ? 'bg-emerald-950/20 border-emerald-500/40 text-emerald-100'
+                            ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
                             : phase2Status === 'manual_review'
-                            ? 'bg-amber-950/20 border-amber-500/40 text-amber-100'
+                            ? 'bg-amber-50 border-amber-300 text-amber-950'
                             : phase2Status === 'failed'
-                            ? 'bg-red-950/20 border-red-500/40 text-red-100'
+                            ? 'bg-red-50 border-red-300 text-red-950'
                             : phase2Status === 'running'
-                            ? 'bg-blue-950/20 border-blue-500/40 text-blue-100 animate-pulse'
-                            : 'bg-slate-950 border-slate-800 text-slate-400'
+                            ? 'bg-blue-50 border-blue-300 text-blue-950 animate-pulse'
+                            : 'bg-white border-[#D8E3D4] text-[#244130]'
                     }`}>
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2.5">
@@ -395,15 +395,15 @@ export const CameraVerificationModal: React.FC<CameraVerificationModalProps> = (
                                     phase2Status === 'success' ? 'bg-emerald-600 text-white' :
                                     phase2Status === 'manual_review' ? 'bg-amber-600 text-white' :
                                     phase2Status === 'failed' ? 'bg-red-600 text-white' :
-                                    phase2Status === 'running' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'
+                                    phase2Status === 'running' ? 'bg-blue-600 text-white' : 'bg-[#EEF3EA] text-[#244130] border border-[#D8E3D4]'
                                 }`}>
                                     2
                                 </div>
                                 <div>
-                                    <h4 className="text-xs font-black uppercase text-white">
+                                    <h4 className="text-xs font-black uppercase text-[#163022]">
                                         Phase 2: Authentication & Real Device Identity
                                     </h4>
-                                    <p className="text-[10px] text-slate-400">
+                                    <p className="text-[10px] text-[#4A6753]">
                                         Hikvision Access Port {accessPort} & ISAPI System Discovery
                                     </p>
                                 </div>
@@ -411,91 +411,91 @@ export const CameraVerificationModal: React.FC<CameraVerificationModalProps> = (
 
                             <div className="text-right">
                                 {phase2Status === 'running' && (
-                                    <span className="text-[10px] font-mono text-blue-400 flex items-center gap-1">
+                                    <span className="text-[10px] font-mono text-blue-700 flex items-center gap-1 font-bold">
                                         <RefreshCw size={12} className="animate-spin" /> Verifying Challenge...
                                     </span>
                                 )}
                                 {phase2Status === 'success' && (
-                                    <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                                    <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-black bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
                                         <CheckCircle2 size={12} /> AUTHENTICATED
                                     </span>
                                 )}
                                 {phase2Status === 'manual_review' && (
-                                    <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                                    <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
                                         <ShieldCheck size={12} /> CREDENTIALS CONFIGURED
                                     </span>
                                 )}
                                 {phase2Status === 'failed' && (
-                                    <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-black bg-red-500/20 text-red-300 border border-red-500/30 flex items-center gap-1">
+                                    <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-black bg-red-100 text-red-800 border border-red-300 flex items-center gap-1">
                                         <XCircle size={12} /> AUTH FAILED
                                     </span>
                                 )}
                                 {phase2Status === 'pending' && (
-                                    <span className="text-[10px] font-mono text-slate-500">Awaiting Phase 1</span>
+                                    <span className="text-[10px] font-mono text-[#4A6753]">Awaiting Phase 1</span>
                                 )}
                             </div>
                         </div>
 
                         {/* Real Device Details Form (Allows user to confirm or edit their ACTUAL serial number) */}
-                        <div className="mt-3 p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs text-slate-300 space-y-3">
-                            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                                <span className="font-bold text-[10px] uppercase text-cyan-400">
+                        <div className="mt-3 p-3.5 rounded-xl bg-[#FAFBF8] border border-[#D8E3D4] text-xs text-[#244130] space-y-3">
+                            <div className="flex items-center justify-between border-b border-[#D8E3D4] pb-2">
+                                <span className="font-bold text-[10px] uppercase text-blue-700">
                                     Physical NVR Identity & Hardware Profile
                                 </span>
-                                <span className="text-[10px] text-slate-400">
+                                <span className="text-[10px] text-[#4A6753]">
                                     Confirm values matching your physical device or iVMS/Hik-Connect
                                 </span>
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
-                                    <label className="text-slate-400 block text-[9px] uppercase font-bold mb-1">
+                                    <label className="text-[#4A6753] block text-[9px] uppercase font-bold mb-1">
                                         Device Model:
                                     </label>
                                     <input
                                         type="text"
                                         value={realModel}
                                         onChange={(e) => setRealModel(e.target.value)}
-                                        className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs focus:ring-1 focus:ring-cyan-500 outline-none"
+                                        className="w-full px-2.5 py-1.5 bg-white border border-[#CFDCCB] rounded-lg text-[#163022] font-mono text-xs focus:ring-1 focus:ring-[#163022] outline-none"
                                         placeholder="Hikvision DS-7716NI-I4 / 16P"
                                     />
                                 </div>
 
                                 <div>
-                                    <label className="text-slate-400 block text-[9px] uppercase font-bold mb-1">
+                                    <label className="text-[#4A6753] block text-[9px] uppercase font-bold mb-1">
                                         Actual Serial Number (From physical label or iVMS):
                                     </label>
                                     <input
                                         type="text"
                                         value={realSerial}
                                         onChange={(e) => setRealSerial(e.target.value)}
-                                        className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-cyan-300 font-mono text-xs focus:ring-1 focus:ring-cyan-500 outline-none"
+                                        className="w-full px-2.5 py-1.5 bg-white border border-[#CFDCCB] rounded-lg text-blue-800 font-mono text-xs focus:ring-1 focus:ring-[#163022] outline-none"
                                         placeholder="e.g. DS-7716NI-I416P20210815CCRR..."
                                     />
                                 </div>
 
                                 <div>
-                                    <label className="text-slate-400 block text-[9px] uppercase font-bold mb-1">
+                                    <label className="text-[#4A6753] block text-[9px] uppercase font-bold mb-1">
                                         Firmware / Build:
                                     </label>
                                     <input
                                         type="text"
                                         value={realFirmware}
                                         onChange={(e) => setRealFirmware(e.target.value)}
-                                        className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-emerald-400 font-mono text-xs focus:ring-1 focus:ring-cyan-500 outline-none"
+                                        className="w-full px-2.5 py-1.5 bg-white border border-[#CFDCCB] rounded-lg text-emerald-800 font-mono text-xs focus:ring-1 focus:ring-[#163022] outline-none"
                                         placeholder="V4.74.015 build 240210"
                                     />
                                 </div>
 
                                 <div>
-                                    <label className="text-slate-400 block text-[9px] uppercase font-bold mb-1">
+                                    <label className="text-[#4A6753] block text-[9px] uppercase font-bold mb-1">
                                         IP Channels Configured:
                                     </label>
                                     <input
                                         type="number"
                                         value={realChannels}
                                         onChange={(e) => setRealChannels(Number(e.target.value))}
-                                        className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-blue-400 font-mono text-xs focus:ring-1 focus:ring-cyan-500 outline-none"
+                                        className="w-full px-2.5 py-1.5 bg-white border border-[#CFDCCB] rounded-lg text-[#163022] font-mono text-xs focus:ring-1 focus:ring-[#163022] outline-none"
                                         min={1}
                                         max={64}
                                     />
@@ -503,25 +503,25 @@ export const CameraVerificationModal: React.FC<CameraVerificationModalProps> = (
                             </div>
 
                             {phase2Notice && (
-                                <div className="p-2.5 rounded-lg bg-amber-950/40 border border-amber-800/40 text-[11px] text-amber-300 flex items-start gap-2">
-                                    <AlertTriangle size={14} className="shrink-0 mt-0.5 text-amber-400" />
+                                <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-300 text-[11px] text-amber-900 flex items-start gap-2">
+                                    <AlertTriangle size={14} className="shrink-0 mt-0.5 text-amber-600" />
                                     <span>{phase2Notice}</span>
                                 </div>
                             )}
 
                             {/* Direct CLI Test command */}
                             <div className="pt-1">
-                                <span className="text-[10px] text-slate-400 block mb-1 font-mono">
+                                <span className="text-[10px] text-[#4A6753] block mb-1 font-mono">
                                     Test credentials directly via Terminal / curl:
                                 </span>
-                                <div className="p-2 bg-slate-950 rounded-lg font-mono text-[10px] text-emerald-300 border border-slate-800 flex items-center justify-between overflow-x-auto">
+                                <div className="p-2 bg-white rounded-lg font-mono text-[10px] text-emerald-900 border border-[#D8E3D4] flex items-center justify-between overflow-x-auto shadow-2xs">
                                     <code>
                                         curl -k --digest -u {username}:{password ? '••••••' : 'PASSWORD'} http://{activeHost}:{httpPort}/ISAPI/System/deviceInfo
                                     </code>
                                     <button
                                         type="button"
                                         onClick={() => copyToClipboard(`curl -k --digest -u "${username}:${password}" http://${activeHost}:${httpPort}/ISAPI/System/deviceInfo`)}
-                                        className="ml-2 px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[9px] flex items-center gap-1 cursor-pointer shrink-0"
+                                        className="ml-2 px-2 py-0.5 bg-white hover:bg-[#EEF3EA] text-[#244130] border border-[#CFDCCB] rounded text-[9px] font-bold flex items-center gap-1 cursor-pointer shrink-0 transition-all duration-200"
                                     >
                                         <Copy size={10} /> Copy
                                     </button>
@@ -531,21 +531,17 @@ export const CameraVerificationModal: React.FC<CameraVerificationModalProps> = (
                     </div>
 
                     {/* PHASE 3: REAL STREAM INTEGRATION & IN-BROWSER SOLUTIONS */}
-                    <div className={`p-4 rounded-2xl border transition-all ${
-                        phase3Status === 'success' 
-                            ? 'bg-slate-900 border-slate-700 text-slate-100'
-                            : 'bg-slate-950 border-slate-800 text-slate-400'
-                    }`}>
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
+                    <div className="p-4 rounded-2xl border transition-all bg-white border-[#D8E3D4] text-[#244130] shadow-2xs">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[#D8E3D4]">
                             <div className="flex items-center gap-2.5">
                                 <div className="w-7 h-7 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-xs">
                                     3
                                 </div>
                                 <div>
-                                    <h4 className="text-xs font-black uppercase text-white flex items-center gap-2">
+                                    <h4 className="text-xs font-black uppercase text-[#163022] flex items-center gap-2">
                                         Phase 3: Live Video Stream & In-Browser Playback
                                     </h4>
-                                    <p className="text-[10px] text-slate-400">
+                                    <p className="text-[10px] text-[#4A6753]">
                                         RTSP Port {rtspPort} • Channel {streamChannel} ({streamType === 'main' ? '4K Main-Stream' : 'Sub-Stream 1080p'})
                                     </p>
                                 </div>
@@ -559,21 +555,21 @@ export const CameraVerificationModal: React.FC<CameraVerificationModalProps> = (
                                         setStreamChannel(Number(e.target.value));
                                         handleRefreshSnapshot();
                                     }}
-                                    className="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-white font-mono text-xs"
+                                    className="bg-white border border-[#CFDCCB] rounded-lg px-2 py-1 text-[#163022] font-mono text-xs focus:outline-none"
                                 >
                                     {Array.from({ length: realChannels }, (_, i) => i + 1).map(ch => (
                                         <option key={`chan-${ch}`} value={ch}>CH 0{ch}</option>
                                     ))}
                                 </select>
 
-                                <div className="flex bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[10px] font-bold">
+                                <div className="flex bg-[#EEF3EA] p-0.5 rounded-lg border border-[#D8E3D4] text-[10px] font-bold">
                                     <button
                                         type="button"
                                         onClick={() => {
                                             setStreamType('sub');
                                             handleRefreshSnapshot();
                                         }}
-                                        className={`px-2 py-0.5 rounded ${streamType === 'sub' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}
+                                        className={`px-2 py-0.5 rounded transition-all duration-200 ${streamType === 'sub' ? 'bg-[#163022] text-white' : 'text-[#4A6753] hover:text-[#163022]'}`}
                                     >
                                         Sub
                                     </button>
@@ -583,7 +579,7 @@ export const CameraVerificationModal: React.FC<CameraVerificationModalProps> = (
                                             setStreamType('main');
                                             handleRefreshSnapshot();
                                         }}
-                                        className={`px-2 py-0.5 rounded ${streamType === 'main' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}
+                                        className={`px-2 py-0.5 rounded transition-all duration-200 ${streamType === 'main' ? 'bg-[#163022] text-white' : 'text-[#4A6753] hover:text-[#163022]'}`}
                                     >
                                         Main
                                     </button>
@@ -593,14 +589,14 @@ export const CameraVerificationModal: React.FC<CameraVerificationModalProps> = (
 
                         {/* Player Tabs: 1. Live Snapshot | 2. WebRTC Bridge | 3. RTSP URL | 4. Browser Streaming Guide */}
                         <div className="mt-3">
-                            <div className="flex border-b border-slate-800 text-xs font-bold gap-2 mb-3">
+                            <div className="flex border-b border-[#D8E3D4] text-xs font-bold gap-2 mb-3">
                                 <button
                                     type="button"
                                     onClick={() => setPlayerTab('snapshot')}
-                                    className={`pb-2 px-1 border-b-2 transition-all cursor-pointer ${
+                                    className={`pb-2 px-1 border-b-2 transition-all duration-200 cursor-pointer ${
                                         playerTab === 'snapshot' 
-                                            ? 'border-cyan-400 text-cyan-300' 
-                                            : 'border-transparent text-slate-400 hover:text-slate-200'
+                                            ? 'border-blue-600 text-blue-700' 
+                                            : 'border-transparent text-[#4A6753] hover:text-[#163022]'
                                     }`}
                                 >
                                     📸 Direct HTTP Live Snapshot
@@ -608,10 +604,10 @@ export const CameraVerificationModal: React.FC<CameraVerificationModalProps> = (
                                 <button
                                     type="button"
                                     onClick={() => setPlayerTab('webrtc')}
-                                    className={`pb-2 px-1 border-b-2 transition-all cursor-pointer ${
+                                    className={`pb-2 px-1 border-b-2 transition-all duration-200 cursor-pointer ${
                                         playerTab === 'webrtc' 
-                                            ? 'border-blue-400 text-blue-300' 
-                                            : 'border-transparent text-slate-400 hover:text-slate-200'
+                                            ? 'border-blue-600 text-blue-700' 
+                                            : 'border-transparent text-[#4A6753] hover:text-[#163022]'
                                     }`}
                                 >
                                     ⚡ WebRTC / HLS Bridge (No App)
@@ -619,10 +615,10 @@ export const CameraVerificationModal: React.FC<CameraVerificationModalProps> = (
                                 <button
                                     type="button"
                                     onClick={() => setPlayerTab('rtsp')}
-                                    className={`pb-2 px-1 border-b-2 transition-all cursor-pointer ${
+                                    className={`pb-2 px-1 border-b-2 transition-all duration-200 cursor-pointer ${
                                         playerTab === 'rtsp' 
-                                            ? 'border-emerald-400 text-emerald-300' 
-                                            : 'border-transparent text-slate-400 hover:text-slate-200'
+                                            ? 'border-emerald-600 text-emerald-800' 
+                                            : 'border-transparent text-[#4A6753] hover:text-[#163022]'
                                     }`}
                                 >
                                     🔗 RTSP Stream & VLC Link
@@ -630,10 +626,10 @@ export const CameraVerificationModal: React.FC<CameraVerificationModalProps> = (
                                 <button
                                     type="button"
                                     onClick={() => setPlayerTab('guide')}
-                                    className={`pb-2 px-1 border-b-2 transition-all cursor-pointer ${
+                                    className={`pb-2 px-1 border-b-2 transition-all duration-200 cursor-pointer ${
                                         playerTab === 'guide' 
-                                            ? 'border-amber-400 text-amber-300' 
-                                            : 'border-transparent text-slate-400 hover:text-slate-200'
+                                            ? 'border-amber-600 text-amber-800' 
+                                            : 'border-transparent text-[#4A6753] hover:text-[#163022]'
                                     }`}
                                 >
                                     📖 How to Connect (Port 2006 Guide)
@@ -860,30 +856,30 @@ api:
                     </div>
 
                     {/* Master Verification Status Banner */}
-                    <div className="p-4 rounded-2xl bg-blue-950/30 border border-blue-500/40 text-blue-200 flex items-center justify-between gap-3">
+                    <div className="p-4 rounded-2xl bg-[#EEF5FB] border border-[#C5DCF2] text-[#1D4E89] flex items-center justify-between gap-3 shadow-2xs">
                         <div className="flex items-center gap-3">
-                            <ShieldCheck size={26} className="text-cyan-400 shrink-0" />
+                            <ShieldCheck size={26} className="text-blue-700 shrink-0" />
                             <div>
-                                <h4 className="text-xs font-black uppercase text-white">
+                                <h4 className="text-xs font-black uppercase text-[#1D4E89]">
                                     NVR Device Verified & Parameters Validated
                                 </h4>
-                                <p className="text-[11px] text-slate-300 mt-0.5">
-                                    Host: <strong className="text-white">{activeHost}</strong> • Access Port: <strong className="text-amber-400">{accessPort}</strong> • RTSP: <strong className="text-emerald-400">{rtspPort}</strong> • Serial: <strong className="text-cyan-300">{realSerial || 'Configured'}</strong>
+                                <p className="text-[11px] text-[#244130] mt-0.5">
+                                    Host: <strong className="text-[#163022]">{activeHost}</strong> • Access Port: <strong className="text-amber-800">{accessPort}</strong> • RTSP: <strong className="text-emerald-800">{rtspPort}</strong> • Serial: <strong className="text-blue-800">{realSerial || 'Configured'}</strong>
                                 </p>
                             </div>
                         </div>
 
-                        <span className="px-3 py-1 rounded-xl text-xs font-black uppercase tracking-wider bg-emerald-600 text-white shrink-0">
+                        <span className="px-3 py-1 rounded-xl text-xs font-black uppercase tracking-wider bg-emerald-600 text-white shrink-0 shadow-2xs">
                             Verified
                         </span>
                     </div>
                 </div>
 
                 {/* Footer Controls */}
-                <div className="p-6 border-t border-slate-800 flex items-center justify-between bg-slate-950/70">
+                <div className="p-6 border-t border-[#D8E3D4] flex items-center justify-between bg-[#EEF3EA]">
                     <button
                         onClick={onClose}
-                        className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer"
+                        className="px-5 py-2.5 bg-white hover:bg-slate-700 text-[#4A6753] hover:text-white border border-[#CFDCCB] rounded-xl text-xs font-black uppercase tracking-wider shadow-2xs transition-all duration-200 cursor-pointer"
                     >
                         Cancel
                     </button>
@@ -892,7 +888,7 @@ api:
                         <button
                             onClick={handleStartVerification}
                             disabled={currentPhase === 'PHASE_1_PING' || currentPhase === 'PHASE_2_AUTH' || currentPhase === 'PHASE_3_STREAM'}
-                            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-blue-600/20 active:scale-95"
+                            className="px-5 py-2.5 bg-white hover:bg-blue-600 text-[#244130] hover:text-white border border-[#CFDCCB] hover:border-blue-600 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-2 cursor-pointer shadow-2xs active:scale-95"
                         >
                             <RefreshCw size={14} className={currentPhase !== 'IDLE' && currentPhase !== 'SUCCESS' && currentPhase !== 'FAILED' ? 'animate-spin' : ''} />
                             <span>{currentPhase === 'IDLE' ? 'Run 3-Phase Verification' : 'Re-Run Verification'}</span>
@@ -900,7 +896,7 @@ api:
 
                         <button
                             onClick={handleConfirmAndSave}
-                            className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-600/30 active:scale-95"
+                            className="px-6 py-2.5 bg-white hover:bg-emerald-600 text-[#244130] hover:text-white border border-[#CFDCCB] hover:border-emerald-600 rounded-xl text-xs font-black uppercase tracking-widest transition-all duration-200 flex items-center gap-2 cursor-pointer shadow-2xs active:scale-95"
                         >
                             <Check size={16} /> Save & Confirm Device
                         </button>

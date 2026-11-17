@@ -1,12 +1,12 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import type { AssistantMessage, Note, User } from '../types';
 import { SparklesIcon, CommandLineIcon, ArrowUpCircleIcon, MicrophoneIcon, XIcon, ChevronDownIcon, ChevronUpIcon, ChatBubbleLeftRightIcon, PaperAirplaneIcon, StopIcon, DocumentTextIcon } from './Icons';
 import { 
   MessageSquare, Video, GripHorizontal, ChevronDown, Sparkles, Mic, 
   Settings, CheckCircle2, AlertTriangle, RefreshCw, Key, Trash2, ExternalLink, ShieldCheck,
-  Crown, Leaf, Briefcase, TrendingUp, Layers, Eye, History, FileText, Stethoscope,
-  Maximize2, Minimize2, Minus, X, ArrowLeftRight, ArrowUpDown,
-  Calendar, FileSpreadsheet, FolderOpen, Search
+  Crown, Leaf, Briefcase, TrendingUp, Layers, Eye, EyeOff, History, FileText, Stethoscope,
+  Maximize2, Minimize2, Minus, X, ArrowLeftRight, ArrowUpDown, MoreHorizontal,
+  Calendar, FileSpreadsheet, FolderOpen, Search, Server
 } from 'lucide-react';
 import AiAnalysisSuite from './AiAnalysisSuite';
 import AiAnalysisModal from './AiAnalysisModal';
@@ -17,11 +17,17 @@ import { safeStorage } from '../services/storageService';
 import { useLanguage } from '../contexts/LanguageContext';
 import { toast } from 'sonner';
 import { 
+  cleanApiKey,
   getActiveGeminiApiKey, 
   setCustomGeminiApiKey, 
   testGeminiApiKey, 
-  PRIMARY_GEMINI_MODEL 
+  triggerAiDiagnosticsModal,
+  triggerAiTopUpModal,
+  PRIMARY_GEMINI_MODEL,
+  openAiManagementConsole,
+  type GeminiTestResult
 } from '../services/geminiService';
+import { AiSourceBadge } from './AiSourceBadge';
 
 // FIX: Add type definitions for the Web Speech API to resolve TS errors.
 interface SpeechRecognitionEvent extends Event {
@@ -72,6 +78,9 @@ interface GlobalAssistantPanelProps {
   activeOrgId?: string;
   activeOrgName?: string;
   currentUser?: User | null;
+  isSystemAdmin?: boolean;
+  isRoot?: boolean;
+  activeOrgRole?: string;
   onOpenChat?: () => void;
   onOpenMeet?: () => void;
   currentAiMode?: AIAssistantMode;
@@ -91,25 +100,60 @@ interface GlobalAssistantPanelProps {
 const Message: React.FC<{ message: AssistantMessage; onOpenSettings?: () => void }> = ({ message, onOpenSettings }) => {
     const isUser = message.type === 'user';
     const isError = message.type === 'error';
+    const isLocal = !isUser && !isError && (
+        message.source === 'local' || 
+        message.isAutonomousFallback || 
+        message.modelUsed === 'autonomous-agri-core' ||
+        message.text.includes('Autonomous Agronomic') ||
+        message.text.includes('Autonomous Agricultural') ||
+        message.text.includes('Knowledge Engine Local Core')
+    );
 
-    const baseClasses = 'p-3 rounded-lg max-w-sm text-sm whitespace-pre-wrap';
-    const userClasses = 'bg-blue-500 text-white self-end';
-    const botClasses = 'bg-gray-200 text-gray-800 self-start';
-    const errorClasses = 'bg-red-50 border border-red-200 text-red-800 self-start shadow-sm';
+    const baseClasses = 'p-3.5 rounded-2xl max-w-sm sm:max-w-md text-sm whitespace-pre-wrap transition-all';
+    const userClasses = 'bg-blue-600 text-white self-end shadow-sm rounded-tr-xs';
+    // YELLOW COLOR FOR LOCAL AI AS REQUESTED:
+    const localClasses = 'bg-amber-50 border-2 border-amber-400 text-amber-950 self-start shadow-md rounded-tl-xs';
+    const cloudClasses = 'bg-slate-100 text-slate-800 self-start border border-slate-200/80 shadow-xs rounded-tl-xs';
+    const errorClasses = 'bg-red-50 border-2 border-red-200 text-red-900 self-start shadow-sm rounded-tl-xs';
     
-    const icon = isUser ? <CommandLineIcon className="h-5 w-5 text-blue-200" /> : <SparklesIcon className="h-5 w-5 text-green-500" />;
+    const icon = isUser 
+        ? <CommandLineIcon className="h-5 w-5 text-blue-200" /> 
+        : isLocal 
+        ? <span className="p-1 rounded-lg bg-amber-200 text-amber-800 flex items-center justify-center"><Server className="h-4 w-4" /></span>
+        : <SparklesIcon className="h-5 w-5 text-green-500" />;
     
     const isKeyIssue = isError && (message.text.includes("Key") || message.text.includes("Quota") || message.text.includes("429") || message.text.includes("Settings"));
 
     return (
         <div className={`flex items-start gap-2.5 ${isUser ? 'justify-end' : ''}`}>
             {!isUser && <div className="flex-shrink-0 mt-1">{icon}</div>}
-            <div className={`${baseClasses} ${isUser ? userClasses : isError ? errorClasses : botClasses}`}>
-                <div>{message.text}</div>
+            <div className={`${baseClasses} ${isUser ? userClasses : isError ? errorClasses : isLocal ? localClasses : cloudClasses}`}>
+                
+                {/* Identification Header / Badge */}
+                {!isUser && !isError && (
+                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-black/5 gap-2">
+                        <AiSourceBadge 
+                            source={isLocal ? 'local' : 'cloud'}
+                            isLocal={isLocal}
+                            reason={message.fallbackReason}
+                            code={message.fallbackCode}
+                            modelUsed={message.modelUsed}
+                            notice={message.upstreamNotice}
+                        />
+                        {message.timestamp && (
+                            <span className="text-[10px] font-mono text-slate-400">
+                                {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                        )}
+                    </div>
+                )}
+
+                <div className="leading-relaxed font-sans">{message.text}</div>
+
                 {isKeyIssue && onOpenSettings && (
                     <button
                         onClick={onOpenSettings}
-                        className="mt-2.5 text-xs font-semibold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors shadow-xs"
+                        className="mt-2.5 text-xs font-semibold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
                     >
                         <Settings className="w-3.5 h-3.5 text-emerald-700" />
                         Configure Gemini API Key (⚙️)
@@ -133,6 +177,9 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
   activeOrgId = '',
   activeOrgName = '',
   currentUser = null,
+  isSystemAdmin: isSystemAdminProp = false,
+  isRoot: isRootProp = false,
+  activeOrgRole = '',
   onOpenChat,
   onOpenMeet,
   currentAiMode = 'standard',
@@ -203,16 +250,131 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
   const [isGoogleHubOpen, setIsGoogleHubOpen] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [isTestingKey, setIsTestingKey] = useState(false);
-  const [testStatus, setTestStatus] = useState<{ ok: boolean; message: string; latencyMs?: number; model?: string } | null>(null);
+  const [testStatus, setTestStatus] = useState<(GeminiTestResult & { model?: string }) | null>(null);
   const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'info'; message: string } | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const isSystemAdmin = Boolean(
-      (currentUser as any)?.isSystemAdmin || 
-      (currentUser as any)?.role === 'system_admin' || 
-      ((currentUser as any)?.roles as any)?.includes?.('system_admin')
-  );
+  // Floating Tools Dock Minimized & Enabled State
+  const [isDockMinimized, setIsDockMinimized] = useState<boolean>(() => {
+    return safeStorage.getItem('agrimap_floating_dock_minimized') === 'true';
+  });
+
+  const [isDockVisible, setIsDockVisible] = useState<boolean>(() => {
+    return safeStorage.getItem('agrimap_floating_dock_enabled') !== 'false';
+  });
+
+  const toggleDockMinimized = useCallback((explicit?: boolean) => {
+    setIsDockMinimized(prev => {
+      const next = typeof explicit === 'boolean' ? explicit : !prev;
+      safeStorage.setItem('agrimap_floating_dock_minimized', String(next));
+      toast.info(
+        next 
+          ? (isKa ? 'ხელსაწყოების პანელი ჩაიკეცა ... ღილაკში' : 'Tools dock minimized to ... button') 
+          : (isKa ? 'ხელსაწყოების პანელი გაიშალა' : 'Floating tools dock expanded')
+      );
+      return next;
+    });
+  }, [isKa]);
+
+  const toggleDockVisibility = useCallback((explicit?: boolean) => {
+    setIsDockVisible(prev => {
+      const next = typeof explicit === 'boolean' ? explicit : !prev;
+      safeStorage.setItem('agrimap_floating_dock_enabled', String(next));
+      toast.info(
+        next 
+          ? (isKa ? 'მცურავი ხელსაწყოების პანელი ჩართულია' : 'Floating tools enabled') 
+          : (isKa ? 'მცურავი ხელსაწყოების პანელი დამალულია' : 'Floating tools hidden')
+      );
+      return next;
+    });
+  }, [isKa]);
+
+  useEffect(() => {
+    const handleToggle = (e: any) => {
+      if (typeof e.detail?.visible === 'boolean') {
+        toggleDockVisibility(e.detail.visible);
+      } else if (typeof e.detail?.minimized === 'boolean') {
+        toggleDockMinimized(e.detail.minimized);
+      } else {
+        toggleDockVisibility();
+      }
+    };
+    window.addEventListener('agrimap_toggle_floating_dock', handleToggle);
+    return () => window.removeEventListener('agrimap_toggle_floating_dock', handleToggle);
+  }, [toggleDockVisibility, toggleDockMinimized]);
+
+  const { isSystemAdmin, hasPrivilegedGoogleAiAccess } = useMemo(() => {
+    if (!currentUser || currentUser.isGuest) {
+      return { isSystemAdmin: false, hasPrivilegedGoogleAiAccess: false };
+    }
+
+    const normalizedEmail = (currentUser.email || '').trim().toLowerCase();
+    const systemAdminEmails = [
+      'admin@agrimap.io',
+      'nishno@agrimap.pro',
+      'giorgi.nishno@gmail.com',
+      'giorgi@agrimap.pro',
+    ];
+    const isSysEmail =
+      systemAdminEmails.includes(normalizedEmail) ||
+      normalizedEmail.endsWith('.agrimap.pro') ||
+      normalizedEmail.endsWith('@agrimap.pro');
+
+    const rawRoles: string[] = [
+      ...(Array.isArray(currentUser.roles) ? currentUser.roles : []),
+      typeof (currentUser as any)?.role === 'string' ? (currentUser as any).role : '',
+      typeof activeOrgRole === 'string' ? activeOrgRole : '',
+    ]
+      .filter(Boolean)
+      .map((r) => r.trim().toLowerCase());
+
+    const isNonAdminAgrimapIoAccount =
+      normalizedEmail.endsWith('@agrimap.io') && normalizedEmail !== 'admin@agrimap.io';
+
+    const sysAdminDetected = Boolean(
+      (isSystemAdminProp && !isNonAdminAgrimapIoAccount) ||
+      (currentUser as any)?.isSystemAdmin ||
+      isSysEmail ||
+      rawRoles.some((r) => r === 'system_admin' || r === 'system-admin' || r === 'system administrator')
+    );
+
+    const rootDetected = Boolean(
+      (isRootProp && !isNonAdminAgrimapIoAccount) ||
+      (currentUser as any)?.isRoot ||
+      rawRoles.some((r) => r === 'root_super_admin' || r === 'root') ||
+      currentUser.individualUniqueId?.startsWith('I-001') ||
+      currentUser.globalUniqueId?.startsWith('G-001')
+    );
+
+    const privilegedRoleDetected = rawRoles.some(
+      (r) =>
+        r === 'admin' ||
+        r === 'founder' ||
+        r === 'co-founder' ||
+        r === 'cofounder' ||
+        r === 'co_founder' ||
+        r === 'root_super_admin' ||
+        r === 'root' ||
+        r === 'system_admin' ||
+        r === 'system-admin' ||
+        r === 'system administrator'
+    );
+
+    const activeOrg = activeOrgId
+      ? organizations?.find((o) => o?.id === activeOrgId)
+      : null;
+    const isOrgCreator = Boolean(
+      activeOrg && currentUser.id && activeOrg.createdBy === currentUser.id
+    );
+
+    return {
+      isSystemAdmin: sysAdminDetected,
+      hasPrivilegedGoogleAiAccess: Boolean(
+        sysAdminDetected || rootDetected || privilegedRoleDetected || isOrgCreator
+      ),
+    };
+  }, [currentUser, isSystemAdminProp, isRootProp, activeOrgRole, activeOrgId, organizations]);
 
   // Load currently active key on mount and when settings opens
   useEffect(() => {
@@ -220,23 +382,27 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
     setApiKeyInput(key);
   }, [isSettingsOpen]);
 
-  const handleSaveApiKey = () => {
-    const trimmed = apiKeyInput.trim();
-    setCustomGeminiApiKey(trimmed);
+  const handleSaveApiKey = async () => {
+    const cleaned = cleanApiKey(apiKeyInput);
+    await setCustomGeminiApiKey(cleaned);
     setSaveStatus({
       type: 'success',
-      message: trimmed ? 'Gemini API Key saved and active in browser session.' : 'Custom API key removed. Reverted to environment default.'
+      message: cleaned 
+        ? (isKa ? 'Gemini API გასაღები შეინახა და სერვერზე გააქტიურდა!' : 'Gemini API Key saved and synced to server runtime!') 
+        : (isKa ? 'პერსონალური გასაღები წაიშალა.' : 'Custom API key removed. Reverted to server default.')
     });
     setTestStatus(null);
     setTimeout(() => setSaveStatus(null), 3500);
+    // Automatically test the newly saved key
+    handleTestConnection();
   };
 
-  const handleClearApiKey = () => {
-    setCustomGeminiApiKey('');
+  const handleClearApiKey = async () => {
+    await setCustomGeminiApiKey('');
     setApiKeyInput('');
     setSaveStatus({
       type: 'info',
-      message: 'Custom API key cleared. Reverted to environment configuration.'
+      message: isKa ? 'პერსონალური გასაღები გასუფთავდა.' : 'Custom API key cleared. Reverted to environment configuration.'
     });
     setTestStatus(null);
     setTimeout(() => setSaveStatus(null), 3500);
@@ -246,11 +412,19 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
     setIsTestingKey(true);
     setTestStatus(null);
     try {
-      const result = await testGeminiApiKey(apiKeyInput.trim() || undefined);
+      const cleaned = cleanApiKey(apiKeyInput);
+      const result = await testGeminiApiKey(cleaned || undefined);
       setTestStatus(result);
+      if (result.ok) {
+        toast.success(isKa ? 'კავშირი დადასტურებულია!' : 'Gemini API connection confirmed!');
+      } else if (result.statusCode === 402) {
+        toast.warning(isKa ? 'პროექტს ამოეწურა კრედიტები (Code 402)' : 'Project prepayment credits depleted (Code 402)');
+      }
     } catch (e: any) {
       setTestStatus({
         ok: false,
+        success: false,
+        statusCode: 500,
         message: e?.message || 'Failed to complete test.'
       });
     } finally {
@@ -327,14 +501,18 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
 
   const commsContainerRef = useRef<HTMLDivElement | null>(null);
   const commsDragRef = useRef<{ startX: number; startY: number; startLeft: number; startTop: number } | null>(null);
+  const hasCommsDraggedRef = useRef<boolean>(false);
 
-  const handleCommsPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-      if ((e.target as HTMLElement).closest('button, input, a, textarea')) return;
+  const handleCommsPointerDown = (e: React.PointerEvent<HTMLDivElement | HTMLButtonElement>) => {
+      const target = e.target as HTMLElement;
+      // Allow dragging on drag handle or drag-target buttons (like the minimized ... button), but exclude other buttons
+      if (!target.closest('[data-drag-target="true"]') && target.closest('button, input, a, textarea')) return;
       e.preventDefault();
       try {
           e.currentTarget.setPointerCapture(e.pointerId);
       } catch (err) {}
 
+      hasCommsDraggedRef.current = false;
       const rect = commsContainerRef.current?.getBoundingClientRect();
       const currentLeft = rect ? rect.left : (window.innerWidth - 80);
       const currentTop = rect ? rect.top : (window.innerHeight - 280);
@@ -347,17 +525,20 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
       };
   };
 
-  const handleCommsPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+  const handleCommsPointerMove = (e: React.PointerEvent<HTMLDivElement | HTMLButtonElement>) => {
       if (!commsDragRef.current) return;
       e.preventDefault();
       const deltaX = e.clientX - commsDragRef.current.startX;
       const deltaY = e.clientY - commsDragRef.current.startY;
+      if (Math.hypot(deltaX, deltaY) > 5) {
+          hasCommsDraggedRef.current = true;
+      }
       const newLeft = Math.max(8, Math.min(window.innerWidth - 65, commsDragRef.current.startLeft + deltaX));
-      const newTop = Math.max(8, Math.min(window.innerHeight - 270, commsDragRef.current.startTop + deltaY));
+      const newTop = Math.max(8, Math.min(window.innerHeight - 80, commsDragRef.current.startTop + deltaY));
       setCommsPos({ x: Math.round(newLeft), y: Math.round(newTop) });
   };
 
-  const handleCommsPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+  const handleCommsPointerUp = (e: React.PointerEvent<HTMLDivElement | HTMLButtonElement>) => {
       if (!commsDragRef.current) return;
       try {
           e.currentTarget.releasePointerCapture(e.pointerId);
@@ -555,28 +736,108 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
   if (isCollapsed) {
     return (
       <>
-        <div 
-          ref={commsContainerRef}
-          style={{
-              position: 'fixed',
-              ...(commsPos ? { left: `${commsPos.x}px`, top: `${commsPos.y}px` } : { right: '16px', bottom: '80px' }),
-              zIndex: 8500
-          }}
-          className="select-none pointer-events-auto"
-        >
-            {/* Floating Action Buttons: Two-Piece Segmented Dock with Correction Tool */}
+        {/* Discreet Edge Restorer when floating dock is completely hidden/disabled */}
+        {!isDockVisible && (
+          <div 
+            style={{ position: 'fixed', right: '0px', bottom: '90px', zIndex: 8500 }}
+            className="select-none pointer-events-auto"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                toggleDockVisibility(true);
+                toggleDockMinimized(false);
+              }}
+              className="group flex items-center gap-1.5 px-2.5 py-2 bg-[#FAFBF8] border-l-2 border-y border-[#D8E3D4] hover:border-emerald-600 rounded-l-2xl shadow-xl hover:bg-emerald-50 text-stone-700 hover:text-emerald-800 transition-all cursor-pointer font-bold"
+              title={isKa ? "ხელსაწყოების პანელის ჩვენება (ჩართვა)" : "Show Floating Tools Dock (Enable)"}
+            >
+              <MoreHorizontal size={16} className="text-emerald-700 group-hover:scale-110 transition-transform" />
+              <span className="text-[11px] font-black hidden group-hover:inline transition-all tracking-wider">
+                {isKa ? "ხელსაწყოები" : "Tools"}
+              </span>
+            </button>
+          </div>
+        )}
+
+        {/* MINIMIZED STATE: Sleek compact ... (three dots) floating button */}
+        {isDockVisible && isDockMinimized && (
+          <div 
+            ref={commsContainerRef}
+            style={{
+                position: 'fixed',
+                ...(commsPos ? { left: `${commsPos.x}px`, top: `${commsPos.y}px` } : { right: '16px', bottom: '80px' }),
+                zIndex: 8500
+            }}
+            className="select-none pointer-events-auto"
+          >
+            <div className="relative group/dots">
+              <button
+                type="button"
+                data-drag-target="true"
+                onPointerDown={handleCommsPointerDown}
+                onPointerMove={handleCommsPointerMove}
+                onPointerUp={handleCommsPointerUp}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!hasCommsDraggedRef.current) {
+                    toggleDockMinimized(false);
+                  }
+                }}
+                className="w-12 h-12 rounded-full bg-[#FAFBF8] hover:bg-white text-stone-800 hover:text-emerald-700 border-2 border-[#D8E3D4] hover:border-emerald-500 shadow-2xl flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer relative"
+                title={isKa ? "ხელსაწყოების პანელის გაშლა (დააჭირეთ გასაშლელად)" : "Expand Floating Tools (Click to expand)"}
+              >
+                <MoreHorizontal className="w-6 h-6 transition-transform group-hover/dots:scale-110 text-emerald-800" />
+                {notes && notes.length > 0 && (
+                  <span className="absolute -top-1 -right-1 px-1.5 py-0.2 min-w-4 h-4 rounded-full bg-rose-500 text-white font-mono text-[9px] font-black flex items-center justify-center border border-white shadow-sm">
+                    {notes.length}
+                  </span>
+                )}
+              </button>
+
+              {/* Tooltip on hover */}
+              <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-[#FAFBF8] text-stone-800 text-[11px] font-bold rounded-xl whitespace-nowrap shadow-2xl border border-stone-200 opacity-0 group-hover/dots:opacity-100 pointer-events-none transition-all duration-150 transform translate-x-2 group-hover/dots:translate-x-0 z-50 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>{isKa ? "ხელსაწყოების პანელი (...) • დააჭირეთ გასაშლელად" : "Floating Tools (...) • Click to expand"}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* EXPANDED STATE: Floating Action Buttons: Two-Piece Segmented Dock */}
+        {isDockVisible && !isDockMinimized && (
+          <div 
+            ref={commsContainerRef}
+            style={{
+                position: 'fixed',
+                ...(commsPos ? { left: `${commsPos.x}px`, top: `${commsPos.y}px` } : { right: '16px', bottom: '80px' }),
+                zIndex: 8500
+            }}
+            className="select-none pointer-events-auto"
+          >
             <div className="flex flex-col items-center gap-2 group">
-                {/* Piece 0: Drag Handle & Alignment / Position Correction Tool */}
-                <div className="flex items-center gap-1.5 p-1 bg-slate-950/90 rounded-full border border-slate-700/80 shadow-lg backdrop-blur-md transition-opacity">
+                {/* Piece 0: Drag Handle, Minimize to ..., Alignment Correction, & Hide Tool */}
+                <div className="flex items-center gap-1.5 p-1 bg-[#FAFBF8] rounded-full border border-stone-200/90 shadow-md backdrop-blur-md transition-opacity">
+                    {/* Drag Handle */}
                     <div 
+                        data-drag-target="true"
                         onPointerDown={handleCommsPointerDown}
                         onPointerMove={handleCommsPointerMove}
                         onPointerUp={handleCommsPointerUp}
-                        className="p-1 text-slate-400 hover:text-white rounded-full transition-all cursor-move flex items-center justify-center"
+                        className="p-1 text-stone-400 hover:text-stone-800 rounded-full transition-all cursor-move flex items-center justify-center"
                         title={isKa ? "გადაადგილება ეკრანზე" : "Drag to reposition floating tools"}
                     >
                         <GripHorizontal size={13} />
                     </div>
+
+                    {/* Minimize to ... button */}
+                    <button
+                        type="button"
+                        onClick={() => toggleDockMinimized(true)}
+                        className="p-1 text-stone-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-full transition-all cursor-pointer flex items-center justify-center"
+                        title={isKa ? "ჩაკეცვა ... ღილაკში (მეორე დაწკაპუნებით გაიშლება)" : "Minimize to ... button (click again to expand)"}
+                    >
+                        <MoreHorizontal size={13} className="hover:scale-110 transition-transform" />
+                    </button>
 
                     {/* Dedicated Correction / Position Reset Tool */}
                     <button
@@ -588,21 +849,31 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
                             safeStorage.removeItem('agrimap_comms_hub_pos');
                             toast.success(isKa ? "ღილაკების პოზიცია და გასწორება აღდგენილია!" : "Floating tools position and alignment corrected!");
                         }}
-                        className="p-1 text-cyan-400 hover:text-cyan-200 hover:bg-slate-800 rounded-full transition-all cursor-pointer flex items-center justify-center"
+                        className="p-1 text-teal-600 hover:text-teal-800 hover:bg-teal-50 rounded-full transition-all cursor-pointer flex items-center justify-center"
                         title={isKa ? "კორექციის ხელსაწყო: პოზიციის და გასწორების აღდგენა" : "Correction Tool: Reset & Align Floating Tools Position"}
                     >
                         <RefreshCw size={11} className="hover:rotate-180 transition-transform duration-300" />
                     </button>
+
+                    {/* Hide / Disable Floating Dock */}
+                    <button
+                        type="button"
+                        onClick={() => toggleDockVisibility(false)}
+                        className="p-1 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-full transition-all cursor-pointer flex items-center justify-center"
+                        title={isKa ? "პანელის დამალვა (ჩართვა ეკრანის კუთხიდან ან მენიუდან)" : "Hide Floating Dock (Can re-enable from edge or menu)"}
+                    >
+                        <EyeOff size={11} />
+                    </button>
                 </div>
 
                 {/* PIECE 1: Google & Team Communication Hub (Google Suite, Meet, Chat) */}
-                <div className="p-1.5 bg-slate-950/80 backdrop-blur-md rounded-full border border-slate-700/60 shadow-xl flex flex-col items-center gap-2">
+                <div className="p-1.5 bg-[#FAFBF8] backdrop-blur-md rounded-full border border-stone-200/90 shadow-xl flex flex-col items-center gap-2">
                     {/* 1. Google Workspace & Farm Suite Button */}
                     <div className="relative group/btn">
                         <button
                             type="button"
                             onClick={() => setIsGoogleHubOpen(true)}
-                            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-white hover:bg-slate-50 text-slate-800 shadow-xl shadow-slate-900/40 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border-2 border-slate-200/90 relative"
+                            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-white hover:bg-slate-50 text-slate-800 shadow-xl shadow-slate-900/10 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border-2 border-stone-200/90 relative"
                             title={isKa ? "Google Workspace & საველე სერვისები" : "Google Workspace Suite & Farm Tools"}
                         >
                             <svg className="w-5 h-5 sm:w-6 sm:h-6" viewBox="0 0 24 24">
@@ -612,56 +883,60 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
                                 <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
                             </svg>
                         </button>
-                        <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-slate-900/95 text-white text-[11px] font-bold rounded-xl whitespace-nowrap shadow-xl border border-slate-700/80 opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-all duration-150 transform translate-x-2 group-hover/btn:translate-x-0 z-50">
+                        <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-[#FAFBF8] text-stone-800 text-[11px] font-bold rounded-xl whitespace-nowrap shadow-xl border border-stone-200 opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-all duration-150 transform translate-x-2 group-hover/btn:translate-x-0 z-50">
                             {isKa ? 'Google ხელსაწყოები' : 'Google Workspace'}
                         </div>
                     </div>
 
-                    {/* 2. Google Meet Video Button */}
-                    <div className="relative group/btn">
-                        <button
-                            type="button"
-                            onClick={() => {
-                                if (onOpenMeet) onOpenMeet();
-                                else window.dispatchEvent(new CustomEvent('agrimap_open_meet'));
-                            }}
-                            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-xl shadow-emerald-950/40 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border border-emerald-300/40 relative"
-                            title={isKa ? "Google Meet - ვიდეო ოთახი & ეკრანის გაზიარება" : "Google Meet - Live Field Video Room & Screen Share"}
-                        >
-                            <Video className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-                        </button>
-                        <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-slate-900/95 text-white text-[11px] font-bold rounded-xl whitespace-nowrap shadow-xl border border-slate-700/80 opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-all duration-150 transform translate-x-2 group-hover/btn:translate-x-0 z-50">
-                            Google Meet
-                        </div>
-                    </div>
+                    {/* 2. Google Meet Video Button (Admins, Founders, Co-Founders, Root & System Admins only) */}
+                    {hasPrivilegedGoogleAiAccess && (
+                      <div className="relative group/btn">
+                          <button
+                              type="button"
+                              onClick={() => {
+                                  if (onOpenMeet) onOpenMeet();
+                                  else window.dispatchEvent(new CustomEvent('agrimap_open_meet'));
+                              }}
+                              className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-xl shadow-emerald-950/20 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border border-emerald-300/40 relative"
+                              title={isKa ? "Google Meet - ვიდეო ოთახი & ეკრანის გაზიარება" : "Google Meet - Live Field Video Room & Screen Share"}
+                          >
+                              <Video className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                          </button>
+                          <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-[#FAFBF8] text-stone-800 text-[11px] font-bold rounded-xl whitespace-nowrap shadow-xl border border-stone-200 opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-all duration-150 transform translate-x-2 group-hover/btn:translate-x-0 z-50">
+                              Google Meet
+                          </div>
+                      </div>
+                    )}
 
-                    {/* 3. Google Chat Button */}
-                    <div className="relative group/btn">
-                        <button
-                            type="button"
-                            onClick={() => {
-                                if (onOpenChat) onOpenChat();
-                                else window.dispatchEvent(new CustomEvent('agrimap_open_chat'));
-                            }}
-                            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 hover:from-blue-500 hover:to-indigo-400 text-white shadow-xl shadow-blue-950/40 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border border-blue-300/40 relative"
-                            title={isKa ? "Google Chat & საველე ინტერკომი" : "Google Chat - Field Spaces & Team Intercom"}
-                        >
-                            <MessageSquare className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-                        </button>
-                        <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-slate-900/95 text-white text-[11px] font-bold rounded-xl whitespace-nowrap shadow-xl border border-slate-700/80 opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-all duration-150 transform translate-x-2 group-hover/btn:translate-x-0 z-50">
-                            Google Chat
-                        </div>
-                    </div>
+                    {/* 3. Google Chat Button (Admins, Founders, Co-Founders, Root & System Admins only) */}
+                    {hasPrivilegedGoogleAiAccess && (
+                      <div className="relative group/btn">
+                          <button
+                              type="button"
+                              onClick={() => {
+                                  if (onOpenChat) onOpenChat();
+                                  else window.dispatchEvent(new CustomEvent('agrimap_open_chat'));
+                              }}
+                              className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 hover:from-blue-500 hover:to-indigo-400 text-white shadow-xl shadow-blue-950/20 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border border-blue-300/40 relative"
+                              title={isKa ? "Google Chat & საველე ინტერკომი" : "Google Chat - Field Spaces & Team Intercom"}
+                          >
+                              <MessageSquare className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                          </button>
+                          <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-[#FAFBF8] text-stone-800 text-[11px] font-bold rounded-xl whitespace-nowrap shadow-xl border border-stone-200 opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-all duration-150 transform translate-x-2 group-hover/btn:translate-x-0 z-50">
+                              Google Chat
+                          </div>
+                      </div>
+                    )}
                 </div>
 
                 {/* PIECE 2: AI Intelligence & Field Operations (Notes, AI Copilot, God AI) */}
-                <div className="p-1.5 bg-slate-950/80 backdrop-blur-md rounded-full border border-slate-700/60 shadow-xl flex flex-col items-center gap-2">
+                <div className="p-1.5 bg-[#FAFBF8] backdrop-blur-md rounded-full border border-stone-200/90 shadow-xl flex flex-col items-center gap-2">
                     {/* 4. AI Voice Notes Button */}
                     <div className="relative group/btn">
                         <button
                             type="button"
                             onClick={() => setIsVoiceNotesOpen(true)}
-                            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-tr from-purple-600 to-pink-500 hover:from-purple-500 hover:to-pink-400 text-white shadow-xl shadow-purple-950/40 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border border-purple-300/40 relative"
+                            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-tr from-purple-600 to-pink-500 hover:from-purple-500 hover:to-pink-400 text-white shadow-xl shadow-purple-950/20 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border border-purple-300/40 relative"
                             title={isKa ? "AI ხმოვანი & საველე ჩანაწერები" : "AI Voice & Audio Field Notes"}
                         >
                             <Mic className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
@@ -671,7 +946,7 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
                                 </span>
                             )}
                         </button>
-                        <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-slate-900/95 text-white text-[11px] font-bold rounded-xl whitespace-nowrap shadow-xl border border-slate-700/80 opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-all duration-150 transform translate-x-2 group-hover/btn:translate-x-0 z-50">
+                        <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-[#FAFBF8] text-stone-800 text-[11px] font-bold rounded-xl whitespace-nowrap shadow-xl border border-stone-200 opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-all duration-150 transform translate-x-2 group-hover/btn:translate-x-0 z-50">
                             {isKa ? `ხმოვანი ჩანაწერები (${notes?.length || 0})` : `Voice Notes (${notes?.length || 0})`}
                         </div>
                     </div>
@@ -681,37 +956,40 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
                         <button
                             type="button"
                             onClick={() => setIsCollapsed(false)}
-                            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-tr from-cyan-600 via-teal-500 to-emerald-500 hover:from-cyan-500 hover:to-emerald-400 text-white shadow-xl shadow-cyan-950/40 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border border-cyan-300/40 relative"
+                            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-tr from-cyan-600 via-teal-500 to-emerald-500 hover:from-cyan-500 hover:to-emerald-400 text-white shadow-xl shadow-cyan-950/20 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border border-cyan-300/40 relative"
                             title={isKa ? "AI აგრონომიული ასისტენტი & დიაგნოსტიკა" : "AI Agronomist Assistant & Diagnostic Copilot"}
                         >
                             <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                         </button>
-                        <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-slate-900/95 text-white text-[11px] font-bold rounded-xl whitespace-nowrap shadow-xl border border-slate-700/80 opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-all duration-150 transform translate-x-2 group-hover/btn:translate-x-0 z-50">
+                        <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-[#FAFBF8] text-stone-800 text-[11px] font-bold rounded-xl whitespace-nowrap shadow-xl border border-stone-200 opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-all duration-150 transform translate-x-2 group-hover/btn:translate-x-0 z-50">
                             AI Assistant
                         </div>
                     </div>
 
-                    {/* 6. God AI Hub / Root Console Button */}
-                    <div className="relative group/btn">
-                        <button
-                            type="button"
-                            onClick={() => setIsGodAIHubOpen(true)}
-                            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-tr from-amber-600 via-amber-500 to-yellow-500 hover:from-amber-500 hover:to-yellow-400 text-white shadow-xl shadow-amber-950/60 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border-2 border-amber-300/50 relative"
-                            title={isSystemAdmin ? (isKa ? "Root AI ასისტენტი & God AI კონსოლი (სუპერ ადმინი - ყველა კომპანია)" : "Root AI Assistant & God AI Console (Super Admin - All Companies)") : (isKa ? "აგრონომიული PM კონსოლი" : "Agronomy PM Intelligence Console")}
-                        >
-                            <Crown className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-                            <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500 border border-white"></span>
-                            </span>
-                        </button>
-                        <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-slate-900/95 text-white text-[11px] font-bold rounded-xl whitespace-nowrap shadow-xl border border-slate-700/80 opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-all duration-150 transform translate-x-2 group-hover/btn:translate-x-0 z-50">
-                            {isKa ? 'God AI კონსოლი' : 'God AI Console'}
-                        </div>
-                    </div>
+                    {/* 6. God AI Hub / Root Console Button (Admins, Founders, Co-Founders, Root & System Admins only) */}
+                    {hasPrivilegedGoogleAiAccess && (
+                      <div className="relative group/btn">
+                          <button
+                              type="button"
+                              onClick={() => setIsGodAIHubOpen(true)}
+                              className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-tr from-amber-600 via-amber-500 to-yellow-500 hover:from-amber-500 hover:to-yellow-400 text-white shadow-xl shadow-amber-950/30 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border-2 border-amber-300/50 relative"
+                              title={isSystemAdmin ? (isKa ? "Root AI ასისტენტი & God AI კონსოლი (სუპერ ადმინი - ყველა კომპანია)" : "Root AI Assistant & God AI Console (Super Admin - All Companies)") : (isKa ? "God AI & აგრონომიული PM კონსოლი" : "God AI & Agronomy PM Console")}
+                          >
+                              <Crown className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                              <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500 border border-white"></span>
+                              </span>
+                          </button>
+                          <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-[#FAFBF8] text-stone-800 text-[11px] font-bold rounded-xl whitespace-nowrap shadow-xl border border-stone-200 opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-all duration-150 transform translate-x-2 group-hover/btn:translate-x-0 z-50">
+                              {isKa ? 'God AI კონსოლი' : 'God AI Console'}
+                          </div>
+                      </div>
+                    )}
                 </div>
             </div>
-        </div>
+          </div>
+        )}
 
         {/* Global Voice Notes Modal */}
         {onAddNote && (
@@ -728,28 +1006,30 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
             />
         )}
 
-        {/* God AI & Agronomy PM Intelligence Hub Modal */}
-        <GodAIIntelligenceHubModal
-            isOpen={isGodAIHubOpen}
-            onClose={() => setIsGodAIHubOpen(false)}
-            activeOrgId={activeOrgId}
-            activeOrgName={activeOrgName}
-            currentUser={currentUser}
-            isSystemAdmin={isSystemAdmin}
-            currentAiMode={currentAiMode}
-            onSetAiMode={(mode) => {
-                if (onSetAiMode) onSetAiMode(mode);
-            }}
-            organizations={organizations}
-            workAssignments={workAssignments}
-            harvestEntries={harvestEntries}
-            plantationFeatures={plantationFeatures}
-            employees={employees}
-            machinery={machinery}
-            nutritionPlans={nutritionPlans}
-            notes={notes}
-            onNavigateToTasks={onNavigateToTasks}
-        />
+        {/* God AI & Agronomy PM Intelligence Hub Modal (Privileged roles only) */}
+        {hasPrivilegedGoogleAiAccess && (
+          <GodAIIntelligenceHubModal
+              isOpen={isGodAIHubOpen}
+              onClose={() => setIsGodAIHubOpen(false)}
+              activeOrgId={activeOrgId}
+              activeOrgName={activeOrgName}
+              currentUser={currentUser}
+              isSystemAdmin={isSystemAdmin || hasPrivilegedGoogleAiAccess}
+              currentAiMode={currentAiMode}
+              onSetAiMode={(mode) => {
+                  if (onSetAiMode) onSetAiMode(mode);
+              }}
+              organizations={organizations}
+              workAssignments={workAssignments}
+              harvestEntries={harvestEntries}
+              plantationFeatures={plantationFeatures}
+              employees={employees}
+              machinery={machinery}
+              nutritionPlans={nutritionPlans}
+              notes={notes}
+              onNavigateToTasks={onNavigateToTasks}
+          />
+        )}
 
         {/* Dedicated Google Workspace & Farm Services Modal */}
         {isGoogleHubOpen && (
@@ -770,7 +1050,9 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
                                     {isKa ? 'Google Workspace & საველე სერვისები' : 'Google Workspace & Farm Suite'}
                                 </h3>
                                 <p className="text-xs text-slate-400">
-                                    {isKa ? 'ინტეგრირებული Google Meet, Chat, Sheets & Drive' : 'Integrated Google Meet, Chat, Sheets, Drive & Research'}
+                                    {isKa
+                                      ? (hasPrivilegedGoogleAiAccess ? 'ინტეგრირებული Google Meet, Chat, Sheets & Drive' : 'ინტეგრირებული Google Sheets, Drive & Calendar')
+                                      : (hasPrivilegedGoogleAiAccess ? 'Integrated Google Meet, Chat, Sheets, Drive & Research' : 'Integrated Google Sheets, Drive, Calendar & Research')}
                                 </p>
                             </div>
                         </div>
@@ -784,43 +1066,47 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                        {/* Google Meet */}
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setIsGoogleHubOpen(false);
-                                if (onOpenMeet) onOpenMeet();
-                                else window.dispatchEvent(new CustomEvent('agrimap_open_meet'));
-                            }}
-                            className="p-3.5 bg-slate-950 hover:bg-emerald-950/40 border border-slate-800 hover:border-emerald-500/50 rounded-2xl flex flex-col gap-2 transition-all text-left cursor-pointer group"
-                        >
-                            <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 w-fit group-hover:scale-110 transition-transform">
-                                <Video size={18} />
-                            </div>
-                            <div>
-                                <span className="font-bold text-white block">Google Meet</span>
-                                <span className="text-[10px] text-slate-400">Live video conference & map screen share</span>
-                            </div>
-                        </button>
+                        {/* Google Meet (Admins, Founders, Co-Founders, Root & System Admins only) */}
+                        {hasPrivilegedGoogleAiAccess && (
+                          <button
+                              type="button"
+                              onClick={() => {
+                                  setIsGoogleHubOpen(false);
+                                  if (onOpenMeet) onOpenMeet();
+                                  else window.dispatchEvent(new CustomEvent('agrimap_open_meet'));
+                              }}
+                              className="p-3.5 bg-slate-950 hover:bg-emerald-950/40 border border-slate-800 hover:border-emerald-500/50 rounded-2xl flex flex-col gap-2 transition-all text-left cursor-pointer group"
+                          >
+                              <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 w-fit group-hover:scale-110 transition-transform">
+                                  <Video size={18} />
+                              </div>
+                              <div>
+                                  <span className="font-bold text-white block">Google Meet</span>
+                                  <span className="text-[10px] text-slate-400">Live video conference & map screen share</span>
+                              </div>
+                          </button>
+                        )}
 
-                        {/* Google Chat */}
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setIsGoogleHubOpen(false);
-                                if (onOpenChat) onOpenChat();
-                                else window.dispatchEvent(new CustomEvent('agrimap_open_chat'));
-                            }}
-                            className="p-3.5 bg-slate-950 hover:bg-blue-950/40 border border-slate-800 hover:border-blue-500/50 rounded-2xl flex flex-col gap-2 transition-all text-left cursor-pointer group"
-                        >
-                            <div className="p-2 rounded-xl bg-blue-500/20 text-blue-400 w-fit group-hover:scale-110 transition-transform">
-                                <MessageSquare size={18} />
-                            </div>
-                            <div>
-                                <span className="font-bold text-white block">Google Chat</span>
-                                <span className="text-[10px] text-slate-400">Team spaces & field intercom dispatch</span>
-                            </div>
-                        </button>
+                        {/* Google Chat (Admins, Founders, Co-Founders, Root & System Admins only) */}
+                        {hasPrivilegedGoogleAiAccess && (
+                          <button
+                              type="button"
+                              onClick={() => {
+                                  setIsGoogleHubOpen(false);
+                                  if (onOpenChat) onOpenChat();
+                                  else window.dispatchEvent(new CustomEvent('agrimap_open_chat'));
+                              }}
+                              className="p-3.5 bg-slate-950 hover:bg-blue-950/40 border border-slate-800 hover:border-blue-500/50 rounded-2xl flex flex-col gap-2 transition-all text-left cursor-pointer group"
+                          >
+                              <div className="p-2 rounded-xl bg-blue-500/20 text-blue-400 w-fit group-hover:scale-110 transition-transform">
+                                  <MessageSquare size={18} />
+                              </div>
+                              <div>
+                                  <span className="font-bold text-white block">Google Chat</span>
+                                  <span className="text-[10px] text-slate-400">Team spaces & field intercom dispatch</span>
+                              </div>
+                          </button>
+                        )}
 
                         {/* Google Sheets */}
                         <button
@@ -1024,31 +1310,35 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
                   </svg>
               </button>
 
-              {/* Google Meet Video Button */}
-              <button
-                  type="button"
-                  onClick={() => {
-                      if (onOpenMeet) onOpenMeet();
-                      else window.dispatchEvent(new CustomEvent('agrimap_open_meet'));
-                  }}
-                  className="p-1.5 hover:bg-emerald-50 rounded-lg transition-colors text-emerald-600 hover:text-emerald-700 cursor-pointer"
-                  title={isKa ? "Google Meet - ვიდეო ოთახი" : "Google Meet - Video Room"}
-              >
-                  <Video className="w-4 h-4" />
-              </button>
+              {/* Google Meet Video Button (Privileged roles only) */}
+              {hasPrivilegedGoogleAiAccess && (
+                <button
+                    type="button"
+                    onClick={() => {
+                        if (onOpenMeet) onOpenMeet();
+                        else window.dispatchEvent(new CustomEvent('agrimap_open_meet'));
+                    }}
+                    className="p-1.5 hover:bg-emerald-50 rounded-lg transition-colors text-emerald-600 hover:text-emerald-700 cursor-pointer"
+                    title={isKa ? "Google Meet - ვიდეო ოთახი" : "Google Meet - Video Room"}
+                >
+                    <Video className="w-4 h-4" />
+                </button>
+              )}
 
-              {/* Google Chat Button */}
-              <button
-                  type="button"
-                  onClick={() => {
-                      if (onOpenChat) onOpenChat();
-                      else window.dispatchEvent(new CustomEvent('agrimap_open_chat'));
-                  }}
-                  className="p-1.5 hover:bg-blue-50 rounded-lg transition-colors text-blue-600 hover:text-blue-700 cursor-pointer"
-                  title={isKa ? "Google Chat & საველე ინტერკომი" : "Google Chat & Field Spaces"}
-              >
-                  <MessageSquare className="w-4 h-4" />
-              </button>
+              {/* Google Chat Button (Privileged roles only) */}
+              {hasPrivilegedGoogleAiAccess && (
+                <button
+                    type="button"
+                    onClick={() => {
+                        if (onOpenChat) onOpenChat();
+                        else window.dispatchEvent(new CustomEvent('agrimap_open_chat'));
+                    }}
+                    className="p-1.5 hover:bg-blue-50 rounded-lg transition-colors text-blue-600 hover:text-blue-700 cursor-pointer"
+                    title={isKa ? "Google Chat & საველე ინტერკომი" : "Google Chat & Field Spaces"}
+                >
+                    <MessageSquare className="w-4 h-4" />
+                </button>
+              )}
 
               {/* Voice Notes Button */}
               <button
@@ -1154,7 +1444,7 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
                 <Leaf size={10} />
                 <span>Expert PM</span>
               </button>
-              {isSystemAdmin && (
+              {hasPrivilegedGoogleAiAccess && (
                 <button
                   type="button"
                   onClick={() => onSetAiMode?.('god_ai')}
@@ -1184,15 +1474,17 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
               <Stethoscope size={11} />
               <span>{isKa ? 'დიაგნოსტიკა (Pop-up)' : 'Pop-up'}</span>
             </button>
-            <button
-              type="button"
-              onClick={() => setIsGodAIHubOpen(true)}
-              className="px-2 py-1 bg-gradient-to-r from-amber-600 to-emerald-600 hover:from-amber-500 hover:to-emerald-500 text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm flex items-center gap-1 cursor-pointer transition-all hover:scale-105 active:scale-95"
-              title={isKa ? "God AI & PM კონსოლის გახსნა" : "Open God AI & PM Intelligence Hub Console"}
-            >
-              <Sparkles size={11} />
-              <span>{isKa ? 'კონსოლი' : 'Console'}</span>
-            </button>
+            {hasPrivilegedGoogleAiAccess && (
+              <button
+                type="button"
+                onClick={() => setIsGodAIHubOpen(true)}
+                className="px-2 py-1 bg-gradient-to-r from-amber-600 to-emerald-600 hover:from-amber-500 hover:to-emerald-500 text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm flex items-center gap-1 cursor-pointer transition-all hover:scale-105 active:scale-95"
+                title={isKa ? "God AI & PM კონსოლის გახსნა" : "Open God AI & PM Intelligence Hub Console"}
+              >
+                <Sparkles size={11} />
+                <span>{isKa ? 'კონსოლი' : 'Console'}</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -1219,7 +1511,7 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
             </span>
           </div>
         )}
-        {currentAiMode === 'god_ai' && (
+        {currentAiMode === 'god_ai' && hasPrivilegedGoogleAiAccess && (
           <div className="px-3 py-1.5 bg-amber-950/95 border-b border-amber-800/80 text-[10px] text-amber-200 flex items-center justify-between shrink-0">
             <span className="flex items-center gap-1.5 truncate">
               <Crown size={12} className="text-amber-400 shrink-0 animate-pulse" />
@@ -1261,7 +1553,7 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
           >
             📍 Company Radius Intel
           </button>
-          {isSystemAdmin && (
+          {hasPrivilegedGoogleAiAccess && (
             <button
               type="button"
               onClick={() => {
@@ -1283,13 +1575,15 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
           >
             <Leaf size={10} className="text-emerald-700" /> 🔬 AI დიაგნოსტიკა
           </button>
-          <button
-            type="button"
-            onClick={() => setIsGodAIHubOpen(true)}
-            className="whitespace-nowrap px-2 py-0.5 bg-gradient-to-r from-emerald-100 to-amber-100 border border-emerald-200 text-emerald-900 rounded-full font-bold transition-colors cursor-pointer hover:opacity-90 flex items-center gap-1"
-          >
-            <Sparkles size={10} className="text-amber-600" /> Console
-          </button>
+          {hasPrivilegedGoogleAiAccess && (
+            <button
+              type="button"
+              onClick={() => setIsGodAIHubOpen(true)}
+              className="whitespace-nowrap px-2 py-0.5 bg-gradient-to-r from-emerald-100 to-amber-100 border border-emerald-200 text-emerald-900 rounded-full font-bold transition-colors cursor-pointer hover:opacity-90 flex items-center gap-1"
+            >
+              <Sparkles size={10} className="text-amber-600" /> Console
+            </button>
+          )}
         </div>
         
         {isSettingsOpen && (
@@ -1365,20 +1659,50 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
                          <div className={`p-3 rounded-xl border text-xs leading-relaxed ${
                              testStatus.ok 
                                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+                                 : testStatus.statusCode === 402
+                                 ? 'bg-amber-50 border-amber-300 text-amber-900'
                                  : 'bg-red-50 border-red-200 text-red-800'
                          }`}>
                              <div className="flex items-start gap-2">
                                  {testStatus.ok ? (
                                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                                 ) : testStatus.statusCode === 402 ? (
+                                     <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                                  ) : (
                                      <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
                                  )}
-                                 <div>
-                                     <div className="font-bold">{testStatus.ok ? 'Connection Successful' : 'Connection Failed'}</div>
+                                 <div className="flex-1">
+                                     <div className="font-bold flex items-center justify-between">
+                                         <span>{testStatus.ok ? 'Connection Successful' : (testStatus.title || 'Connection Failed')}</span>
+                                         {testStatus.statusCode && (
+                                             <span className="font-mono text-[10px] px-1.5 py-0.2 bg-black/5 rounded">
+                                                 HTTP {testStatus.statusCode}
+                                             </span>
+                                         )}
+                                     </div>
                                      <div className="mt-0.5 text-[11px] whitespace-pre-wrap">{testStatus.message}</div>
                                      {testStatus.latencyMs && (
                                          <div className="mt-1 text-[10px] text-emerald-700 font-mono">
-                                             Model: {testStatus.model} | Latency: {testStatus.latencyMs}ms
+                                             Model: {testStatus.modelUsed || testStatus.model || PRIMARY_GEMINI_MODEL} | Latency: {testStatus.latencyMs}ms
+                                         </div>
+                                     )}
+                                     {testStatus.statusCode === 402 && (
+                                         <div className="mt-2 pt-2 border-t border-amber-200 flex flex-wrap gap-1.5">
+                                             <a
+                                                 href={testStatus.billingUrl || 'https://ai.studio/projects'}
+                                                 target="_blank"
+                                                 rel="noopener noreferrer"
+                                                 className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-[10px]"
+                                             >
+                                                 <ExternalLink className="w-3 h-3" /> Manage Credits
+                                             </a>
+                                             <button
+                                                 type="button"
+                                                 onClick={() => triggerAiDiagnosticsModal('402 Prepayment Credits Depleted')}
+                                                 className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold rounded-lg text-[10px] cursor-pointer"
+                                             >
+                                                 Resolution Guide
+                                             </button>
                                          </div>
                                      )}
                                  </div>
@@ -1397,24 +1721,50 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
                          </div>
                      )}
 
-                     {/* Action Buttons */}
-                     <div className="grid grid-cols-2 gap-2 pt-1">
-                         <button 
-                             onClick={handleTestConnection}
-                             disabled={isTestingKey}
-                             className="py-2.5 px-3 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition disabled:opacity-50"
-                         >
-                             <RefreshCw className={`w-3.5 h-3.5 ${isTestingKey ? 'animate-spin text-emerald-600' : ''}`} />
-                             {isTestingKey ? 'Testing...' : 'Test Connection'}
-                         </button>
-                         <button 
-                             onClick={handleSaveApiKey}
-                             className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-sm"
-                         >
-                             <Key className="w-3.5 h-3.5" />
-                             Save Key
-                         </button>
-                     </div>
+                      {/* Action Buttons */}
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                          <button 
+                              onClick={handleTestConnection}
+                              disabled={isTestingKey}
+                              className="py-2.5 px-3 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition disabled:opacity-50 cursor-pointer"
+                          >
+                              <RefreshCw className={`w-3.5 h-3.5 ${isTestingKey ? 'animate-spin text-emerald-600' : ''}`} />
+                              {isTestingKey ? 'Testing...' : 'Test Connection'}
+                          </button>
+                          <button 
+                              onClick={handleSaveApiKey}
+                              className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-sm cursor-pointer"
+                          >
+                              <Key className="w-3.5 h-3.5" />
+                              Save Key
+                          </button>
+                      </div>
+
+                      {/* AI Diagnostics & Token Top-Up Shortcuts */}
+                      <div className="space-y-1.5 pt-1">
+                          <button
+                              type="button"
+                              onClick={() => {
+                                  setIsSettingsOpen(false);
+                                  triggerAiDiagnosticsModal();
+                              }}
+                              className="w-full py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-sm"
+                          >
+                              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>AI Diagnostics & Prepayment Manager</span>
+                          </button>
+                          <button
+                              type="button"
+                              onClick={() => {
+                                  setIsSettingsOpen(false);
+                                  triggerAiTopUpModal();
+                              }}
+                              className="w-full py-1.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                          >
+                              <Crown className="w-3.5 h-3.5 text-amber-500" />
+                              <span>Buy Tokens or Unlimited Subscription</span>
+                          </button>
+                      </div>
 
                      {/* Clear Key Option */}
                      {apiKeyInput && (
@@ -1665,28 +2015,30 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
           />
       )}
 
-      {/* God AI & Agronomy PM Intelligence Hub Modal */}
-      <GodAIIntelligenceHubModal
-          isOpen={isGodAIHubOpen}
-          onClose={() => setIsGodAIHubOpen(false)}
-          activeOrgId={activeOrgId}
-          activeOrgName={activeOrgName}
-          currentUser={currentUser}
-          isSystemAdmin={isSystemAdmin}
-          currentAiMode={currentAiMode}
-          onSetAiMode={(mode) => {
-              if (onSetAiMode) onSetAiMode(mode);
-          }}
-          organizations={organizations}
-          workAssignments={workAssignments}
-          harvestEntries={harvestEntries}
-          plantationFeatures={plantationFeatures}
-          employees={employees}
-          machinery={machinery}
-          nutritionPlans={nutritionPlans}
-          notes={notes}
-          onNavigateToTasks={onNavigateToTasks}
-      />
+      {/* God AI & Agronomy PM Intelligence Hub Modal (Privileged roles only) */}
+      {hasPrivilegedGoogleAiAccess && (
+        <GodAIIntelligenceHubModal
+            isOpen={isGodAIHubOpen}
+            onClose={() => setIsGodAIHubOpen(false)}
+            activeOrgId={activeOrgId}
+            activeOrgName={activeOrgName}
+            currentUser={currentUser}
+            isSystemAdmin={isSystemAdmin || hasPrivilegedGoogleAiAccess}
+            currentAiMode={currentAiMode}
+            onSetAiMode={(mode) => {
+                if (onSetAiMode) onSetAiMode(mode);
+            }}
+            organizations={organizations}
+            workAssignments={workAssignments}
+            harvestEntries={harvestEntries}
+            plantationFeatures={plantationFeatures}
+            employees={employees}
+            machinery={machinery}
+            nutritionPlans={nutritionPlans}
+            notes={notes}
+            onNavigateToTasks={onNavigateToTasks}
+        />
+      )}
 
       {/* AI Analysis Suite Dedicated Pop-up Modal (Matches Console Window) */}
       <AiAnalysisModal
