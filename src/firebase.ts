@@ -33,7 +33,8 @@ import {
     connectFirestoreEmulator,
     terminate as firebaseTerminate,
     clearIndexedDbPersistence as firebaseClearIndexedDbPersistence,
-    increment as firebaseIncrement
+    increment as firebaseIncrement,
+    runTransaction as firebaseRunTransaction
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 import { USE_FIREBASE } from './config';
@@ -685,6 +686,21 @@ export const addDoc = async (colRef: any, data: any): Promise<any> => {
     }
     console.log(`Mock addDoc to ${colRef.path}`, data);
     return Promise.resolve({ id: `mock-id-${Date.now()}` });
+};
+
+export const runTransaction = async <T = any>(firestoreDb: any, updateFunction: (transaction: any) => Promise<T>): Promise<T> => {
+    if (USE_FIREBASE) {
+        return firebaseRunTransaction(firestoreDb, async (tx: any) => {
+            const wrappedTx = {
+                get: (ref: any) => tx.get(ref),
+                set: (ref: any, data: any, options?: any) => options ? tx.set(ref, sanitizeObject(data), options) : tx.set(ref, sanitizeObject(data)),
+                update: (ref: any, data: any) => tx.update(ref, sanitizeObject(data)),
+                delete: (ref: any) => tx.delete(ref)
+            };
+            return updateFunction(wrappedTx);
+        });
+    }
+    throw new Error('Transactions require active Firebase runtime.');
 };
 
 export const getDoc = async (docRef: any): Promise<any> => {

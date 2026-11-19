@@ -494,10 +494,34 @@ const CustomZoomControls: React.FC = () => {
 const ResizeHandler: React.FC = () => {
     const map = useMap();
     useEffect(() => {
+        let active = true;
+        const disarmZoom = () => {
+            active = false;
+            try {
+                (map as any)._animatingZoom = false;
+                if ((map as any)._zoomAnimated && (map as any)._mapPane) {
+                    (map as any)._stop?.();
+                }
+            } catch {
+                // Ignore teardown errors
+            }
+        };
+        map.on('unload', disarmZoom);
         const timer = setTimeout(() => {
-            map.invalidateSize();
+            if (!active) return;
+            try {
+                if ((map as any)._loaded && (map as any)._container) {
+                    map.invalidateSize();
+                }
+            } catch {
+                // Ignore resize errors during rapid module switching
+            }
         }, 100);
-        return () => clearTimeout(timer);
+        return () => {
+            clearTimeout(timer);
+            disarmZoom();
+            map.off('unload', disarmZoom);
+        };
     }, [map]);
     return null;
 };

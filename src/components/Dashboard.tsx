@@ -57,6 +57,7 @@ export type DashboardMapPosition = 'top' | 'with_profile' | 'upper' | 'bottom' |
 
 interface DashboardProps extends Omit<MapComponentProps, 'onUpdateFeature' | 'activeDrawingTool' | 'onFeatureDrawn'> {
   currentUser?: User | null;
+  personalOnly?: boolean;
   onNavigateMode?: (mode: string) => void;
   onOpenProfile?: () => void;
   onOpenHelp?: () => void;
@@ -732,8 +733,13 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
               layout.push(dw);
           }
       });
-      return layout.filter(w => w.isVisible !== false).sort((a, b) => a.order - b.order);
-  }, [dashboardLayout]);
+      const visible = layout.filter(w => w.isVisible !== false);
+      if (props.personalOnly) {
+          const allowedPersonal = new Set(['choose_goal', 'daily_news', 'guest_stats']);
+          return visible.filter(w => allowedPersonal.has(w.type)).sort((a, b) => a.order - b.order);
+      }
+      return visible.sort((a, b) => a.order - b.order);
+  }, [dashboardLayout, props.personalOnly]);
 
   // Drag-and-drop state for dashboard widgets
   const [draggedWidgetId, setDraggedWidgetId] = useState<string | null>(null);
@@ -1256,10 +1262,10 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
             </div>
 
             {/* TOP POSITION MAP */}
-            {mapPosition === 'top' && renderMapSection()}
+            {!props.personalOnly && mapPosition === 'top' && renderMapSection()}
 
             {/* WITH PROFILE POSITION MAP (UPPER WITH PROFILE TOOL WIDGET!) */}
-            {mapPosition === 'with_profile' && renderMapSection()}
+            {!props.personalOnly && mapPosition === 'with_profile' && renderMapSection()}
 
             {/* Profile Management, Next-Step Guidance & System Operation Hub */}
             <DashboardProfileManager
@@ -1291,17 +1297,19 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
             />
 
             {/* AI Autonomous Stream & Anomaly Engine Panel */}
-            <DashboardAiStream
-                anomalies={anomalies}
-                latestReport={latestReport}
-                config={aiConfig}
-                onOpenAiHub={handleOpenAiHub}
-                onRefreshAnalysis={handleRefreshAnalysis}
-                isLoading={isAiLoading}
-            />
+            {!props.personalOnly && (
+                <DashboardAiStream
+                    anomalies={anomalies}
+                    latestReport={latestReport}
+                    config={aiConfig}
+                    onOpenAiHub={handleOpenAiHub}
+                    onRefreshAnalysis={handleRefreshAnalysis}
+                    isLoading={isAiLoading}
+                />
+            )}
 
             {/* UPPER POSITION MAP (MOVED UPPER ABOVE WIDGETS!) */}
-            {mapPosition === 'upper' && renderMapSection()}
+            {!props.personalOnly && mapPosition === 'upper' && renderMapSection()}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
                 {sortedWidgets.map(widget => (
@@ -1325,13 +1333,13 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
             </div>
 
             {/* BOTTOM POSITION MAP */}
-            {mapPosition === 'bottom' && renderMapSection()}
+            {!props.personalOnly && mapPosition === 'bottom' && renderMapSection()}
             </>
           )}
         </div>
         
         {/* Detached Movable Floating Map Window */}
-        {mapPosition === 'floating' && !isMapFullScreen && (
+        {!props.personalOnly && mapPosition === 'floating' && !isMapFullScreen && (
           <FloatingWidgetWindow
             isOpen={mapPosition === 'floating'}
             onClose={() => handleSetMapPosition('with_profile')}

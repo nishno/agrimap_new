@@ -1,5 +1,5 @@
 
-export type AppMode = 'dashboard' | 'ai' | 'design' | 'community' | 'marketplace' | 'system' | 'agronomy' | 'harvesting' | 'stock' | 'accounting' | 'founders' | 'tools' | 'tasks' | 'personalization' | 'admin' | 'invitations' | 'logs' | 'profile' | 'onboarding' | 'labs' | 'guide';
+export type AppMode = 'dashboard' | 'my_work' | 'ai' | 'design' | 'community' | 'marketplace' | 'system' | 'agronomy' | 'harvesting' | 'stock' | 'accounting' | 'founders' | 'tools' | 'tasks' | 'personalization' | 'admin' | 'invitations' | 'logs' | 'profile' | 'onboarding' | 'labs' | 'guide';
 
 export type NetworkMode = 'cloud' | 'local' | 'offline';
 
@@ -87,7 +87,23 @@ export interface Membership {
     permissionLevel: 'read' | 'write' | 'admin';
     isGlobalRegistrationAgreed?: boolean;
     status: 'active' | 'invited' | 'suspended' | 'pending' | 'declined';
+    employeeId?: string;
     joinedAt: string;
+}
+
+export interface JoinRequest {
+    id: string;
+    userId: string;
+    userName: string;
+    userEmail?: string;
+    organizationId: string;
+    organizationName?: string;
+    requestedRole?: string;
+    message?: string;
+    status: 'pending' | 'approved' | 'declined';
+    createdAt: string;
+    reviewedAt?: string;
+    reviewedBy?: string;
 }
 
 export interface Crop {
@@ -719,6 +735,7 @@ export interface Employee {
     status: 'active' | 'inactive' | 'suspended';
     joinedAt: string;
     organizationId?: string;
+    userId?: string;
     isGlobalUser?: boolean; // New: Global user or local worker
     hardwareCredentials?: {
         type: 'NFC Card' | 'NFC Bracelet' | 'RFID Tag';
@@ -1654,6 +1671,33 @@ export interface SubscriptionPlan {
     freeDays?: number;
 }
 
+export type AnnouncementCategory = 'company_hiring' | 'service_offer';
+export type WorkContractType = 'daily' | 'seasonal' | 'permanent' | 'project' | 'part_time' | 'other';
+
+export interface AnnouncementCropEntry {
+    crop: string;
+    varieties: string[];
+}
+
+export interface AnnouncementMetadata {
+    category: AnnouncementCategory;
+    workType: string;
+    contractType: WorkContractType;
+    customContractLabel?: string;
+    region: string;
+    companyId?: string;
+    companyName?: string;
+    contactPhone?: string;
+    contactEmail?: string;
+    agricultureType?: string;
+    cropsAndVarieties?: AnnouncementCropEntry[];
+    areaHa?: number;
+    compensation?: string;
+    workersNeeded?: number;
+    location?: [number, number];
+    status: 'open' | 'closed';
+}
+
 export interface ForumPost {
     id: string;
     title?: string;
@@ -1672,13 +1716,15 @@ export interface ForumPost {
     isRead?: boolean;
     readBy?: string[];
     parentPostId?: string;
-    ticketType?: 'company_join' | 'support' | 'general';
+    ticketType?: 'company_join' | 'support' | 'general' | 'service_offer';
     ticketStatus?: 'pending' | 'approved' | 'declined';
     ticketOrgId?: string;
     ticketOrgName?: string;
     ticketMembershipId?: string;
     ticketResolvedBy?: string;
     ticketResolvedAt?: string;
+    isAnnouncement?: boolean;
+    announcementData?: AnnouncementMetadata;
     replies: ForumReply[];
 }
 
@@ -1834,8 +1880,57 @@ export const AI_FREE_LIMIT = 20;
 
 type AccessLevel = 'full' | 'read' | 'none';
 
+export const MANAGEMENT_ROLES: UserRole[] = [
+    'ROOT_SUPER_ADMIN',
+    'Founder',
+    'Co-Founder',
+    'Admin',
+    'Accountant',
+    'Agronomist',
+    'Field Manager',
+    'company'
+];
+
+export const isManagementRole = (role?: string | null): boolean => {
+    if (!role) return false;
+    const norm = role.trim().toLowerCase();
+    return MANAGEMENT_ROLES.some(r => r.toLowerCase() === norm) || norm === 'founder/ceo' || norm === 'manager';
+};
+
+export const activeMembershipsFor = (user: User | null | undefined, memberships?: Membership[]): Membership[] => {
+    if (!user || user.isGuest || !Array.isArray(memberships)) return [];
+    return memberships.filter(
+        m => m.userId === user.id && (m.status === 'active' || !m.status)
+    );
+};
+
+export const canUseManagementTools = (
+    user: User | null | undefined,
+    activeOrgId?: string | null,
+    memberships?: Membership[]
+): boolean => {
+    if (!user || user.isGuest) return false;
+    if ((user.roles || []).includes('ROOT_SUPER_ADMIN')) return true;
+    const active = activeMembershipsFor(user, memberships);
+    if (activeOrgId && activeOrgId !== 'ALL') {
+        const current = active.find(m => m.organizationId === activeOrgId);
+        return Boolean(current && isManagementRole(current.role));
+    }
+    return active.some(m => isManagementRole(m.role));
+};
+
+export const canUseDraftPlanner = (
+    user: User | null | undefined,
+    memberships?: Membership[]
+): boolean => {
+    if (!user || user.isGuest) return false;
+    if ((user.roles || []).includes('ROOT_SUPER_ADMIN')) return false;
+    return activeMembershipsFor(user, memberships).length === 0;
+};
+
 const permissionMatrix: Record<AppMode, Partial<Record<UserRole, AccessLevel>>> = {
     dashboard: { Founder: 'full', 'Co-Founder': 'full', Admin: 'full', Accountant: 'full', Agronomist: 'full', 'Agro-Agent': 'full', Buyer: 'full', Employee: 'full', Independent: 'full', ROOT_SUPER_ADMIN: 'full', Guest: 'read', 'Field Manager': 'full', company: 'full' },
+    my_work: { Founder: 'full', 'Co-Founder': 'full', Admin: 'full', Accountant: 'full', Agronomist: 'full', 'Agro-Agent': 'full', Buyer: 'full', Employee: 'full', Independent: 'full', ROOT_SUPER_ADMIN: 'full', Guest: 'none', 'Field Manager': 'full', company: 'full', 'Agro-Shop': 'full' },
     ai: { Founder: 'full', 'Co-Founder': 'full', Admin: 'full', Accountant: 'full', Agronomist: 'full', 'Agro-Agent': 'full', Buyer: 'full', Employee: 'full', Independent: 'full', ROOT_SUPER_ADMIN: 'full', Guest: 'full', 'Field Manager': 'full', company: 'full', 'Agro-Shop': 'full' },
     community: { Founder: 'full', 'Co-Founder': 'full', Admin: 'full', Accountant: 'full', Agronomist: 'full', 'Agro-Agent': 'full', Buyer: 'full', Employee: 'full', Independent: 'full', ROOT_SUPER_ADMIN: 'full', Guest: 'read', 'Field Manager': 'full', company: 'full', 'Agro-Shop': 'full' },
     tasks: { Founder: 'full', 'Co-Founder': 'full', Admin: 'full', Accountant: 'read', Agronomist: 'full', 'Agro-Agent': 'full', Buyer: 'full', Employee: 'read', Independent: 'full', ROOT_SUPER_ADMIN: 'full', Guest: 'read', 'Field Manager': 'full', company: 'full' },
@@ -1868,15 +1963,29 @@ export const checkModuleAccess = (user: User | null, module: AppMode, activeOrg?
         return permissionMatrix[module]?.Guest || 'none';
     }
 
+    const canManage = canUseManagementTools(user, activeOrg?.id, memberships);
+    const isDraftPlanner = canUseDraftPlanner(user, memberships);
+
+    // 2.5 Personal & Worker Boundary Enforcement
+    if (!canManage) {
+        if (module === 'dashboard' || module === 'my_work' || module === 'community' || module === 'ai' || module === 'profile' || module === 'guide' || module === 'personalization' || module === 'onboarding') {
+            return 'full';
+        }
+        // Only newly registered users with ZERO active company memberships get isolated Draft Map Planner preview
+        if (module === 'design' && isDraftPlanner) {
+            return 'full';
+        }
+        // Linked workers and ordinary unattached accounts cannot access company operations, Market, or Labs
+        return 'none';
+    }
+
     const isIndividualRole = (user.roles || []).some(r => ['Independent', 'Buyer', 'Agro-Agent'].includes(r));
 
     // 3. Dormant State for Company Operational Modules (Deactivate if not in Org Context)
     const companyModules: AppMode[] = ['harvesting', 'stock', 'accounting', 'agronomy', 'logs', 'invitations', 'system', 'design', 'tasks'];
     
     if (!activeOrg && companyModules.includes(module)) {
-        // Special bypass for individual roles to access map and planner if needed
         const individualAllowedModules: AppMode[] = ['design', 'tasks'];
-        
         if (isIndividualRole && individualAllowedModules.includes(module)) {
             // Allow access to base permission matrix
         } else {
@@ -1886,7 +1995,7 @@ export const checkModuleAccess = (user: User | null, module: AppMode, activeOrg?
 
     // 4. Determine User's Role in Context
     let userRole: UserRole = (user?.roles && user.roles.length > 0) ? user.roles[0] : 'Guest';
-    if (userRole === 'company') userRole = 'Founder'; // Map company to Founder for permissions
+    if (userRole === 'company') userRole = 'Founder';
     
     if (activeOrg) {
         const membership = memberships?.find(m => m.organizationId === activeOrg.id && m.userId === user.id && (m.status === 'active' || !m.status));
@@ -1894,7 +2003,6 @@ export const checkModuleAccess = (user: User | null, module: AppMode, activeOrg?
             userRole = membership.role;
         }
     } else if (memberships && memberships.length > 0) {
-        // "See All" Context: Check max permission across all active memberships
         let maxAccess: AccessLevel = 'none';
         for (const m of memberships) {
              if (m.status && m.status !== 'active') continue;
@@ -1903,8 +2011,6 @@ export const checkModuleAccess = (user: User | null, module: AppMode, activeOrg?
              if (access === 'full') return 'full';
              if (access === 'read') maxAccess = 'read';
         }
-        
-        // Also check Individual roles
         const individualRoles: UserRole[] = ['Independent', 'Buyer', 'Agro-Agent'];
         for (const role of individualRoles) {
             if (user.roles?.includes(role)) {
@@ -1913,19 +2019,15 @@ export const checkModuleAccess = (user: User | null, module: AppMode, activeOrg?
                 if (access === 'read' && maxAccess === 'none') maxAccess = 'read';
             }
         }
-        
         return maxAccess;
     }
 
     // 5. Get base access from matrix
     const baseAccess = permissionMatrix[module]?.[userRole] || 'none';
 
-    // 6. Final check for Profile-Centric Routing (Newly registered, no verification yet and no active organization)
-    // Allows dashboard, profile, onboarding and core tools if role is selected
+    // 6. Final check for Profile-Centric Routing
     if (user.verificationStatus === 'unverified' && !activeOrg) {
-        if (module === 'profile' || module === 'dashboard' || module === 'onboarding') return baseAccess;
-        
-        // Allow users with Admin/Founder/Co-Founder privileges (global or via active membership) to access management modules
+        if (module === 'profile' || module === 'dashboard' || module === 'onboarding' || module === 'my_work') return baseAccess;
         const hasAdminOrFounderPrivilege = 
             (user.roles || []).some(r => ['Admin', 'Founder', 'Co-Founder'].includes(r)) || 
             (memberships || []).some(m => m.userId === user.id && (m.status === 'active' || !m.status) && ['Admin', 'Founder', 'Co-Founder'].includes(m.role));
@@ -1933,18 +2035,17 @@ export const checkModuleAccess = (user: User | null, module: AppMode, activeOrg?
         if (hasAdminOrFounderPrivilege && (module === 'tools' || module === 'invitations' || module === 'system')) {
             return 'full';
         }
-
         if (isIndividualRole && (module === 'ai' || module === 'marketplace' || module === 'tools')) return baseAccess;
         return 'none';
     }
 
     // 7. Subscription Status Logic for Org-dependent modules
     if (activeOrg) {
-        const isPaidModule = !['dashboard', 'ai', 'community', 'marketplace', 'profile', 'onboarding', 'settings', 'personalization'].includes(module);
+        const isPaidModule = !['dashboard', 'my_work', 'ai', 'community', 'marketplace', 'profile', 'onboarding', 'settings', 'personalization'].includes(module);
         if (isPaidModule) {
             const status: SubscriptionStatus = new Date(activeOrg.trialExpiry) > new Date() ? 'Trial' : activeOrg.isPaid ? 'Paid' : 'Unpaid';
             if (status === 'Unpaid' && baseAccess === 'full') {
-                return 'read'; // Downgrade access if subscription is unpaid for paid modules
+                return 'read';
             }
         }
     }

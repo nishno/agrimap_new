@@ -6,32 +6,46 @@ import {
   RectangleStackIcon, BanknotesIcon, Cog6ToothIcon, ChatBubbleLeftRightIcon,
   DocumentTextIcon, ShieldCheckIcon
 } from './Icons';
-import { BookOpen } from 'lucide-react';
-import type { AppMode } from '../types';
+import { BookOpen, Wallet } from 'lucide-react';
+import { canUseDraftPlanner, canUseManagementTools, type AppMode, type Membership, type Organization, type User } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface MobileNavProps {
   appMode: AppMode;
   onSetAppMode: (mode: AppMode) => void;
   checkPermission: (mode: AppMode) => boolean;
+  currentUser?: User | null;
+  activeOrg?: Organization | null;
+  memberships?: Membership[];
 }
 
-const MobileNav: React.FC<MobileNavProps> = ({ appMode, onSetAppMode, checkPermission }) => {
-  const { t } = useLanguage();
+const MobileNav: React.FC<MobileNavProps> = ({
+  appMode,
+  onSetAppMode,
+  checkPermission,
+  currentUser = null,
+  activeOrg = null,
+  memberships = []
+}) => {
+  const { t, language } = useLanguage();
+  const isKa = language === 'ka';
   const scrollRef = useRef<HTMLDivElement>(null);
+  const hasManagementTools = canUseManagementTools(currentUser, activeOrg?.id ?? null, memberships);
+  const isDraftPlannerUser = canUseDraftPlanner(currentUser, memberships);
 
   const allItems: { mode: AppMode, icon: React.ReactNode, label: string }[] = [
     { mode: 'dashboard', icon: <HomeIcon className="h-5 w-5" />, label: t('nav.dashboard') },
+    { mode: 'my_work', icon: <Wallet className="h-5 w-5" />, label: isKa ? 'სამუშაო' : 'My Work' },
+    { mode: 'community', icon: <ChatBubbleLeftRightIcon className="h-5 w-5" />, label: hasManagementTools ? t('nav.communicator') : (isKa ? 'ძიება' : 'Find Work') },
+    { mode: 'ai', icon: <AcademicCapIcon className="h-5 w-5" />, label: t('nav.ai_analyst') },
     { mode: 'tasks', icon: <BellIcon className="h-5 w-5" />, label: t('nav.tasks') },
-    { mode: 'design', icon: <PencilIcon className="h-5 w-5" />, label: t('nav.map_planner') },
+    { mode: 'design', icon: <PencilIcon className="h-5 w-5" />, label: isDraftPlannerUser && !hasManagementTools ? (isKa ? 'პრევიუ' : 'Map Preview') : t('nav.map_planner') },
     { mode: 'agronomy', icon: <BeakerIcon className="h-5 w-5" />, label: t('nav.agronomy') },
     { mode: 'harvesting', icon: <ArchiveBoxIcon className="h-5 w-5" />, label: t('nav.harvest') },
     { mode: 'stock', icon: <RectangleStackIcon className="h-5 w-5" />, label: t('nav.stock') },
     { mode: 'accounting', icon: <BanknotesIcon className="h-5 w-5" />, label: t('nav.accounts') },
     { mode: 'system', icon: <BriefcaseIcon className="h-5 w-5" />, label: t('nav.field_manager') },
     { mode: 'marketplace', icon: <BuildingStorefrontIcon className="h-5 w-5" />, label: t('nav.market') },
-    { mode: 'ai', icon: <AcademicCapIcon className="h-5 w-5" />, label: t('nav.ai_analyst') },
-    { mode: 'community', icon: <ChatBubbleLeftRightIcon className="h-5 w-5" />, label: t('nav.communicator') },
     { mode: 'tools', icon: <Cog6ToothIcon className="h-5 w-5" />, label: 'Tools' },
     { mode: 'guide', icon: <BookOpen className="h-5 w-5" />, label: t('nav.guide') || 'Help' },
     { mode: 'labs', icon: <BeakerIcon className="h-5 w-5" />, label: 'Labs' },
@@ -52,7 +66,7 @@ const MobileNav: React.FC<MobileNavProps> = ({ appMode, onSetAppMode, checkPermi
           const active = appMode === item.mode;
           const isHelp = item.mode === 'guide';
           
-          if (!hasAccess && (item.mode === 'admin' || item.mode === 'logs' || item.mode === 'founders')) return null;
+          if (!hasAccess) return null;
 
           return (
             <button

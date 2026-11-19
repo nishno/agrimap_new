@@ -300,6 +300,90 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "organizationId", "sectorId", "soil_ph", "soil_ec", "moisture", "temp_c", "recordedAt"]
+    },
+    "JoinRequest": {
+      "title": "Company Join Request",
+      "description": "Persisted user request to join an organization, reviewed atomically by company managers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 256 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 160 },
+        "userEmail": { "type": "string", "maxLength": 180 },
+        "organizationId": { "type": "string", "maxLength": 128 },
+        "organizationName": { "type": "string", "maxLength": 180 },
+        "requestedRole": { "type": "string", "maxLength": 80 },
+        "message": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["pending", "approved", "declined"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "reviewedAt": { "type": "string", "format": "date-time" },
+        "reviewedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "userId", "userName", "organizationId", "status", "createdAt"]
+    },
+    "ClinicalRecord": {
+      "title": "Clinical Analysis & Prescription Record",
+      "description": "Archived AI analysis, agronomist conclusion, or combined prescription scoped to user and/or company",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 160 },
+        "ownerId": { "type": "string", "maxLength": 128 },
+        "organizationId": { "type": "string", "maxLength": 128 },
+        "sourceCategory": { "type": "string", "enum": ["AI-generated", "Agronomist-created", "Combined"] },
+        "type": { "type": "string", "enum": ["disease", "document", "agro_image", "soil"] },
+        "title": { "type": "string", "maxLength": 240 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "plan": { "type": "object" },
+        "rawAiResult": { "type": "object" },
+        "agronomistConclusion": { "type": "object" },
+        "imageDataUrl": { "type": "string" },
+        "fileNames": { "type": "array", "items": { "type": "string" } },
+        "aiLearnedInsights": { "type": "string" },
+        "peerComparison": { "type": "object" },
+        "migrationSource": { "type": "string" },
+        "isDeleted": { "type": "boolean" }
+      },
+      "required": ["id", "type", "title", "createdAt", "organizationId"]
+    },
+    "WorkerActivity": {
+      "title": "Worker Activity",
+      "description": "Projected completed work, harvest, and payroll record scoped to an employee within a company",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 160 },
+        "organizationId": { "type": "string", "maxLength": 128 },
+        "employeeId": { "type": "string", "maxLength": 160 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "kind": { "type": "string", "maxLength": 40 },
+        "title": { "type": "string", "maxLength": 200 },
+        "date": { "type": "string", "maxLength": 64 },
+        "hours": { "type": "number" },
+        "kg": { "type": "number" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string", "maxLength": 16 },
+        "status": { "type": "string", "maxLength": 40 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "organizationId", "employeeId", "kind", "date"]
+    },
+    "PartnerProfile": {
+      "title": "Partner Service Profile",
+      "description": "User-owned public service offering, CV metadata, and availability profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 160 },
+        "region": { "type": "string", "maxLength": 120 },
+        "services": { "type": "array", "items": { "type": "string" } },
+        "bio": { "type": "string", "maxLength": 2000 },
+        "phone": { "type": "string", "maxLength": 64 },
+        "email": { "type": "string", "maxLength": 180 },
+        "availability": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId"]
     }
   },
   "firestore": {
@@ -370,6 +454,22 @@
     "/soilTelemetry/{docId}": {
       "schema": "SoilTelemetry",
       "description": "Soil probe and weather station telemetry records"
+    },
+    "/joinRequests/{requestId}": {
+      "schema": "JoinRequest",
+      "description": "Persisted company join requests reviewed atomically by managers"
+    },
+    "/clinicalRecords/{recordId}": {
+      "schema": "ClinicalRecord",
+      "description": "Archived AI analyses, agronomist conclusions, and combined prescriptions"
+    },
+    "/workerActivities/{activityId}": {
+      "schema": "WorkerActivity",
+      "description": "Worker activity ledger scoped to employee and organization"
+    },
+    "/partnerProfiles/{profileId}": {
+      "schema": "PartnerProfile",
+      "description": "User-owned partner and service offering profiles"
     }
   }
 }

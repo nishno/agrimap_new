@@ -76,6 +76,14 @@ service cloud.firestore {
       );
     }
 
+    function ownEmployee(orgId, employeeId) {
+      return isAuthenticated() &&
+        orgId != null &&
+        employeeId != null &&
+        exists(/databases/$(database)/documents/memberships/$(request.auth.uid + '_' + orgId)) &&
+        get(/databases/$(database)/documents/memberships/$(request.auth.uid + '_' + orgId)).data.get('employeeId', '') == employeeId;
+    }
+
     // Validation Helpers
     function isValidString(val, maxLen) {
       return val is string && val.size() <= maxLen;
@@ -245,6 +253,88 @@ service cloud.firestore {
         isValidOptionalString(data, 'updatedAt', 64);
     }
 
+    function isValidJoinRequest(data) {
+      return data.keys().hasAll(['id', 'userId', 'userName', 'organizationId', 'status', 'createdAt']) &&
+        data.keys().hasOnly([
+          'id', 'userId', 'userName', 'userEmail', 'organizationId', 'organizationName',
+          'requestedRole', 'message', 'status', 'createdAt', 'reviewedAt', 'reviewedBy'
+        ]) &&
+        data.id is string && data.id.size() >= 1 && data.id.size() <= 256 &&
+        data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+        data.userName is string && data.userName.size() >= 1 && data.userName.size() <= 160 &&
+        data.organizationId is string && data.organizationId.size() >= 1 && data.organizationId.size() <= 128 &&
+        data.status in ['pending', 'approved', 'declined'] &&
+        data.createdAt is string && data.createdAt.size() <= 64 &&
+        isValidOptionalString(data, 'userEmail', 180) &&
+        isValidOptionalString(data, 'organizationName', 180) &&
+        isValidOptionalString(data, 'requestedRole', 80) &&
+        isValidOptionalString(data, 'message', 1000) &&
+        isValidOptionalString(data, 'reviewedAt', 64) &&
+        isValidOptionalString(data, 'reviewedBy', 128);
+    }
+
+    function isValidClinicalRecord(data) {
+      return data.keys().hasAll(['id', 'type', 'title', 'createdAt', 'organizationId']) &&
+        data.keys().hasOnly([
+          'id', 'ownerId', 'sourceCategory', 'updatedAt', 'plan', 'type', 'title',
+          'createdAt', 'organizationId', 'imageDataUrl', 'fileNames', 'rawAiResult',
+          'agronomistConclusion', 'aiLearnedInsights', 'peerComparison', 'migrationSource',
+          'isDeleted'
+        ]) &&
+        data.id is string && data.id.size() >= 1 && data.id.size() <= 160 &&
+        data.type in ['disease', 'document', 'agro_image', 'soil'] &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 240 &&
+        data.createdAt is string && data.createdAt.size() <= 64 &&
+        data.organizationId is string && data.organizationId.size() <= 128 &&
+        isValidOptionalString(data, 'ownerId', 128) &&
+        (!( 'sourceCategory' in data ) || data.sourceCategory in ['AI-generated', 'Agronomist-created', 'Combined']) &&
+        isValidOptionalString(data, 'updatedAt', 64) &&
+        isValidOptionalMap(data, 'plan') &&
+        isValidOptionalMap(data, 'agronomistConclusion') &&
+        isValidOptionalMap(data, 'peerComparison') &&
+        isValidOptionalString(data, 'migrationSource', 40) &&
+        (!( 'isDeleted' in data ) || data.isDeleted is bool);
+    }
+
+    function isValidWorkerActivity(data) {
+      return data.keys().hasAll(['id', 'organizationId', 'employeeId', 'kind', 'date']) &&
+        data.keys().hasOnly([
+          'id', 'organizationId', 'employeeId', 'userId', 'kind', 'title', 'date',
+          'hours', 'kg', 'amount', 'currency', 'status', 'updatedAt'
+        ]) &&
+        data.id is string && data.id.size() >= 1 && data.id.size() <= 160 &&
+        data.organizationId is string && data.organizationId.size() >= 1 && data.organizationId.size() <= 128 &&
+        data.employeeId is string && data.employeeId.size() >= 1 && data.employeeId.size() <= 160 &&
+        data.kind is string && data.kind.size() >= 1 && data.kind.size() <= 40 &&
+        data.date is string && data.date.size() <= 64 &&
+        isValidOptionalString(data, 'userId', 128) &&
+        isValidOptionalString(data, 'title', 200) &&
+        isValidOptionalNumber(data, 'hours') &&
+        isValidOptionalNumber(data, 'kg') &&
+        isValidOptionalNumber(data, 'amount') &&
+        isValidOptionalString(data, 'currency', 16) &&
+        isValidOptionalString(data, 'status', 40) &&
+        isValidOptionalString(data, 'updatedAt', 64);
+    }
+
+    function isValidPartnerProfile(data) {
+      return data.keys().hasAll(['id', 'userId']) &&
+        data.keys().hasOnly([
+          'id', 'userId', 'name', 'region', 'services', 'bio', 'phone', 'email',
+          'availability', 'updatedAt', 'createdAt'
+        ]) &&
+        data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
+        data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+        isValidOptionalString(data, 'name', 160) &&
+        isValidOptionalString(data, 'region', 120) &&
+        isValidOptionalString(data, 'bio', 2000) &&
+        isValidOptionalString(data, 'phone', 64) &&
+        isValidOptionalString(data, 'email', 180) &&
+        isValidOptionalString(data, 'availability', 64) &&
+        isValidOptionalString(data, 'updatedAt', 64) &&
+        isValidOptionalString(data, 'createdAt', 64);
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -317,31 +407,31 @@ service cloud.firestore {
 
     match /{collection}/{docId} {
       allow list: if isAuthenticated() && 
-        !(collection in ['alerts', 'cropVarieties', 'listings', 'bids', 'reviews', 'forumPosts', 'deviceRegistry', 'systemNotifications', 'agronomistDiagnoses', 'liveTelemetry', 'soilTelemetry']) && (
+        !(collection in ['alerts', 'cropVarieties', 'listings', 'bids', 'reviews', 'forumPosts', 'deviceRegistry', 'systemNotifications', 'agronomistDiagnoses', 'liveTelemetry', 'soilTelemetry', 'joinRequests', 'clinicalRecords', 'workerActivities', 'partnerProfiles']) && (
         isAdmin() || 
         (resource != null && (isMemberOf(resource.data.get('organizationId', null)) || resource.data.get('createdBy', '') == request.auth.uid))
       );
       allow get: if isAuthenticated() && 
-        !(collection in ['alerts', 'cropVarieties', 'listings', 'bids', 'reviews', 'forumPosts', 'deviceRegistry', 'systemNotifications', 'agronomistDiagnoses', 'liveTelemetry', 'soilTelemetry']) && (
+        !(collection in ['alerts', 'cropVarieties', 'listings', 'bids', 'reviews', 'forumPosts', 'deviceRegistry', 'systemNotifications', 'agronomistDiagnoses', 'liveTelemetry', 'soilTelemetry', 'joinRequests', 'clinicalRecords', 'workerActivities', 'partnerProfiles']) && (
         isAdmin() ||
         resource == null || 
         isMemberOf(resource.data.get('organizationId', null)) ||
         resource.data.get('createdBy', '') == request.auth.uid
       );
       allow create: if isAuthenticated() && 
-        !(collection in ['alerts', 'cropVarieties', 'listings', 'bids', 'reviews', 'forumPosts', 'deviceRegistry', 'systemNotifications', 'agronomistDiagnoses', 'liveTelemetry', 'soilTelemetry']) && (
+        !(collection in ['alerts', 'cropVarieties', 'listings', 'bids', 'reviews', 'forumPosts', 'deviceRegistry', 'systemNotifications', 'agronomistDiagnoses', 'liveTelemetry', 'soilTelemetry', 'joinRequests', 'clinicalRecords', 'workerActivities', 'partnerProfiles']) && (
         isAdmin() ||
         isMemberOf(request.resource.data.get('organizationId', null)) ||
         request.resource.data.get('createdBy', '') == request.auth.uid
       );
       allow update: if isAuthenticated() && 
-        !(collection in ['alerts', 'cropVarieties', 'listings', 'bids', 'reviews', 'forumPosts', 'deviceRegistry', 'systemNotifications', 'agronomistDiagnoses', 'liveTelemetry', 'soilTelemetry']) && (
+        !(collection in ['alerts', 'cropVarieties', 'listings', 'bids', 'reviews', 'forumPosts', 'deviceRegistry', 'systemNotifications', 'agronomistDiagnoses', 'liveTelemetry', 'soilTelemetry', 'joinRequests', 'clinicalRecords', 'workerActivities', 'partnerProfiles']) && (
         isAdmin() ||
         isMemberOf(resource.data.get('organizationId', null)) ||
         resource.data.get('createdBy', '') == request.auth.uid
       );
       allow delete: if isAuthenticated() && 
-        !(collection in ['alerts', 'cropVarieties', 'listings', 'bids', 'reviews', 'forumPosts', 'deviceRegistry', 'systemNotifications', 'agronomistDiagnoses', 'liveTelemetry', 'soilTelemetry']) && (
+        !(collection in ['alerts', 'cropVarieties', 'listings', 'bids', 'reviews', 'forumPosts', 'deviceRegistry', 'systemNotifications', 'agronomistDiagnoses', 'liveTelemetry', 'soilTelemetry', 'joinRequests', 'clinicalRecords', 'workerActivities', 'partnerProfiles']) && (
         isAdmin() ||
         isOrgAdmin(resource.data.get('organizationId', null)) ||
         resource.data.get('createdBy', '') == request.auth.uid
@@ -715,6 +805,123 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && isValidId(docId) && (
         isAdmin() ||
         isOrgAdmin(existing().organizationId)
+      );
+    }
+
+    // ===============================================================
+    // Role-Scoped Join Requests, Clinical Archive & Worker Collections
+    // ===============================================================
+
+    match /joinRequests/{requestId} {
+      allow get: if isAuthenticated() && (
+        isAdmin() ||
+        (resource != null && (
+          existing().userId == request.auth.uid ||
+          isOrgAdmin(existing().organizationId)
+        ))
+      );
+      allow list: if isAuthenticated() && (
+        isAdmin() ||
+        existing().userId == request.auth.uid ||
+        isOrgAdmin(existing().organizationId)
+      );
+      allow create: if isAuthenticated() &&
+        isValidJoinRequest(incoming()) &&
+        requestId == request.auth.uid + '_' + incoming().organizationId &&
+        incoming().id == requestId &&
+        incoming().userId == request.auth.uid &&
+        incoming().status == 'pending';
+      allow update: if isAuthenticated() && isValidJoinRequest(incoming()) && (
+        isAdmin() ||
+        (isOrgAdmin(existing().organizationId) &&
+          incoming().userId == existing().userId &&
+          incoming().organizationId == existing().organizationId &&
+          incoming().status in ['approved', 'declined']) ||
+        (existing().userId == request.auth.uid &&
+          existing().status == 'declined' &&
+          incoming().userId == existing().userId &&
+          incoming().organizationId == existing().organizationId &&
+          incoming().status == 'pending')
+      );
+      allow delete: if isAuthenticated() && (
+        isAdmin() ||
+        existing().userId == request.auth.uid ||
+        isOrgAdmin(existing().organizationId)
+      );
+    }
+
+    match /clinicalRecords/{recordId} {
+      allow get: if isAuthenticated() && (
+        isAdmin() ||
+        resource == null ||
+        existing().get('ownerId', '') == request.auth.uid ||
+        (existing().get('organizationId', '') != '' && isMemberOf(existing().organizationId))
+      );
+      allow list: if isAuthenticated() && (
+        isAdmin() ||
+        existing().get('ownerId', '') == request.auth.uid ||
+        (existing().get('organizationId', '') != '' && isMemberOf(existing().organizationId))
+      );
+      allow create: if isAuthenticated() &&
+        isValidClinicalRecord(incoming()) &&
+        incoming().id == recordId &&
+        (
+          isAdmin() ||
+          (incoming().get('organizationId', '') == '' && incoming().get('ownerId', '') == request.auth.uid) ||
+          (incoming().get('organizationId', '') != '' && isMemberOf(incoming().organizationId) &&
+            (incoming().get('ownerId', '') == '' || incoming().get('ownerId', '') == request.auth.uid))
+        );
+      allow update: if isAuthenticated() &&
+        isValidClinicalRecord(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().organizationId == existing().organizationId && (
+          isAdmin() ||
+          existing().get('ownerId', '') == request.auth.uid ||
+          (existing().get('organizationId', '') != '' && isMemberOf(existing().organizationId))
+        );
+      allow delete: if isAuthenticated() && (
+        isAdmin() ||
+        existing().get('ownerId', '') == request.auth.uid ||
+        (existing().get('organizationId', '') != '' && isOrgAdmin(existing().organizationId))
+      );
+    }
+
+    match /workerActivities/{activityId} {
+      allow get: if isAuthenticated() && (
+        isAdmin() ||
+        (resource != null && (
+          isOrgAdmin(existing().organizationId) ||
+          existing().get('userId', '') == request.auth.uid ||
+          ownEmployee(existing().organizationId, existing().employeeId)
+        ))
+      );
+      allow list: if isAuthenticated() && (
+        isAdmin() ||
+        isOrgAdmin(existing().organizationId) ||
+        existing().get('userId', '') == request.auth.uid ||
+        ownEmployee(existing().organizationId, existing().employeeId)
+      );
+      allow create, update: if isAuthenticated() &&
+        isValidWorkerActivity(incoming()) &&
+        (isAdmin() || isOrgAdmin(incoming().organizationId));
+      allow delete: if isAuthenticated() && (
+        isAdmin() ||
+        isOrgAdmin(existing().organizationId)
+      );
+    }
+
+    match /partnerProfiles/{profileId} {
+      allow get, list: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        isValidPartnerProfile(incoming()) &&
+        (isAdmin() || incoming().userId == request.auth.uid);
+      allow update: if isAuthenticated() &&
+        isValidPartnerProfile(incoming()) &&
+        incoming().userId == existing().userId &&
+        (isAdmin() || existing().userId == request.auth.uid);
+      allow delete: if isAuthenticated() && (
+        isAdmin() ||
+        existing().userId == request.auth.uid
       );
     }
   }

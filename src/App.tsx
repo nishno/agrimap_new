@@ -43,7 +43,11 @@ import { MapComponentProps } from './components/MapComponent';
 import { safeStorage } from './services/storageService';
 import { initGlobalHardwareScannerListener } from './utils/hardwareScannerBus';
 import { resolveCompanyTicketOrJoin } from './utils/companyTicketActions';
-import { checkModuleAccess, User, Organization, Membership, AppMode, SystemLog, InventoryItem, InventoryTransaction, HarvestEvent, HarvestEntry, Pallet, HarvestLog, Account, Transaction, Role, Employee, DailyLogEntry, WorkAssignment, Machinery, EmployeeGroup, ForumPost, Listing, Bid, Review, Alert, Project, ProjectData, PlantationFeature, Layer, AreaPlantationFeature, NutritionPlan, PlanExecution, DashboardWidget, ActiveDrawingTool, FeatureType, LinePlantationFeature, SeedlingPlantationFeature, VarietyRule, AiReport, SoilAnalysisResult, UploadedDocument, PlantDiseaseAnalysis, SoilData, AnalysisResult, GroundingSource, AssistantMessage, NotePlantationFeature, Permission, ALL_PERMISSIONS, Supplier, PurchaseOrder, OperationalLog, Note, UserRole, OrganizationTicket, WorkExperience, Crop, isValidCoordinate, LocalServerConfig, MaterialUsed, AssignedVehicle, StockTransaction, HarvestedProduce } from './types';
+import { checkModuleAccess, canUseManagementTools, canUseDraftPlanner, JoinRequest, User, Organization, Membership, AppMode, SystemLog, InventoryItem, InventoryTransaction, HarvestEvent, HarvestEntry, Pallet, HarvestLog, Account, Transaction, Role, Employee, DailyLogEntry, WorkAssignment, Machinery, EmployeeGroup, ForumPost, Listing, Bid, Review, Alert, Project, ProjectData, PlantationFeature, Layer, AreaPlantationFeature, NutritionPlan, PlanExecution, DashboardWidget, ActiveDrawingTool, FeatureType, LinePlantationFeature, SeedlingPlantationFeature, VarietyRule, AiReport, SoilAnalysisResult, UploadedDocument, PlantDiseaseAnalysis, SoilData, AnalysisResult, GroundingSource, AssistantMessage, NotePlantationFeature, Permission, ALL_PERMISSIONS, Supplier, PurchaseOrder, OperationalLog, Note, UserRole, OrganizationTicket, WorkExperience, Crop, isValidCoordinate, LocalServerConfig, MaterialUsed, AssignedVehicle, StockTransaction, HarvestedProduce } from './types';
+import MyWorkView from './components/MyWorkView';
+import DraftPlanner from './worker/DraftPlanner';
+import { CreateOrganizationModal } from './components/CreateOrganizationModal';
+import { useJoinRequests, approveJoinRequestTransactional, declineJoinRequest } from './worker/joinRequestsService';
 import { useLanguage } from './contexts/LanguageContext';
 import { Toaster, toast } from 'sonner';
 import { db, auth, doc, getDocFromServer, onSnapshot, collection, query, where, setDoc, updateDoc, deleteDoc, addDoc, getDocs, writeBatch, enableNetwork, disableNetwork, getSyncQueueSize, clearSyncQueue, testFirestoreConnection, resetFirestorePersistence, setConnectionState, trackModification } from './firebase';
@@ -1795,6 +1799,23 @@ const App: React.FC = () => {
 
     // Derived State
     const activeOrg = useMemo(() => organizations.find(o => o.id === activeOrgId), [organizations, activeOrgId]);
+    const [isDraftCreateOrgModalOpen, setIsDraftCreateOrgModalOpen] = useState(false);
+    const canManageActiveOrg = useMemo(
+        () => canUseManagementTools(currentUser, activeOrgId, memberships),
+        [currentUser, activeOrgId, memberships]
+    );
+    const isDraftPlannerMode = useMemo(
+        () => canUseDraftPlanner(currentUser, memberships),
+        [currentUser, memberships]
+    );
+    const {
+        incomingRequests: incomingJoinRequests,
+        pendingIncomingRequests: pendingJoinRequests
+    } = useJoinRequests({
+        currentUser,
+        activeOrgId,
+        canManage: canManageActiveOrg
+    });
 
     useEffect(() => {
         if (appMode === 'onboarding') {
@@ -4503,8 +4524,8 @@ const App: React.FC = () => {
     };
 
     const handleAddPost = async (post: Partial<ForumPost>) => {
-        // Relax constraint: Global/Regional posts don't need activeOrgId. Internal posts should have it if possible.
-        if (!activeOrgId && post.hubType === 'internal' && !post.isDirectMessage) {
+        // Relax constraint: Global/Regional posts, DMs, announcements, and tickets don't need activeOrgId.
+        if (!activeOrgId && post.hubType === 'internal' && !post.isDirectMessage && !post.ticketType && !post.isAnnouncement) {
             toast.error("Please select an organization to post in the Internal Hub.");
             return;
         }
@@ -4530,8 +4551,8 @@ const App: React.FC = () => {
             readBy: post.readBy || [currentUser?.id || 'anon']
         } as ForumPost;
 
-        // Keyword detection for Marketplace
-        const isListing = post.hubType === 'global' && (post.content?.toLowerCase().includes('sell') || post.content?.toLowerCase().includes('price') || post.title?.toLowerCase().includes('sell'));
+        // Keyword detection for Marketplace (skip structured Announcements)
+        const isListing = !post.isAnnouncement && post.hubType === 'global' && (post.content?.toLowerCase().includes('sell') || post.content?.toLowerCase().includes('price') || post.title?.toLowerCase().includes('sell'));
         if (isListing && currentUser?.id) {
             const listingId = `listing-${Date.now()}`;
             const newListing: Listing = {
@@ -4874,6 +4895,68 @@ const App: React.FC = () => {
             } catch (error) {
                 console.warn("Firestore write error for nutritionPlans:", error);
             }
+        }
+    };
+
+    const handleUpsertNutritionPlan = async (plan: NutritionPlan) => {
+        const planOrgId = plan.organizationId || activeOrgId || '';
+        if (!planOrgId || !canManageActiveOrg) {
+            toast.error(language === 'ka' ? 'ოპერაციული გეგმის დამატება მხოლოდ მენეჯმენტს შეუძლია.' : 'Only company management can dispatch operational Agronomy plans.');
+            return;
+        }
+        const normalizedPlan: NutritionPlan = { ...plan, organizationId: planOrgId };
+        let nextPlans: NutritionPlan[] = [];
+        setNutritionPlans(prev => {
+            const list = prev || [];
+            const exists = list.some(item => item.id === normalizedPlan.id);
+            nextPlans = exists
+                ? list.map(item => (item.id === normalizedPlan.id ? normalizedPlan : item))
+                : [normalizedPlan, ...list];
+            saveMockData('nutritionPlans', nextPlans);
+            return nextPlans;
+        });
+
+        if (USE_FIREBASE && auth.currentUser && currentUser?.id !== 'root-system') {
+            try {
+                await setDoc(
+                    doc(db, 'nutritionPlans', normalizedPlan.id),
+                    sanitizeObject(normalizedPlan),
+                    { merge: true }
+                );
+            } catch (error) {
+                console.warn("Firestore upsert error for nutritionPlans:", error);
+            }
+        }
+    };
+
+    const handleApproveJoinRequest = async (request: JoinRequest) => {
+        const targetOrg = organizations.find(o => o.id === request.organizationId) || activeOrg;
+        if (!targetOrg) {
+            toast.error(language === 'ka' ? 'კომპანია ვერ მოიძებნა.' : 'Target company not found.');
+            return;
+        }
+        const res = await approveJoinRequestTransactional({
+            request,
+            organization: targetOrg,
+            reviewerId: currentUser?.id,
+            memberships,
+            employees,
+            onSetMemberships: handleSetMemberships,
+            onSetEmployees: handleSetEmployees
+        });
+        if (res.ok) {
+            toast.success(language === 'ka' ? `${request.userName} დაემატა კომპანიას (${targetOrg.name})` : res.message);
+        } else {
+            toast.error(res.message);
+        }
+    };
+
+    const handleDeclineJoinRequest = async (request: JoinRequest) => {
+        const res = await declineJoinRequest(request, currentUser?.id);
+        if (res.ok) {
+            toast.info(language === 'ka' ? `${request.userName}-ის მოთხოვნა უარყოფილია` : res.message);
+        } else {
+            toast.error(res.message);
         }
     };
 
@@ -6061,8 +6144,8 @@ const App: React.FC = () => {
             !(p.readBy || []).includes(currentUser?.id || '')
         ).length;
 
-        return unreadAlerts + unreadDMs + unreadMentions;
-    }, [mergedHardwareAndCoreAlerts, forumPosts, currentUser]);
+        return unreadAlerts + unreadDMs + unreadMentions + pendingJoinRequests.length;
+    }, [mergedHardwareAndCoreAlerts, forumPosts, currentUser, pendingJoinRequests.length]);
 
     const handlePushOfflineData = async () => {
         if (!USE_FIREBASE || isManualOffline || !currentUser || currentUser.id === 'root-system') return;
@@ -6446,6 +6529,23 @@ const App: React.FC = () => {
                     onResetPassword={handleResetPassword}
                 />
             );
+            case 'my_work': return (
+                <MyWorkView
+                    currentUser={currentUser}
+                    activeOrg={activeOrg || null}
+                    memberships={memberships}
+                    organizations={organizations}
+                    discoverableOrganizations={discoverableOrganizations}
+                    employees={employees || []}
+                    harvestEntries={harvestEntries || []}
+                    transactions={transactions || []}
+                    workAssignments={workAssignments || []}
+                    reviews={reviews || []}
+                    roles={roles || []}
+                    onUpdateUser={handleUpdateUser}
+                    onNavigateMode={setAppMode}
+                />
+            );
             case 'ai': return (
                 <AiAnalystView 
                     onSearch={handleMarketAnalysis} 
@@ -6462,8 +6562,8 @@ const App: React.FC = () => {
                     mapProps={{
                         center: mapCenter, 
                         zoom: mapZoom, 
-                        plantationFeatures: currentOrgFeatures, 
-                        layers: currentOrgLayers, 
+                        plantationFeatures: canManageActiveOrg ? currentOrgFeatures : [], 
+                        layers: canManageActiveOrg ? currentOrgLayers : [], 
                         onSelectFeature: handleSelectFeature,
                         onSetActiveDrawingTool: setActiveDrawingTool,
                         onUpdateFeature: handleUpdateFeature,
@@ -6475,14 +6575,16 @@ const App: React.FC = () => {
                     }} 
                     isMapFullScreen={false} 
                     onSetIsMapFullScreen={() => {}} 
-                    onSetNutritionPlans={setNutritionPlans}
+                    onSetNutritionPlans={canManageActiveOrg ? setNutritionPlans : undefined}
+                    onUpsertNutritionPlan={canManageActiveOrg ? handleUpsertNutritionPlan : undefined}
+                    personalOnly={!canManageActiveOrg}
                     allUsers={users}
                     organizations={organizations}
                     crops={crops}
                     forwardedPartnerData={forwardedPartnerData}
-                    activeOrgId={activeOrgId}
+                    activeOrgId={canManageActiveOrg ? activeOrgId : null}
                     currentUser={currentUser}
-                    onAddTask={handleAddTask}
+                    onAddTask={canManageActiveOrg ? handleAddTask : undefined}
                 />
             );
             case 'marketplace': return <MarketplaceView currentUser={currentUser} listings={listings || []} bids={bids || []} reviews={reviews || []} onSetReviews={setReviews} onSaveListing={handleSaveListing} onAddBid={handleAddBid} mapProps={mapProps} onSetRoute={() => {}} onSetFlyToBounds={setFlyToBounds} />;
@@ -6596,13 +6698,16 @@ const App: React.FC = () => {
                     onAddPost={handleAddPost} 
                     onAddReply={handleAddReply} 
                     plantationFeatures={currentOrgFeatures}
+                    allPlantationFeatures={plantationFeatures || []}
                     onSetFlyToBounds={setFlyToBounds}
                     onSetAppMode={setAppMode}
                     employees={employees || []}
                     mapProps={mapProps}
                     allUsers={users} 
                     organizations={discoverableOrganizations}
+                    allOrganizations={organizations || []}
                     crops={crops}
+                    cropVarieties={cropVarieties || []}
                     initialConversationId={selectedConversationId}
                     onClearInitialConversation={() => setSelectedConversationId(null)}
                     onForwardToAnalyst={(data) => {
@@ -6621,6 +6726,10 @@ const App: React.FC = () => {
                     onSetUsers={handleSetUsers}
                     roles={roles || []}
                     onUpdatePost={handleUpdatePost}
+                    joinRequests={incomingJoinRequests}
+                    canManageJoinRequests={canManageActiveOrg}
+                    onApproveJoinRequest={handleApproveJoinRequest}
+                    onDeclineJoinRequest={handleDeclineJoinRequest}
                 />
             );
             case 'stock': 
@@ -6761,7 +6870,19 @@ const App: React.FC = () => {
                 crops={crops}
             />;
             case 'onboarding':
-            case 'design': return <DesignView 
+            case 'design':
+                if (isDraftPlannerMode && !isRegisteringOnMap && appMode === 'design') {
+                    return (
+                        <DraftPlanner
+                            user={currentUser}
+                            mapProps={mapProps}
+                            onAddOrg={handleAddOrg}
+                            onSwitchOrg={handleSwitchOrg}
+                            onRegister={() => setIsDraftCreateOrgModalOpen(true)}
+                        />
+                    );
+                }
+                return <DesignView 
                 layers={currentOrgLayers} 
                 plantationFeatures={currentOrgFeatures} 
                 activeDrawingTool={activeDrawingTool} 
@@ -7109,6 +7230,7 @@ const App: React.FC = () => {
                     onOpenNotes={() => window.dispatchEvent(new CustomEvent('agrimap_open_voice_notes'))}
                     notes={notes || []}
                     currentUser={currentUser}
+                    personalOnly={!canManageActiveOrg}
                     onNavigateMode={(mode) => setAppMode(mode as AppMode)}
                     onOpenProfile={() => setAppMode('profile')}
                     onOpenHelp={() => setAppMode('guide')}
@@ -7267,7 +7389,10 @@ const App: React.FC = () => {
                 <MobileNav 
                     appMode={appMode} 
                     onSetAppMode={setAppMode} 
-                    checkPermission={(mode) => checkModuleAccess(currentUser, mode, activeOrg, memberships) !== 'none'} 
+                    checkPermission={(mode) => checkModuleAccess(currentUser, mode, activeOrg, memberships) !== 'none'}
+                    currentUser={currentUser}
+                    activeOrg={activeOrg || null}
+                    memberships={memberships}
                 />
 
                 <div className="pointer-events-none z-[8500]">
@@ -7318,8 +7443,8 @@ const App: React.FC = () => {
                             machinery={machinery || []}
                             nutritionPlans={nutritionPlans || []}
                             onNavigateToTasks={() => setAppMode('tasks' as any)}
-                            onAddTask={handleAddTask}
-                            onAddNutritionPlan={(plan) => setNutritionPlans(prev => [plan, ...(prev || [])])}
+                            onAddTask={canManageActiveOrg ? handleAddTask : undefined}
+                            onAddNutritionPlan={canManageActiveOrg ? handleUpsertNutritionPlan : undefined}
                         />
                     </div>
                 </div>
@@ -7474,6 +7599,9 @@ const App: React.FC = () => {
                     }
                 }}
                 currentUser={currentUser}
+                joinRequests={canManageActiveOrg ? incomingJoinRequests : []}
+                onApproveJoinRequest={handleApproveJoinRequest}
+                onDeclineJoinRequest={handleDeclineJoinRequest}
             />
             <DataStateAuditor 
                 isOpen={isDataStateAuditorOpen} 
@@ -7507,6 +7635,24 @@ const App: React.FC = () => {
                 organizations={discoverableOrganizations}
                 currentUser={currentUser}
                 onAddOrg={handleAddOrg}
+            />
+            <CreateOrganizationModal
+                isOpen={isDraftCreateOrgModalOpen}
+                onClose={() => setIsDraftCreateOrgModalOpen(false)}
+                user={currentUser}
+                onAddOrg={(org, mem, selectedCrops) => {
+                    handleAddOrg(org, mem, selectedCrops);
+                    setIsDraftCreateOrgModalOpen(false);
+                }}
+                onSwitchOrg={handleSwitchOrg}
+                onUpdateUser={handleUpdateUser}
+                onStartMapRegistration={(regData) => {
+                    setIsDraftCreateOrgModalOpen(false);
+                    setPendingOrgData(regData);
+                    setAppMode('design');
+                    setActiveDrawingTool({ tool: 'boundary', color: '#16a34a' });
+                    setIsRegisteringOnMap(true);
+                }}
             />
             
             <TicketManager 

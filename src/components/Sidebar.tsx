@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Phone, Mail, Copy, Check, MessageSquare, X, Palette } from 'lucide-react';
+import { Phone, Mail, Copy, Check, MessageSquare, X, Palette, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 import { 
   HomeIcon, AcademicCapIcon, PencilIcon, ServerStackIcon,
@@ -9,7 +9,7 @@ import {
   BanknotesIcon, BeakerIcon, BuildingStorefrontIcon, BellIcon, SwatchIcon, LockClosedIcon, ShieldCheckIcon, DocumentTextIcon,
   ChatBubbleLeftRightIcon
 } from './Icons';
-import type { AppMode, User, Organization, Membership } from '../types';
+import { canUseDraftPlanner, canUseManagementTools, type AppMode, type User, type Organization, type Membership } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAppTheme } from '../contexts/ThemeContext';
 import ContextualStatusEngine from './ContextualStatusEngine';
@@ -113,12 +113,25 @@ const Sidebar: React.FC<SidebarProps> = ({
       if (savedLocalConfig) isLocalMode = JSON.parse(savedLocalConfig).isLocalMode;
   } catch (e) {}
 
-  const publicPortal: { mode: AppMode, icon: React.ReactNode, label: string }[] = [
-    { mode: 'dashboard', icon: <HomeIcon className="h-5 w-5" />, label: t('nav.dashboard') },
-    { mode: 'marketplace', icon: <BuildingStorefrontIcon className="h-5 w-5" />, label: t('nav.market') },
-    { mode: 'ai', icon: <AcademicCapIcon className="h-5 w-5" />, label: t('nav.ai_analyst') },
-    { mode: 'community', icon: <ChatBubbleLeftRightIcon className="h-5 w-5" />, label: t('nav.communicator') },
-  ];
+  const isKa = language === 'ka';
+  const hasManagementTools = canUseManagementTools(currentUser, activeOrg?.id ?? null, memberships);
+  const isDraftPlannerUser = canUseDraftPlanner(currentUser, memberships);
+
+  const publicPortal: { mode: AppMode, icon: React.ReactNode, label: string }[] = hasManagementTools
+    ? [
+        { mode: 'dashboard', icon: <HomeIcon className="h-5 w-5" />, label: t('nav.dashboard') },
+        { mode: 'marketplace', icon: <BuildingStorefrontIcon className="h-5 w-5" />, label: t('nav.market') },
+        { mode: 'ai', icon: <AcademicCapIcon className="h-5 w-5" />, label: t('nav.ai_analyst') },
+        { mode: 'community', icon: <ChatBubbleLeftRightIcon className="h-5 w-5" />, label: t('nav.communicator') },
+        ...(currentUser ? [{ mode: 'my_work' as AppMode, icon: <Wallet className="h-5 w-5" />, label: isKa ? 'ჩემი სამუშაო და შემოსავალი' : 'My Work & Earnings' }] : []),
+      ]
+    : [
+        { mode: 'dashboard', icon: <HomeIcon className="h-5 w-5" />, label: t('nav.dashboard') },
+        ...(currentUser ? [{ mode: 'my_work' as AppMode, icon: <Wallet className="h-5 w-5" />, label: isKa ? 'ჩემი სამუშაო და შემოსავალი' : 'My Work & Earnings' }] : []),
+        { mode: 'community', icon: <ChatBubbleLeftRightIcon className="h-5 w-5" />, label: isKa ? 'პარტნიორების და სამუშაოს ძიება' : 'Find Partner & Work' },
+        { mode: 'ai', icon: <AcademicCapIcon className="h-5 w-5" />, label: t('nav.ai_analyst') },
+        ...(isDraftPlannerUser ? [{ mode: 'design' as AppMode, icon: <PencilIcon className="h-5 w-5" />, label: isKa ? 'რუკის პრევიუ' : 'Map Planner Preview' }] : []),
+      ];
 
   const individualTools: { mode: AppMode, icon: React.ReactNode, label: string }[] = [
     { mode: 'tools', icon: <Cog6ToothIcon className="h-5 w-5" />, label: t('nav.tools') },
@@ -138,28 +151,35 @@ const Sidebar: React.FC<SidebarProps> = ({
     { mode: 'admin', icon: <ShieldCheckIcon className="h-5 w-5" />, label: t('nav.admin'), rootOnly: true },
   ];
 
-  const renderSection = (title: string, items: typeof companyEnterprise) => (
-    <div className="mb-6">
-      <p className={`px-4 text-[10px] font-black uppercase tracking-widest mb-2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{title}</p>
-      <div className="space-y-1">
-        {items.map((item) => {
-          if (item.rootOnly && !isRoot) return null;
-          const hasAccess = checkPermission(item.mode);
-          return (
-            <NavItem 
-              key={item.mode} 
-              {...item}
-              active={appMode === item.mode}
-              locked={!hasAccess}
-              onClick={() => onSetAppMode(item.mode)}
-              currentUser={currentUser}
-              isDark={isDark}
-            />
-          );
-        })}
+  const renderSection = (title: string, items: typeof companyEnterprise) => {
+    const visibleItems = items.filter(item => {
+      if (item.rootOnly && !isRoot) return false;
+      if (!hasManagementTools && !checkPermission(item.mode)) return false;
+      return true;
+    });
+    if (visibleItems.length === 0) return null;
+    return (
+      <div className="mb-6">
+        <p className={`px-4 text-[10px] font-black uppercase tracking-widest mb-2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{title}</p>
+        <div className="space-y-1">
+          {visibleItems.map((item) => {
+            const hasAccess = checkPermission(item.mode);
+            return (
+              <NavItem 
+                key={item.mode} 
+                {...item}
+                active={appMode === item.mode}
+                locked={!hasAccess}
+                onClick={() => onSetAppMode(item.mode)}
+                currentUser={currentUser}
+                isDark={isDark}
+              />
+            );
+          })}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <aside 
@@ -241,8 +261,8 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
       {renderSection(t('nav.public_portal'), publicPortal as any)}
-      {renderSection(t('nav.indiv_tools'), individualTools as any)}
-      {renderSection(t('nav.enterprise'), companyEnterprise)}
+      {hasManagementTools && renderSection(t('nav.indiv_tools'), individualTools as any)}
+      {hasManagementTools && renderSection(t('nav.enterprise'), companyEnterprise)}
     </nav>
       <div className={`p-3.5 border-t ${isDark ? 'border-slate-800/80' : 'border-gray-100'}`}>
           <div className="flex flex-col gap-2 mb-3 px-1">

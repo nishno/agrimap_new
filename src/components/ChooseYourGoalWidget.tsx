@@ -7,6 +7,7 @@ import {
 import { ArrowRight, User as UserLucideIcon } from 'lucide-react';
 import { CreateOrganizationModal } from './CreateOrganizationModal';
 import { OfferServiceModal } from './OfferServiceModal';
+import { createPersistedJoinRequest, useJoinRequests } from '../worker/joinRequestsService';
 import { toast } from 'sonner';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -15,7 +16,7 @@ export interface ChooseYourGoalWidgetProps {
     organizations?: Organization[];
     discoverableOrganizations?: Organization[];
     memberships?: Membership[];
-    onUpdateUser?: (user: User) => void;
+    onUpdateUser?: (user: User) => void | Promise<void>;
     onAddOrg?: (org: Organization, mem: Membership, selectedCrops?: any[]) => void;
     onSwitchOrg?: (orgId: string) => void;
     onNavigateMode?: (mode: string) => void;
@@ -43,36 +44,47 @@ export const ChooseYourGoalWidget: React.FC<ChooseYourGoalWidgetProps> = ({
     const [isCreateOrgModalOpen, setIsCreateOrgModalOpen] = useState(false);
     const [isOfferServiceModalOpen, setIsOfferServiceModalOpen] = useState(false);
     const [orgSearchQuery, setOrgSearchQuery] = useState('');
+    const [submittingOrgId, setSubmittingOrgId] = useState<string | null>(null);
+    const { myRequests } = useJoinRequests({
+        currentUser: currentUser || null,
+        activeOrgId: null,
+        canManage: false
+    });
 
     const defaultServices = ['Field Worker', 'Tractor Operator', 'Agronomist', 'Pruning Specialist', 'General Labor'];
     const userServices = currentUser?.servicesOffered || [];
 
-    const toggleQuickService = (service: string) => {
+    const toggleQuickService = async (service: string) => {
         if (!currentUser || !onUpdateUser) return;
         const currentList = currentUser.servicesOffered || [];
         const updated = currentList.includes(service)
             ? currentList.filter(s => s !== service)
             : [...currentList, service];
-        
-        onUpdateUser({
-            ...currentUser,
-            primaryGoal: 'OFFER_SERVICE',
-            servicesOffered: updated,
-            roles: (currentUser.roles || []).includes('Independent') 
-                ? currentUser.roles 
-                : [...(currentUser.roles || []), 'Independent']
-        });
-        toast.success(`Updated services: ${service}`);
+
+        try {
+            await onUpdateUser({
+                ...currentUser,
+                primaryGoal: 'OFFER_SERVICE',
+                servicesOffered: updated
+            });
+            toast.success(`Updated services: ${service}`);
+        } catch (err: any) {
+            toast.error(err?.message || 'Could not save service preferences.');
+        }
     };
 
-    const handleSelectGoal = (goal: UserGoal) => {
+    const handleSelectGoal = async (goal: UserGoal) => {
         setActiveGoalTab(goal);
         if (currentUser && onUpdateUser && currentUser.primaryGoal !== goal) {
-            onUpdateUser({
-                ...currentUser,
-                primaryGoal: goal
-            });
-            toast.success(`Primary goal updated to ${goal.replace('_', ' ')}`);
+            try {
+                await onUpdateUser({
+                    ...currentUser,
+                    primaryGoal: goal
+                });
+                toast.success(`Primary goal updated to ${goal.replace('_', ' ')}`);
+            } catch (err: any) {
+                toast.error(err?.message || 'Could not save primary goal.');
+            }
         }
     };
 
@@ -93,8 +105,20 @@ export const ChooseYourGoalWidget: React.FC<ChooseYourGoalWidgetProps> = ({
         ).slice(0, 4);
     }, [discoverableOrganizations, orgSearchQuery]);
 
-    const handleSendJoinRequest = (org: Organization) => {
-        toast.success(`Join request sent to ${org.name}! The company founder will review your request.`);
+    const handleSendJoinRequest = async (org: Organization) => {
+        setSubmittingOrgId(org.id);
+        try {
+            const res = await createPersistedJoinRequest(currentUser, org);
+            if (res.ok) {
+                toast.success(`Join request submitted to ${org.name}. Company managers can now review it.`);
+            } else if (res.reason === 'local_farm') {
+                toast.info(res.message || 'Local farms use owner-managed local accounts.');
+            } else {
+                toast.error(res.message || 'Could not submit join request.');
+            }
+        } finally {
+            setSubmittingOrgId(null);
+        }
     };
 
     return (
@@ -247,21 +271,41 @@ export const ChooseYourGoalWidget: React.FC<ChooseYourGoalWidgetProps> = ({
                                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
                                     {t('goal.matching_orgs')} ({filteredDiscoverableOrgs.length})
                                 </p>
-                                {filteredDiscoverableOrgs.map(org => (
-                                    <div key={org.id} className="p-2.5 bg-white border border-slate-100 rounded-xl flex items-center justify-between shadow-xs">
-                                        <div>
-                                            <p className="text-xs font-black text-slate-800">{org.name}</p>
-                                            <p className="text-[9px] text-slate-400 font-bold uppercase">{org.type} • {org.agricultureType}</p>
+                                {filteredDiscoverableOrgs.map(org => {
+                                    const req = myRequests.find(r => r.organizationId === org.id);
+                                    const alreadyMember = userMemberships.some(
+                                        m => m.organizationId === org.id && (m.status === 'active' || !m.status)
+                                    );
+                                    const isPending = req?.status === 'pending';
+                                    const isApproved = alreadyMember || req?.status === 'approved';
+                                    const isSubmitting = submittingOrgId === org.id;
+                                    return (
+                                        <div key={org.id} className="p-2.5 bg-white border border-slate-100 rounded-xl flex items-center justify-between shadow-xs gap-2">
+                                            <div className="min-w-0">
+                                                <p className="text-xs font-black text-slate-800 truncate">{org.name}</p>
+                                                <p className="text-[9px] text-slate-400 font-bold uppercase truncate">{org.type} • {org.agricultureType}</p>
+                                            </div>
+                                            {isApproved ? (
+                                                <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[9px] font-black uppercase shrink-0">
+                                                    Approved
+                                                </span>
+                                            ) : isPending ? (
+                                                <span className="px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-[9px] font-black uppercase shrink-0">
+                                                    Pending
+                                                </span>
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    disabled={isSubmitting}
+                                                    onClick={() => handleSendJoinRequest(org)}
+                                                    className="px-3 py-1 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-50 text-indigo-600 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer shrink-0"
+                                                >
+                                                    {isSubmitting ? '...' : req?.status === 'declined' ? 'Resend' : t('goal.join_request')}
+                                                </button>
+                                            )}
                                         </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleSendJoinRequest(org)}
-                                            className="px-3 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer"
-                                        >
-                                            {t('goal.join_request')}
-                                        </button>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                                 {filteredDiscoverableOrgs.length === 0 && (
                                     <p className="text-center py-3 text-[10px] font-bold text-slate-400">{t('goal.no_orgs_found')}</p>
                                 )}

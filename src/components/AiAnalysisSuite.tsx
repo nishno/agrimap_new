@@ -1,1231 +1,1060 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Sparkles, Leaf, FileText, History, Stethoscope, AlertTriangle, 
-  CheckCircle2, Plus, Search, ChevronRight, Calendar, User, FlaskConical, 
-  Database, RefreshCw, X, ArrowUpRight, Upload, Eye, Cpu, BookOpen, Layers
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+    AlertTriangle,
+    Archive,
+    Beaker,
+    Camera,
+    CheckCircle2,
+    ClipboardList,
+    FileText,
+    Loader2,
+    Plus,
+    RefreshCw,
+    Save,
+    Search,
+    Send,
+    Sparkles,
+    Stethoscope,
+    Trash2
 } from 'lucide-react';
-import { 
-  clinicalAnalysisService, 
-  SavedAgroAnalysisRecord, 
-  AgronomistPrescriptionConclusion,
-  PeerComparisonData
-} from '../services/clinicalAnalysisService';
-import { 
-  analyzePlantDisease, 
-  analyzeAgriImage, 
-  generateDocumentComparison,
-  triggerAiDiagnosticsModal 
-} from '../services/geminiService';
-import { useLanguage } from '../contexts/LanguageContext';
 import { toast } from 'sonner';
-import { AiSourceBadge } from './AiSourceBadge';
+import type { NutritionPlan, User } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
+import { executeGeminiCall } from '../services/geminiService';
+import {
+    deleteClinicalRecordTombstone,
+    loadClinicalRecords,
+    saveClinicalRecord,
+    type ClinicalAnalysisType,
+    type ClinicalRecipeElement,
+    type ClinicalSourceCategory,
+    type SavedAgroAnalysisRecord
+} from '../services/clinicalAnalysisService';
 
-interface AiAnalysisSuiteProps {
-  mode?: 'compact' | 'full';
-  activeOrgId?: string;
-  currentUser?: any;
-  onClose?: () => void;
-  onAddTask?: (task: any) => void;
-  onAddNutritionPlan?: (plan: any) => void;
-  initialTool?: 'disease' | 'document' | 'agro_image' | 'history';
+export interface AiAnalysisSuiteProps {
+    mode?: 'full' | 'compact';
+    activeOrgId?: string;
+    currentUser?: User | null;
+    sectorOptions?: string[];
+    onAddTask?: (task: any) => void;
+    onAddNutritionPlan?: (plan: NutritionPlan) => void | Promise<void>;
 }
 
-const fileToText = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = error => reject(error);
-    reader.readAsDataURL(file);
-  });
-};
+const SEVERITIES: Array<'Mild' | 'Moderate' | 'Severe' | 'Critical'> = ['Mild', 'Moderate', 'Severe', 'Critical'];
+const UNITS = ['kg', 'g', 'L', 'mL', 'kg/ha', 'L/ha', 'g/100L', 'mL/100L'];
+
+const emptyRecipeRow = (): ClinicalRecipeElement => ({
+    inventoryItemId: '',
+    newItemName: '',
+    quantity: 0,
+    unit: 'kg/ha'
+});
+
+const fileToBase64 = (file: File): Promise<{ mimeType: string; data: string; dataUrl: string }> =>
+    new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const dataUrl = String(reader.result || '');
+            const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+            resolve({ mimeType: file.type || 'image/jpeg', data: base64, dataUrl });
+        };
+        reader.onerror = err => reject(err);
+        reader.readAsDataURL(file);
+    });
 
 export const AiAnalysisSuite: React.FC<AiAnalysisSuiteProps> = ({
-  mode = 'compact',
-  activeOrgId,
-  currentUser,
-  onClose,
-  onAddTask,
-  onAddNutritionPlan,
-  initialTool = 'disease'
+    activeOrgId = '',
+    currentUser = null,
+    sectorOptions = [],
+    onAddNutritionPlan
 }) => {
-  const { language } = useLanguage();
-  const isKa = language === 'ka';
+    const { language } = useLanguage();
+    const isKa = language === 'ka';
 
-  const [activeTab, setActiveTab] = useState<'disease' | 'document' | 'agro_image' | 'history'>(initialTool);
-  const [savedRecords, setSavedRecords] = useState<SavedAgroAnalysisRecord[]>([]);
-  const [selectedRecord, setSelectedRecord] = useState<SavedAgroAnalysisRecord | null>(null);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-  const [searchFilter, setSearchFilter] = useState('');
+    const canDispatchToAgronomy = Boolean(activeOrgId && activeOrgId !== 'ALL' && onAddNutritionPlan);
 
-  // Plant Disease Tool State
-  const [plantImageFile, setPlantImageFile] = useState<File | null>(null);
-  const [plantImageDataUrl, setPlantImageDataUrl] = useState<string>('');
-  const [isAnalyzingDisease, setIsAnalyzingDisease] = useState(false);
-  const [activeDiseaseResult, setActiveDiseaseResult] = useState<any | null>(null);
+    const [activeTab, setActiveTab] = useState<'disease' | 'document' | 'agro_image' | 'archive'>('disease');
 
-  // Document Comparison Tool State
-  const [uploadedDocs, setUploadedDocs] = useState<{ id: string; fileName: string; content: string }[]>([]);
-  const [isAnalyzingDocs, setIsAnalyzingDocs] = useState(false);
-  const [docAnalysisSummary, setDocAnalysisSummary] = useState<string>('');
+    // AI Analysis Input & Result State
+    const [analysisTitle, setAnalysisTitle] = useState('');
+    const [symptomsOrPrompt, setSymptomsOrPrompt] = useState('');
+    const [uploadedImageUrl, setUploadedImageUrl] = useState<string>('');
+    const [uploadedImagePayload, setUploadedImagePayload] = useState<{ mimeType: string; data: string } | null>(null);
+    const [uploadedDocNames, setUploadedDocNames] = useState<string[]>([]);
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  // Agro Vision / General Image Tool State
-  const [agroImageFile, setAgroImageFile] = useState<File | null>(null);
-  const [agroImageDataUrl, setAgroImageDataUrl] = useState<string>('');
-  const [isAnalyzingAgroImage, setIsAnalyzingAgroImage] = useState(false);
-  const [activeAgroImageResult, setActiveAgroImageResult] = useState<any | null>(null);
+    // Explicit AI-Generated Plan Section (always separated & marked as requiring specialist review)
+    const [aiRawResult, setAiRawResult] = useState<any>(null);
+    const [aiSummaryText, setAiSummaryText] = useState('');
+    const [aiSuggestedPlan, setAiSuggestedPlan] = useState('');
 
-  // Agronomist Conclusion Form State
-  const [conclusionNotes, setConclusionNotes] = useState('');
-  const [conclusionSeverity, setConclusionSeverity] = useState<'Mild' | 'Moderate' | 'Severe' | 'Critical'>('Moderate');
-  const [prescribedTreatment, setPrescribedTreatment] = useState('');
-  const [activeIngredients, setActiveIngredients] = useState<string[]>([]);
-  const [recommendedDosage, setRecommendedDosage] = useState('');
-  const [prescribedNutrition, setPrescribedNutrition] = useState('');
-  const [preventiveMeasures, setPreventiveMeasures] = useState('');
-  const [targetSector, setTargetSector] = useState('Sector A');
-  const [isSavingConclusion, setIsSavingConclusion] = useState(false);
-  const [showPeerComparisonModal, setShowPeerComparisonModal] = useState(false);
-  const [peerComparisonData, setPeerComparisonData] = useState<PeerComparisonData | null>(null);
+    // Manual / Combined Agronomist Conclusion & Structured Prescription Editor (NO default chemicals/dosages)
+    const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
+    const [severity, setSeverity] = useState<'Mild' | 'Moderate' | 'Severe' | 'Critical'>('Moderate');
+    const [targetSector, setTargetSector] = useState('');
+    const [conclusionNotes, setConclusionNotes] = useState('');
+    const [treatmentNotes, setTreatmentNotes] = useState('');
+    const [nutritionNotes, setNutritionNotes] = useState('');
+    const [preventionNotes, setPreventionNotes] = useState('');
+    const [recipeRows, setRecipeRows] = useState<ClinicalRecipeElement[]>([]);
 
-  const plantInputRef = useRef<HTMLInputElement>(null);
-  const docInputRef = useRef<HTMLInputElement>(null);
-  const agroImageInputRef = useRef<HTMLInputElement>(null);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isDispatching, setIsDispatching] = useState(false);
 
-  // Load Saved Analyses on Mount
-  const loadHistory = async () => {
-    setIsLoadingHistory(true);
-    try {
-      const records = await clinicalAnalysisService.getSavedAnalyses(activeOrgId);
-      setSavedRecords(records);
-      if (records.length > 0 && !selectedRecord) {
-        setSelectedRecord(records[0]);
-      }
-    } catch (e) {
-      console.warn('Failed to load clinical records:', e);
-    } finally {
-      setIsLoadingHistory(false);
-    }
-  };
+    // Archive State
+    const [archiveRecords, setArchiveRecords] = useState<SavedAgroAnalysisRecord[]>([]);
+    const [archiveLoading, setArchiveLoading] = useState(false);
+    const [archiveSearch, setArchiveSearch] = useState('');
+    const [archiveFilter, setArchiveFilter] = useState<'ALL' | ClinicalSourceCategory>('ALL');
+    const [selectedArchiveRecord, setSelectedArchiveRecord] = useState<SavedAgroAnalysisRecord | null>(null);
+    const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadHistory();
-  }, [activeOrgId]);
+    const refreshArchive = useCallback(async () => {
+        setArchiveLoading(true);
+        try {
+            const rows = await loadClinicalRecords({
+                ownerId: currentUser?.id,
+                organizationId: activeOrgId,
+                authorName: currentUser?.name
+            });
+            setArchiveRecords(rows);
+        } finally {
+            setArchiveLoading(false);
+        }
+    }, [currentUser?.id, currentUser?.name, activeOrgId]);
 
-  useEffect(() => {
-    if (initialTool) {
-      setActiveTab(initialTool);
-    }
-  }, [initialTool]);
+    useEffect(() => {
+        refreshArchive();
+    }, [refreshArchive]);
 
-  // When selecting a record from history, populate the agronomist conclusion fields
-  useEffect(() => {
-    if (selectedRecord) {
-      if (selectedRecord.agronomistConclusion) {
-        const c = selectedRecord.agronomistConclusion;
-        setConclusionNotes(c.notes || '');
-        setConclusionSeverity(c.severity || 'Moderate');
-        setPrescribedTreatment(c.prescribedTreatment || '');
-        setActiveIngredients(c.activeIngredients || []);
-        setRecommendedDosage(c.recommendedDosage || '');
-        setPrescribedNutrition(c.prescribedNutrition || '');
-        setPreventiveMeasures(c.preventiveMeasures || '');
-        setTargetSector(c.targetSectorOrPlot || 'Sector A');
-      } else {
-        // Default initial prefill based on raw AI result
-        setConclusionNotes(selectedRecord.rawAiResult?.description || '');
-        setConclusionSeverity('Moderate');
-        setPrescribedTreatment(
-          Array.isArray(selectedRecord.rawAiResult?.treatmentSuggestions)
-            ? selectedRecord.rawAiResult.treatmentSuggestions.join('. ')
-            : ''
-        );
-        setActiveIngredients([]);
-        setRecommendedDosage('2.0 - 2.5 kg/ha');
-        setPrescribedNutrition('Foliar Silicon (Si-K) & Amino Acid Biostimulant');
-        setPreventiveMeasures('Canopy ventilation & 5-day monitoring cycle');
-        setTargetSector('Sector A');
-      }
+    const filteredArchive = useMemo(() => {
+        const q = archiveSearch.trim().toLowerCase();
+        return archiveRecords.filter(r => {
+            if (archiveFilter !== 'ALL' && (r.sourceCategory || 'AI-generated') !== archiveFilter) {
+                return false;
+            }
+            if (!q) return true;
+            const hay = `${r.title} ${r.agronomistConclusion?.targetSectorOrPlot || ''} ${r.agronomistConclusion?.notes || ''} ${r.sourceCategory || ''}`.toLowerCase();
+            return hay.includes(q);
+        });
+    }, [archiveRecords, archiveSearch, archiveFilter]);
 
-      if (selectedRecord.peerComparison) {
-        setPeerComparisonData(selectedRecord.peerComparison);
-      }
-    }
-  }, [selectedRecord]);
-
-  // --- Handlers for Plant Disease Diagnostic ---
-  const handlePlantImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setPlantImageFile(file);
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      if (ev.target?.result) {
-        setPlantImageDataUrl(ev.target.result as string);
-      }
+    const resetEditor = () => {
+        setEditingRecordId(null);
+        setAnalysisTitle('');
+        setSymptomsOrPrompt('');
+        setUploadedImageUrl('');
+        setUploadedImagePayload(null);
+        setUploadedDocNames([]);
+        setAiRawResult(null);
+        setAiSummaryText('');
+        setAiSuggestedPlan('');
+        setSeverity('Moderate');
+        setTargetSector('');
+        setConclusionNotes('');
+        setTreatmentNotes('');
+        setNutritionNotes('');
+        setPreventionNotes('');
+        setRecipeRows([]);
     };
-    reader.readAsDataURL(file);
-  };
 
-  const handleRunPlantDiseaseAnalysis = async () => {
-    if (!plantImageFile && !plantImageDataUrl) {
-      toast.error(isKa ? 'გთხოვთ ატვირთოთ ფოთლის ან მცენარის ფოტო' : 'Please upload a plant/leaf image');
-      return;
-    }
-
-    setIsAnalyzingDisease(true);
-    try {
-      const base64Data = plantImageDataUrl.split(',')[1];
-      const result = await analyzePlantDisease(base64Data, plantImageFile?.type || 'image/jpeg', isKa ? 'ka' : 'en');
-      setActiveDiseaseResult(result);
-
-      // Save to persistent clinical ledger immediately
-      const saved = await clinicalAnalysisService.saveAnalysisRecord({
-        type: 'disease',
-        title: result.diseaseName || 'Plant Disease Diagnostic',
-        organizationId: activeOrgId || 'default',
-        imageDataUrl: plantImageDataUrl,
-        rawAiResult: result,
-        agronomistConclusion: {
-          notes: `Identified symptoms: ${result.description || ''}`,
-          severity: 'Moderate',
-          prescribedTreatment: result.treatmentSuggestions?.join('; ') || '',
-          activeIngredients: [],
-          recommendedDosage: '2.0 - 2.5 kg/ha',
-          prescribedNutrition: 'Foliar Potassium Phosphite & Calcium',
-          preventiveMeasures: 'Regular inspection every 5 days; avoid overhead sprinkler watering.',
-          targetSectorOrPlot: targetSector,
-          authorName: currentUser?.name || 'Chief Agronomist',
-          authorRole: currentUser?.roles?.[0] || 'Agronomist',
-          authorId: currentUser?.id,
-          isVerified: false,
-          updatedAt: new Date().toISOString()
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+        const first = files[0];
+        if (first.type.startsWith('image/')) {
+            const encoded = await fileToBase64(first);
+            setUploadedImageUrl(encoded.dataUrl);
+            setUploadedImagePayload({ mimeType: encoded.mimeType, data: encoded.data });
+            setUploadedDocNames(Array.from(files).map(f => f.name));
+        } else {
+            setUploadedDocNames(Array.from(files).map(f => f.name));
+            const text = await first.text().catch(() => '');
+            if (text) {
+                setSymptomsOrPrompt(prev => (prev ? `${prev}\n\n${text.slice(0, 4000)}` : text.slice(0, 4000)));
+            }
         }
-      });
-
-      setSelectedRecord(saved);
-      loadHistory();
-      toast.success(isKa ? 'დიაგნოსტიკა შესრულდა და შენახულია არქივში' : 'Diagnostic complete and saved to clinical archive');
-    } catch (err) {
-      console.error('Plant disease analysis error:', err);
-      toast.error(isKa ? 'დიაგნოსტიკის შესრულება ვერ მოხერხდა' : 'Failed to analyze plant disease');
-    } finally {
-      setIsAnalyzingDisease(false);
-    }
-  };
-
-  // --- Handlers for Document & Report Trends ---
-  const handleDocUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    const newDocs: { id: string; fileName: string; content: string }[] = [];
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const text = await fileToText(file);
-      newDocs.push({
-        id: Math.random().toString(36).substring(2, 9),
-        fileName: file.name,
-        content: text
-      });
-    }
-
-    const updated = [...uploadedDocs, ...newDocs];
-    setUploadedDocs(updated);
-  };
-
-  const handleRunDocComparison = async () => {
-    if (uploadedDocs.length === 0) {
-      toast.error(isKa ? 'გთხოვთ ატვირთოთ დოკუმენტები' : 'Please upload documents to compare');
-      return;
-    }
-
-    setIsAnalyzingDocs(true);
-    try {
-      const result = await generateDocumentComparison(uploadedDocs, isKa ? 'ka' : 'en');
-      setDocAnalysisSummary(result);
-
-      // Save to persistent clinical ledger
-      const saved = await clinicalAnalysisService.saveAnalysisRecord({
-        type: 'document',
-        title: `Document Trend Report (${uploadedDocs.map(d => d.fileName).join(', ')})`,
-        organizationId: activeOrgId || 'default',
-        fileNames: uploadedDocs.map(d => d.fileName),
-        rawAiResult: { comparisonReport: result },
-        agronomistConclusion: {
-          notes: 'Evaluated agronomic trend discrepancies across lab & soil testing reports.',
-          severity: 'Moderate',
-          prescribedTreatment: 'Nutrient re-balancing as indicated by comparative deficit analysis.',
-          activeIngredients: [],
-          recommendedDosage: 'Per specific soil deficit',
-          prescribedNutrition: 'Custom blend',
-          preventiveMeasures: 'Schedule follow-up soil core sampling in 30 days.',
-          targetSectorOrPlot: targetSector,
-          authorName: currentUser?.name || 'Chief Agronomist',
-          authorRole: currentUser?.roles?.[0] || 'Agronomist',
-          authorId: currentUser?.id,
-          isVerified: false,
-          updatedAt: new Date().toISOString()
-        }
-      });
-
-      setSelectedRecord(saved);
-      loadHistory();
-      toast.success(isKa ? 'დოკუმენტების ანალიზი შენახულია არქივში' : 'Document analysis saved to clinical archive');
-    } catch (err) {
-      toast.error(isKa ? 'დოკუმენტების შედარება ვერ მოხერხდა' : 'Failed to analyze documents');
-    } finally {
-      setIsAnalyzingDocs(false);
-    }
-  };
-
-  // --- Handlers for Agro Vision / Soil & Crop Image ---
-  const handleAgroImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setAgroImageFile(file);
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      if (ev.target?.result) {
-        setAgroImageDataUrl(ev.target.result as string);
-      }
     };
-    reader.readAsDataURL(file);
-  };
 
-  const handleRunAgroImageAnalysis = async () => {
-    if (!agroImageFile && !agroImageDataUrl) {
-      toast.error(isKa ? 'გთხოვთ ატვირთოთ ნაკვეთის ან ნიადაგის ფოტო' : 'Please upload an agricultural/soil photo');
-      return;
-    }
-
-    setIsAnalyzingAgroImage(true);
-    try {
-      const base64Data = agroImageDataUrl.split(',')[1];
-      const result = await analyzeAgriImage(base64Data, agroImageFile?.type || 'image/jpeg', isKa ? 'ka' : 'en');
-      setActiveAgroImageResult(result);
-
-      // Save to persistent clinical ledger
-      const saved = await clinicalAnalysisService.saveAnalysisRecord({
-        type: 'agro_image',
-        title: result.subject || 'Agro Vision Inspection',
-        organizationId: activeOrgId || 'default',
-        imageDataUrl: agroImageDataUrl,
-        rawAiResult: result,
-        agronomistConclusion: {
-          notes: `Visual inspection: ${result.condition || ''}. Metrics: ${result.metrics || 'Normal'}.`,
-          severity: 'Moderate',
-          prescribedTreatment: result.recommendations?.join('; ') || '',
-          activeIngredients: [],
-          recommendedDosage: 'Standard foliar rate',
-          prescribedNutrition: 'Chelated micronutrients + humic extract',
-          preventiveMeasures: 'Visual scouting every week.',
-          targetSectorOrPlot: targetSector,
-          authorName: currentUser?.name || 'Chief Agronomist',
-          authorRole: currentUser?.roles?.[0] || 'Agronomist',
-          authorId: currentUser?.id,
-          isVerified: false,
-          updatedAt: new Date().toISOString()
+    const handleRunAiAnalysis = async () => {
+        if (!symptomsOrPrompt.trim() && !uploadedImagePayload) {
+            toast.error(isKa ? 'შეიყვანეთ სიმპტომები/დოკუმენტი ან ატვირთეთ ფოტო.' : 'Enter symptoms/notes or upload a photo first.');
+            return;
         }
-      });
+        setIsAnalyzing(true);
+        try {
+            const parts: any[] = [
+                {
+                    text: [
+                        `Task: Agricultural clinical assessment (${activeTab}).`,
+                        `Language: ${isKa ? 'Georgian (ka)' : 'English (en)'}.`,
+                        `Important safety rules: Do NOT fabricate lab test results, recovery percentages, or unverified chemical dosages. Clearly separate observations from suggested steps and note that every treatment requires licensed agronomist review.`,
+                        targetSector ? `Target Sector/Plot: ${targetSector}` : '',
+                        `User input:\n${symptomsOrPrompt.trim() || 'Inspect the attached plant/field image.'}`
+                    ]
+                        .filter(Boolean)
+                        .join('\n')
+                }
+            ];
+            if (uploadedImagePayload) {
+                parts.push({
+                    inlineData: {
+                        mimeType: uploadedImagePayload.mimeType,
+                        data: uploadedImagePayload.data
+                    }
+                });
+            }
 
-      setSelectedRecord(saved);
-      loadHistory();
-      toast.success(isKa ? 'აგრო-ხედვის ანალიზი შენახულია არქივში' : 'Agro vision inspection saved');
-    } catch (err) {
-      toast.error(isKa ? 'ანალიზის შესრულება ვერ მოხერხდა' : 'Failed to analyze agricultural image');
-    } finally {
-      setIsAnalyzingAgroImage(false);
-    }
-  };
+            const resp = await executeGeminiCall({
+                contents: [{ role: 'user', parts }]
+            });
 
-  // --- Handlers for Agronomist Conclusion & Learning ---
-  const handleSaveAgronomistConclusion = async () => {
-    if (!selectedRecord) {
-      toast.error(isKa ? 'აირჩიეთ ან შეასრულეთ ანალიზი' : 'Please select or run an analysis first');
-      return;
-    }
+            const text =
+                typeof resp === 'string'
+                    ? resp
+                    : resp?.text ||
+                      resp?.candidates?.[0]?.content?.parts?.map((p: any) => p.text || '').join('\n') ||
+                      '';
 
-    setIsSavingConclusion(true);
-    try {
-      const updated = await clinicalAnalysisService.updateAgronomistConclusion(
-        selectedRecord.id,
-        {
-          notes: conclusionNotes,
-          severity: conclusionSeverity,
-          prescribedTreatment,
-          activeIngredients,
-          recommendedDosage,
-          prescribedNutrition,
-          preventiveMeasures,
-          targetSectorOrPlot: targetSector,
-          authorName: currentUser?.name || 'Lead Agronomist',
-          authorRole: currentUser?.roles?.[0] || 'Agronomist',
-          authorId: currentUser?.id,
-          isVerified: true,
-          updatedAt: new Date().toISOString()
-        },
-        activeOrgId
-      );
+            if (!text.trim()) {
+                throw new Error(isKa ? 'AI-მ პასუხი ვერ დააბრუნა.' : 'AI returned an empty response.');
+            }
 
-      if (updated) {
-        setSelectedRecord(updated);
-        loadHistory();
-        toast.success(
-          isKa 
-            ? 'აგრონომის დასკვნა შენახულია! AI სწავლობს გამოცდილებას.' 
-            : 'Agronomist prescription saved! AI is learning from your clinical decision.'
+            const title =
+                analysisTitle.trim() ||
+                (activeTab === 'disease'
+                    ? isKa ? 'მცენარის დაავადების AI შეფასება' : 'AI Plant Disease Assessment'
+                    : activeTab === 'document'
+                    ? isKa ? 'დოკუმენტის AI შეფასება' : 'AI Document Assessment'
+                    : isKa ? 'ვიზუალური ინსპექტირების AI შეფასება' : 'AI Field Vision Assessment');
+
+            setAnalysisTitle(title);
+            setAiRawResult({ text, model: resp?.model || 'gemini', analyzedAt: new Date().toISOString() });
+            setAiSummaryText(text);
+            setAiSuggestedPlan(text);
+
+            // Archive every successful AI analysis automatically as AI-generated
+            const saved = await saveClinicalRecord({
+                ownerId: currentUser?.id,
+                organizationId: canDispatchToAgronomy ? activeOrgId : '',
+                sourceCategory: 'AI-generated',
+                type: activeTab as ClinicalAnalysisType,
+                title,
+                imageDataUrl: uploadedImageUrl || undefined,
+                fileNames: uploadedDocNames.length ? uploadedDocNames : undefined,
+                rawAiResult: { text, analyzedAt: new Date().toISOString() },
+                agronomistConclusion: {
+                    notes: '',
+                    severity,
+                    prescribedTreatment: '',
+                    activeIngredients: [],
+                    recommendedDosage: '',
+                    prescribedNutrition: '',
+                    preventiveMeasures: '',
+                    targetSectorOrPlot: targetSector,
+                    authorName: currentUser?.name || 'User',
+                    authorRole: currentUser?.roles?.[0] || 'User',
+                    authorId: currentUser?.id,
+                    isVerified: false,
+                    updatedAt: new Date().toISOString()
+                }
+            });
+
+            setEditingRecordId(saved.id);
+            await refreshArchive();
+            toast.success(isKa ? 'AI ანალიზი დასრულდა და დაარქივდა' : 'AI analysis completed and archived');
+        } catch (err: any) {
+            toast.error(err?.message || (isKa ? 'AI ანალიზი ვერ შესრულდა' : 'AI analysis failed'));
+        } finally {
+            setIsAnalyzing(false);
+        }
+    };
+
+    const resolveSourceCategory = (): ClinicalSourceCategory => {
+        const hasAi = Boolean(aiRawResult || aiSummaryText.trim());
+        const hasManual = Boolean(
+            conclusionNotes.trim() ||
+                treatmentNotes.trim() ||
+                nutritionNotes.trim() ||
+                preventionNotes.trim() ||
+                recipeRows.some(r => r.newItemName.trim())
         );
-      }
-    } catch (err) {
-      toast.error(isKa ? 'დასკვნის შენახვა ვერ მოხერხდა' : 'Failed to save conclusion');
-    } finally {
-      setIsSavingConclusion(false);
-    }
-  };
+        if (hasAi && hasManual) return 'Combined';
+        if (hasManual) return 'Agronomist-created';
+        return 'AI-generated';
+    };
 
-  const handleOpenPeerComparison = async () => {
-    if (!selectedRecord) return;
-    const condition = selectedRecord.title || selectedRecord.rawAiResult?.diseaseName || 'General Crop Issue';
-    const comp = await clinicalAnalysisService.generatePeerComparison(condition);
-    setPeerComparisonData(comp);
-    setShowPeerComparisonModal(true);
-  };
+    const handleAddRecipeRow = () => {
+        setRecipeRows(prev => [...prev, emptyRecipeRow()]);
+    };
 
-  const handleCreateTreatmentTask = () => {
-    if (!selectedRecord || !onAddTask) return;
-    const taskName = `Treatment: ${selectedRecord.title} (${targetSector})`;
-    onAddTask({
-      id: `task-${Date.now()}`,
-      name: taskName,
-      taskType: 'Pesticide',
-      targetSector: targetSector,
-      prescribedChemical: activeIngredients.join(', ') || prescribedTreatment,
-      dosage: recommendedDosage,
-      nutritionNotes: prescribedNutrition,
-      preventiveGuidelines: preventiveMeasures,
-      status: 'pending',
-      priority: conclusionSeverity === 'Critical' || conclusionSeverity === 'Severe' ? 'High' : 'Normal',
-      createdAt: new Date().toISOString()
-    });
-    toast.success(isKa ? 'სამუშაო დავალება შექმნილია' : 'Treatment task created in Work Assignments');
-  };
+    const handleUpdateRecipeRow = (index: number, patch: Partial<ClinicalRecipeElement>) => {
+        setRecipeRows(prev => prev.map((row, idx) => (idx === index ? { ...row, ...patch } : row)));
+    };
 
-  const handleCreateNutritionPlan = () => {
-    if (!selectedRecord || !onAddNutritionPlan) return;
-    onAddNutritionPlan({
-      id: `nutr-${Date.now()}`,
-      name: `Clinical Nutrition: ${selectedRecord.title}`,
-      elements: [
-        { inventoryItemId: 'potassium', newItemName: 'Potassium Phosphite', quantity: 3.5, unit: 'kg/ha' },
-        { inventoryItemId: 'silicon', newItemName: 'Potassium Silicate', quantity: 2.0, unit: 'L/ha' },
-        { inventoryItemId: 'calcium', newItemName: 'Chelated Calcium', quantity: 2.5, unit: 'L/ha' }
-      ],
-      purpose: 'Disease Defense & Foliar Strengthening',
-      startDate: new Date().toISOString().split('T')[0],
-      notes: prescribedNutrition
-    });
-    toast.success(isKa ? 'კვების გეგმა გენერირებულია' : 'Prescribed nutrition plan added to Nutrition module');
-  };
+    const handleRemoveRecipeRow = (index: number) => {
+        setRecipeRows(prev => prev.filter((_, idx) => idx !== index));
+    };
 
-  // Active Ingredient Tags Selection Helpers
-  const commonIngredients = [
-    'Bacillus subtilis',
-    'Bacillus thuringiensis',
-    'Micronized Sulfur',
-    'Potassium Bicarbonate',
-    'Copper Hydroxide',
-    'Mancozeb',
-    'Metalaxyl-M',
-    'Tebuconazole',
-    'Fulvic Acid',
-    'Silicon (Si-K)'
-  ];
+    const buildRecordPayload = () => {
+        const cleanedElements = recipeRows
+            .filter(r => r.newItemName.trim().length > 0)
+            .map(r => ({
+                ...r,
+                newItemName: r.newItemName.trim(),
+                quantity: Number(r.quantity) || 0,
+                unit: r.unit || 'kg/ha'
+            }));
 
-  const toggleActiveIngredient = (ingredient: string) => {
-    setActiveIngredients(prev => 
-      prev.includes(ingredient) ? prev.filter(i => i !== ingredient) : [...prev, ingredient]
-    );
-  };
+        const title =
+            analysisTitle.trim() ||
+            (targetSector.trim()
+                ? `${isKa ? 'დანიშნულება' : 'Prescription'} — ${targetSector.trim()}`
+                : isKa ? 'აგრონომიული დასკვნა' : 'Agronomist Conclusion');
 
-  const filteredHistory = savedRecords.filter(r => {
-    const q = searchFilter.toLowerCase();
+        const sourceCategory = resolveSourceCategory();
+
+        return {
+            id: editingRecordId || undefined,
+            ownerId: currentUser?.id,
+            organizationId: canDispatchToAgronomy ? activeOrgId : '',
+            sourceCategory,
+            type: (activeTab === 'archive' ? 'disease' : activeTab) as ClinicalAnalysisType,
+            title,
+            imageDataUrl: uploadedImageUrl || undefined,
+            fileNames: uploadedDocNames.length ? uploadedDocNames : undefined,
+            rawAiResult: aiRawResult || { summary: aiSummaryText || '' },
+            plan: {
+                treatment: treatmentNotes.trim(),
+                dosage: cleanedElements.map(e => `${e.newItemName}: ${e.quantity} ${e.unit}`).join('; '),
+                nutrition: nutritionNotes.trim(),
+                prevention: preventionNotes.trim(),
+                elements: cleanedElements
+            },
+            agronomistConclusion: {
+                notes: conclusionNotes.trim(),
+                severity,
+                prescribedTreatment: treatmentNotes.trim(),
+                activeIngredients: cleanedElements.map(e => e.newItemName),
+                recommendedDosage: cleanedElements.map(e => `${e.quantity} ${e.unit}`).join(', '),
+                prescribedNutrition: nutritionNotes.trim(),
+                preventiveMeasures: preventionNotes.trim(),
+                targetSectorOrPlot: targetSector.trim(),
+                authorName: currentUser?.name || currentUser?.email || 'Agronomist',
+                authorRole: currentUser?.roles?.[0] || 'Agronomist',
+                authorId: currentUser?.id,
+                isVerified: sourceCategory !== 'AI-generated',
+                updatedAt: new Date().toISOString()
+            }
+        };
+    };
+
+    const handleSaveOnly = async (): Promise<SavedAgroAnalysisRecord | null> => {
+        const hasAnyContent =
+            analysisTitle.trim() ||
+            conclusionNotes.trim() ||
+            treatmentNotes.trim() ||
+            nutritionNotes.trim() ||
+            preventionNotes.trim() ||
+            aiSummaryText.trim() ||
+            recipeRows.some(r => r.newItemName.trim());
+
+        if (!hasAnyContent) {
+            toast.error(isKa ? 'შეავსეთ დასკვნა ან დანიშნულება შენახვამდე.' : 'Add a conclusion or prescription before saving.');
+            return null;
+        }
+
+        setIsSaving(true);
+        try {
+            // Explicitly NEVER executes treatment or deducts inventory
+            const saved = await saveClinicalRecord(buildRecordPayload());
+            setEditingRecordId(saved.id);
+            await refreshArchive();
+            toast.success(
+                isKa
+                    ? 'დასკვნა შენახულია არქივში (მარაგი არ ჩამოწერილა).'
+                    : 'Conclusion saved to clinical archive (no treatment executed or stock deducted).'
+            );
+            return saved;
+        } catch (err: any) {
+            toast.error(err?.message || (isKa ? 'შენახვა ვერ მოხერხდა' : 'Could not save clinical record'));
+            return null;
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleSaveAndDispatchToAgronomy = async () => {
+        if (!canDispatchToAgronomy || !onAddNutritionPlan) {
+            toast.error(isKa ? 'აგრონომიაში გადაცემა ხელმისაწვდომია მხოლოდ მენეჯმენტისთვის.' : 'Dispatching to Agronomy is restricted to company management.');
+            return;
+        }
+
+        if (!targetSector.trim()) {
+            toast.error(isKa ? 'მიუთითეთ სამიზნე სექტორი აგრონომიაში გადაცემამდე.' : 'Target sector is required before dispatching to Agronomy.');
+            return;
+        }
+
+        const validElements = recipeRows.filter(r => r.newItemName.trim().length > 0);
+        if (validElements.length === 0) {
+            toast.error(isKa ? 'დაამატეთ მინიმუმ ერთი პრეპარატი/მასალა რაოდენობით.' : 'Add at least one recipe material with quantity before dispatching.');
+            return;
+        }
+
+        const missingQty = validElements.find(r => !Number.isFinite(Number(r.quantity)) || Number(r.quantity) <= 0);
+        if (missingQty) {
+            toast.error(
+                isKa
+                    ? `მიუთითეთ დადებითი რაოდენობა მასალისთვის: ${missingQty.newItemName}`
+                    : `Specify a positive quantity for material: ${missingQty.newItemName}`
+            );
+            return;
+        }
+
+        setIsDispatching(true);
+        try {
+            const saved = await handleSaveOnly();
+            if (!saved) return;
+
+            const stablePlanId = `clinical-${saved.id}`;
+            const nowIso = new Date().toISOString();
+            const plan: NutritionPlan = {
+                id: stablePlanId,
+                organizationId: activeOrgId,
+                name: `${saved.title} (${targetSector.trim()})`,
+                targetFeatureIds: [],
+                crop: targetSector.trim(),
+                status: 'Planned',
+                startDate: nowIso.slice(0, 10),
+                endDate: nowIso.slice(0, 10),
+                notes: [
+                    `Severity: ${severity}`,
+                    conclusionNotes.trim() ? `Conclusion: ${conclusionNotes.trim()}` : '',
+                    treatmentNotes.trim() ? `Treatment: ${treatmentNotes.trim()}` : '',
+                    nutritionNotes.trim() ? `Nutrition: ${nutritionNotes.trim()}` : '',
+                    preventionNotes.trim() ? `Prevention: ${preventionNotes.trim()}` : ''
+                ]
+                    .filter(Boolean)
+                    .join('\n'),
+                elements: validElements.map(r => ({
+                    inventoryItemId: r.inventoryItemId || '',
+                    name: r.newItemName.trim(),
+                    quantity: Number(r.quantity),
+                    unit: r.unit || 'kg/ha'
+                })) as any,
+                createdAt: saved.createdAt,
+                updatedAt: nowIso
+            } as NutritionPlan;
+
+            await onAddNutritionPlan(plan);
+            toast.success(
+                isKa
+                    ? 'დანიშნულება შენახულია და გადაეცა აგრონომიის მოდულს (განმეორება განაახლებს იგივე გეგმას).'
+                    : 'Prescription saved and dispatched to Agronomy (retrying updates this plan without duplicates).'
+            );
+        } catch (err: any) {
+            toast.error(err?.message || (isKa ? 'აგრონომიაში გადაცემა ვერ მოხერხდა' : 'Failed to dispatch plan to Agronomy'));
+        } finally {
+            setIsDispatching(false);
+        }
+    };
+
+    const handleLoadFromArchive = (rec: SavedAgroAnalysisRecord, asReuse: boolean) => {
+        setEditingRecordId(asReuse ? null : rec.id);
+        setAnalysisTitle(asReuse ? `${rec.title} (${isKa ? 'ასლი' : 'Copy'})` : rec.title);
+        setTargetSector(rec.agronomistConclusion?.targetSectorOrPlot || '');
+        setSeverity(rec.agronomistConclusion?.severity || 'Moderate');
+        setConclusionNotes(rec.agronomistConclusion?.notes || '');
+        setTreatmentNotes(rec.plan?.treatment || rec.agronomistConclusion?.prescribedTreatment || '');
+        setNutritionNotes(rec.plan?.nutrition || rec.agronomistConclusion?.prescribedNutrition || '');
+        setPreventionNotes(rec.plan?.prevention || rec.agronomistConclusion?.preventiveMeasures || '');
+        setRecipeRows(rec.plan?.elements ? rec.plan.elements.map(e => ({ ...e })) : []);
+        setAiRawResult(rec.rawAiResult || null);
+        setAiSummaryText(rec.rawAiResult?.text || rec.rawAiResult?.summary || '');
+        setAiSuggestedPlan(rec.rawAiResult?.text || '');
+        setUploadedImageUrl(rec.imageDataUrl || '');
+        setActiveTab(rec.type === 'document' ? 'document' : rec.type === 'agro_image' ? 'agro_image' : 'disease');
+        toast.info(asReuse ? (isKa ? 'ჩანაწერი გახსნილია ახალ შაბლონად' : 'Loaded as reusable draft') : (isKa ? 'ჩანაწერი გახსნილია რედაქტირებისთვის' : 'Loaded record for editing'));
+    };
+
+    const handleConfirmDelete = async (rec: SavedAgroAnalysisRecord) => {
+        await deleteClinicalRecordTombstone(rec);
+        if (selectedArchiveRecord?.id === rec.id) setSelectedArchiveRecord(null);
+        if (editingRecordId === rec.id) setEditingRecordId(null);
+        setConfirmDeleteId(null);
+        await refreshArchive();
+        toast.success(isKa ? 'ჩანაწერი წაიშალა არქივიდან' : 'Record removed from archive');
+    };
+
+    const categoryBadgeClass = (cat?: ClinicalSourceCategory) => {
+        if (cat === 'Agronomist-created') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+        if (cat === 'Combined') return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+        return 'bg-amber-50 text-amber-700 border-amber-200';
+    };
+
     return (
-      r.title.toLowerCase().includes(q) ||
-      (r.agronomistConclusion?.notes || '').toLowerCase().includes(q) ||
-      (r.agronomistConclusion?.authorName || '').toLowerCase().includes(q)
+        <div className="flex-1 h-full overflow-y-auto bg-slate-50/70 p-4 sm:p-6">
+            <div className="max-w-6xl mx-auto space-y-5">
+                {/* Top Suite Navigation */}
+                <div className="bg-white rounded-2xl border border-slate-200 p-3 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        {([
+                            { id: 'disease', label: isKa ? 'დაავადების შეფასება' : 'Disease Assessment', icon: <Stethoscope size={15} /> },
+                            { id: 'document', label: isKa ? 'დოკუმენტები / ანალიზი' : 'Documents & Lab Notes', icon: <FileText size={15} /> },
+                            { id: 'agro_image', label: isKa ? 'ფოტო ინსპექტირება' : 'Field Vision', icon: <Camera size={15} /> },
+                            { id: 'archive', label: isKa ? `არქივი (${archiveRecords.length})` : `Clinical Archive (${archiveRecords.length})`, icon: <Archive size={15} /> }
+                        ] as const).map(tab => (
+                            <button
+                                key={tab.id}
+                                type="button"
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                                    activeTab === tab.id
+                                        ? 'bg-emerald-600 text-white shadow-xs'
+                                        : 'text-slate-600 hover:bg-slate-100'
+                                }`}
+                            >
+                                {tab.icon}
+                                <span>{tab.label}</span>
+                            </button>
+                        ))}
+                    </div>
+
+                    {activeTab !== 'archive' && (
+                        <button
+                            type="button"
+                            onClick={resetEditor}
+                            className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-600 flex items-center gap-1.5 cursor-pointer"
+                        >
+                            <RefreshCw size={13} />
+                            <span>{isKa ? 'ახალი ჩანაწერი' : 'New Record'}</span>
+                        </button>
+                    )}
+                </div>
+
+                {/* ARCHIVE TAB */}
+                {activeTab === 'archive' ? (
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                        <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-xs">
+                            <div className="relative">
+                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input
+                                    type="text"
+                                    value={archiveSearch}
+                                    onChange={e => setArchiveSearch(e.target.value)}
+                                    placeholder={isKa ? 'ძიება სათაურით ან სექტორით...' : 'Search by title or sector...'}
+                                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                />
+                            </div>
+
+                            <div className="flex flex-wrap gap-1.5">
+                                {(['ALL', 'AI-generated', 'Agronomist-created', 'Combined'] as const).map(cat => (
+                                    <button
+                                        key={cat}
+                                        type="button"
+                                        onClick={() => setArchiveFilter(cat)}
+                                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${
+                                            archiveFilter === cat
+                                                ? 'bg-slate-900 text-white border-slate-900'
+                                                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        {cat === 'ALL' ? (isKa ? 'ყველა' : 'All') : cat}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <div className="space-y-2 max-h-[560px] overflow-y-auto pr-1">
+                                {archiveLoading ? (
+                                    <div className="py-10 flex items-center justify-center text-slate-400 text-xs gap-2">
+                                        <Loader2 size={15} className="animate-spin" />
+                                        <span>{isKa ? 'იტვირთება...' : 'Loading archive...'}</span>
+                                    </div>
+                                ) : filteredArchive.length === 0 ? (
+                                    <div className="py-10 text-center text-xs text-slate-400">
+                                        {isKa ? 'არქივში ჩანაწერები არ მოიძებნა.' : 'No archived clinical records found.'}
+                                    </div>
+                                ) : (
+                                    filteredArchive.map(rec => {
+                                        const isSelected = selectedArchiveRecord?.id === rec.id;
+                                        return (
+                                            <button
+                                                key={rec.id}
+                                                type="button"
+                                                onClick={() => setSelectedArchiveRecord(rec)}
+                                                className={`w-full text-left p-3.5 rounded-xl border transition-all cursor-pointer space-y-1.5 ${
+                                                    isSelected
+                                                        ? 'bg-emerald-50/60 border-emerald-400'
+                                                        : 'bg-white border-slate-200 hover:border-slate-300'
+                                                }`}
+                                            >
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <p className="text-xs font-bold text-slate-900 line-clamp-1">{rec.title}</p>
+                                                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border shrink-0 ${categoryBadgeClass(rec.sourceCategory)}`}>
+                                                        {rec.sourceCategory || 'AI-generated'}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center justify-between text-[11px] text-slate-500">
+                                                    <span className="truncate">{rec.agronomistConclusion?.targetSectorOrPlot || (isKa ? 'პერსონალური ჩანაწერი' : 'Personal record')}</span>
+                                                    <span className="tabular-nums shrink-0">{new Date(rec.updatedAt || rec.createdAt).toLocaleDateString()}</span>
+                                                </div>
+                                            </button>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+                            {!selectedArchiveRecord ? (
+                                <div className="h-full min-h-[320px] flex flex-col items-center justify-center text-center text-slate-400 p-6">
+                                    <Archive size={28} className="mb-2 opacity-60" />
+                                    <p className="text-xs font-semibold text-slate-600">
+                                        {isKa ? 'აირჩიეთ ჩანაწერი დეტალების სანახავად' : 'Select an archived record to view details'}
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
+                                        <div>
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <h3 className="text-base font-bold text-slate-900">{selectedArchiveRecord.title}</h3>
+                                                <span className={`px-2 py-0.5 rounded-md text-[11px] font-semibold border ${categoryBadgeClass(selectedArchiveRecord.sourceCategory)}`}>
+                                                    {selectedArchiveRecord.sourceCategory || 'AI-generated'}
+                                                </span>
+                                                {selectedArchiveRecord.migrationSource === 'legacy' && (
+                                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                                                        {isKa ? 'ისტორიული იმპორტი' : 'Historical Import'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-xs text-slate-500 mt-1 tabular-nums">
+                                                {new Date(selectedArchiveRecord.createdAt).toLocaleString()}
+                                                {selectedArchiveRecord.agronomistConclusion?.targetSectorOrPlot
+                                                    ? ` · ${selectedArchiveRecord.agronomistConclusion.targetSectorOrPlot}`
+                                                    : ''}
+                                            </p>
+                                        </div>
+
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleLoadFromArchive(selectedArchiveRecord, false)}
+                                                className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer"
+                                            >
+                                                {isKa ? 'რედაქტირება' : 'Edit'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleLoadFromArchive(selectedArchiveRecord, true)}
+                                                className="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-semibold cursor-pointer"
+                                            >
+                                                {isKa ? 'ხელახლა გამოყენება' : 'Reuse'}
+                                            </button>
+                                            {confirmDeleteId === selectedArchiveRecord.id ? (
+                                                <div className="flex items-center gap-1.5">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleConfirmDelete(selectedArchiveRecord)}
+                                                        className="px-2.5 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-semibold cursor-pointer"
+                                                    >
+                                                        {isKa ? 'დადასტურება' : 'Confirm'}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setConfirmDeleteId(null)}
+                                                        className="px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-semibold cursor-pointer"
+                                                    >
+                                                        {isKa ? 'გაუქმება' : 'Cancel'}
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setConfirmDeleteId(selectedArchiveRecord.id)}
+                                                    className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 border border-rose-200 cursor-pointer"
+                                                    title={isKa ? 'წაშლა' : 'Delete'}
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {selectedArchiveRecord.agronomistConclusion?.notes && (
+                                        <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1">
+                                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                                                {isKa ? 'აგრონომის დასკვნა' : 'Agronomist Conclusion'}
+                                            </p>
+                                            <p className="text-xs text-slate-800 whitespace-pre-wrap leading-relaxed">
+                                                {selectedArchiveRecord.agronomistConclusion.notes}
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    {selectedArchiveRecord.plan?.elements && selectedArchiveRecord.plan.elements.length > 0 && (
+                                        <div className="space-y-2">
+                                            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                                                {isKa ? 'რეცეპტის შემადგენლობა' : 'Structured Recipe'}
+                                            </p>
+                                            <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                                                {selectedArchiveRecord.plan.elements.map((el, idx) => (
+                                                    <div key={idx} className="px-3.5 py-2.5 flex items-center justify-between text-xs bg-white">
+                                                        <span className="font-semibold text-slate-900">{el.newItemName}</span>
+                                                        <span className="font-bold text-emerald-700 tabular-nums">
+                                                            {el.quantity} {el.unit}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {(selectedArchiveRecord.rawAiResult?.text || selectedArchiveRecord.rawAiResult?.summary) && (
+                                        <div className="p-3.5 rounded-xl bg-amber-50/50 border border-amber-200/80 space-y-1.5">
+                                            <p className="text-[11px] font-bold uppercase tracking-wider text-amber-800 flex items-center gap-1.5">
+                                                <Sparkles size={12} />
+                                                {isKa ? 'AI შეფასება (საჭიროებს სპეციალისტის გადამოწმებას)' : 'AI-Generated Output (Requires Agronomist Review)'}
+                                            </p>
+                                            <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
+                                                {selectedArchiveRecord.rawAiResult.text || selectedArchiveRecord.rawAiResult.summary}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                ) : (
+                    /* WORKSPACE: LEFT = AI ANALYSIS & AI-GENERATED PLAN, RIGHT = MANUAL/COMBINED AGRONOMIST EDITOR */
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                        {/* Left Column: AI Input + Explicit AI-Generated Plan Section */}
+                        <div className="lg:col-span-5 space-y-4">
+                            <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-3.5 shadow-xs">
+                                <div className="flex items-center justify-between">
+                                    <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                                        <Sparkles size={16} className="text-emerald-600" />
+                                        <span>{isKa ? 'AI ანალიზის მოთხოვნა' : 'AI Diagnostic Input'}</span>
+                                    </h2>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                                        {isKa ? 'სათაური' : 'Case Title'}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={analysisTitle}
+                                        onChange={e => setAnalysisTitle(e.target.value)}
+                                        placeholder={isKa ? 'მაგ: ფოთლის სიყვითლე — ბლოკი B' : 'e.g. Leaf chlorosis — Block B'}
+                                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                                        {activeTab === 'document'
+                                            ? isKa ? 'ლაბორატორიული ტექსტი ან დოკუმენტი' : 'Lab Report Notes or Document'
+                                            : isKa ? 'სიმპტომების და ველის აღწერა' : 'Symptoms & Field Observations'}
+                                    </label>
+                                    <textarea
+                                        rows={4}
+                                        value={symptomsOrPrompt}
+                                        onChange={e => setSymptomsOrPrompt(e.target.value)}
+                                        placeholder={isKa ? 'აღწერეთ მცენარის მდგომარეობა, ნიადაგის მონაცემები ან ამინდი...' : 'Describe crop symptoms, soil observations, or recent weather...'}
+                                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                                        {isKa ? 'ფოტო ან დოკუმენტის ატვირთვა (არასავალდებულო)' : 'Attach Photo or Document (optional)'}
+                                    </label>
+                                    <input
+                                        type="file"
+                                        accept={activeTab === 'document' ? '.txt,.csv,.json,.md,image/*' : 'image/*'}
+                                        onChange={handleFileUpload}
+                                        className="block w-full text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-slate-200 file:text-xs file:font-semibold file:bg-slate-50 file:text-slate-700 hover:file:bg-slate-100"
+                                    />
+                                    {uploadedImageUrl && (
+                                        <img
+                                            src={uploadedImageUrl}
+                                            alt="Uploaded sample"
+                                            className="mt-2.5 w-full h-36 object-cover rounded-xl border border-slate-200"
+                                        />
+                                    )}
+                                </div>
+
+                                <button
+                                    type="button"
+                                    disabled={isAnalyzing}
+                                    onClick={handleRunAiAnalysis}
+                                    className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                                >
+                                    {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                                    <span>{isAnalyzing ? (isKa ? 'მიმდინარეობს ანალიზი...' : 'Analyzing...') : (isKa ? 'AI ანალიზის გაშვება' : 'Run AI Analysis')}</span>
+                                </button>
+                            </div>
+
+                            {/* Explicit AI-Generated Plan Section */}
+                            <div className="bg-white rounded-2xl border border-amber-200/90 p-5 space-y-3 shadow-xs">
+                                <div className="flex items-start justify-between gap-2">
+                                    <div>
+                                        <h3 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                                            <AlertTriangle size={14} className="text-amber-600" />
+                                            <span>{isKa ? 'AI-ს გენერირებული გეგმა' : 'AI-Generated Plan'}</span>
+                                        </h3>
+                                        <p className="text-[11px] text-amber-800 mt-0.5">
+                                            {isKa
+                                                ? 'AI შემოთავაზებები საჭიროებს აგრონომის გადამოწმებას და დადასტურებას.'
+                                                : 'AI suggestions require agronomist review before any field action.'}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {aiSuggestedPlan ? (
+                                    <div className="p-3.5 rounded-xl bg-amber-50/50 border border-amber-200/70 text-xs text-slate-800 whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto">
+                                        {aiSuggestedPlan}
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-slate-400 italic py-3">
+                                        {isKa
+                                            ? 'AI გეგმა გამოჩნდება ანალიზის შემდეგ. ასევე შეგიძლიათ შექმნათ მექანიკური დანიშნულება მარჯვნივ.'
+                                            : 'AI output appears here after running analysis. You can also author a manual prescription directly on the right.'}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Right Column: Manual / Combined Agronomist Conclusion & Prescription Editor */}
+                        <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-5 space-y-4 shadow-xs">
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                                <div>
+                                    <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                                        <ClipboardList size={16} className="text-emerald-600" />
+                                        <span>{isKa ? 'აგრონომის დასკვნა და რეცეპტი (მექანიკური / კომბინირებული)' : 'Agronomist Conclusion & Prescription (Manual / Combined)'}</span>
+                                    </h2>
+                                    <p className="text-[11px] text-slate-500 mt-0.5">
+                                        {isKa
+                                            ? 'დანიშნულების შენახვა არ ახორციელებს დამუშავებას და არ ჩამოწერს საწყობის მარაგს.'
+                                            : 'Saving a prescription records your plan only — it never executes treatment or deducts inventory.'}
+                                    </p>
+                                </div>
+                                <span className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border ${categoryBadgeClass(resolveSourceCategory())}`}>
+                                    {resolveSourceCategory()}
+                                </span>
+                            </div>
+
+                            {/* Severity & Target Sector */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                                        {isKa ? 'სიმძიმის ხარისხი' : 'Severity'}
+                                    </label>
+                                    <div className="grid grid-cols-4 gap-1.5">
+                                        {SEVERITIES.map(level => (
+                                            <button
+                                                key={level}
+                                                type="button"
+                                                onClick={() => setSeverity(level)}
+                                                className={`py-2 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${
+                                                    severity === level
+                                                        ? level === 'Critical' || level === 'Severe'
+                                                            ? 'bg-rose-600 text-white border-rose-600'
+                                                            : 'bg-slate-900 text-white border-slate-900'
+                                                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                                }`}
+                                            >
+                                                {level}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                                        {isKa ? 'სამიზნე სექტორი / ნაკვეთი' : 'Target Sector / Plot'}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        list="clinical-sector-options"
+                                        value={targetSector}
+                                        onChange={e => setTargetSector(e.target.value)}
+                                        placeholder={isKa ? 'აირჩიეთ ან ჩაწერეთ სექტორი' : 'Select or type sector / plot'}
+                                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                    />
+                                    <datalist id="clinical-sector-options">
+                                        {sectorOptions.map(opt => (
+                                            <option key={opt} value={opt} />
+                                        ))}
+                                    </datalist>
+                                </div>
+                            </div>
+
+                            {/* Agronomist Conclusion / Comment */}
+                            <div>
+                                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                                    {isKa ? 'აგრონომის დასკვნა / კომენტარი' : 'Agronomist Conclusion / Comment'}
+                                </label>
+                                <textarea
+                                    rows={3}
+                                    value={conclusionNotes}
+                                    onChange={e => setConclusionNotes(e.target.value)}
+                                    placeholder={isKa ? 'ჩაწერეთ თქვენი პროფესიული დასკვნა და დაკვირვებები...' : 'Enter verified clinical conclusion and specialist comments...'}
+                                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                />
+                            </div>
+
+                            {/* Explicit Structured Recipe Rows (Zero default chemicals or dosages) */}
+                            <div className="space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                                        <Beaker size={13} className="text-emerald-600" />
+                                        <span>{isKa ? 'რეცეპტის მასალები (მასალა, რაოდენობა, ერთეული)' : 'Prescription Recipe (Material, Quantity, Unit)'}</span>
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={handleAddRecipeRow}
+                                        className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                                    >
+                                        <Plus size={13} />
+                                        <span>{isKa ? 'მასალის დამატება' : 'Add Material'}</span>
+                                    </button>
+                                </div>
+
+                                {recipeRows.length === 0 ? (
+                                    <div className="p-4 rounded-xl border border-dashed border-slate-300 bg-slate-50/70 text-center text-xs text-slate-500">
+                                        {isKa
+                                            ? 'პრეპარატები ავტომატურად არ ემატება. დააჭირეთ „მასალის დამატებას“ რეცეპტის შესადგენად.'
+                                            : 'No default chemicals or dosages are prefilled. Click "Add Material" to specify verified inputs.'}
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {recipeRows.map((row, idx) => (
+                                            <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                                                <input
+                                                    type="text"
+                                                    value={row.newItemName}
+                                                    onChange={e => handleUpdateRecipeRow(idx, { newItemName: e.target.value })}
+                                                    placeholder={isKa ? 'მასალის / პრეპარატის დასახელება' : 'Material / product name'}
+                                                    className="col-span-6 px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                                />
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="any"
+                                                    value={row.quantity || ''}
+                                                    onChange={e => handleUpdateRecipeRow(idx, { quantity: parseFloat(e.target.value) || 0 })}
+                                                    placeholder={isKa ? 'რაოდ.' : 'Qty'}
+                                                    className="col-span-3 px-3 py-2 rounded-xl border border-slate-200 text-xs tabular-nums focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                                />
+                                                <select
+                                                    value={row.unit}
+                                                    onChange={e => handleUpdateRecipeRow(idx, { unit: e.target.value })}
+                                                    className="col-span-2 px-2 py-2 rounded-xl border border-slate-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                                >
+                                                    {UNITS.map(u => (
+                                                        <option key={u} value={u}>
+                                                            {u}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveRecipeRow(idx)}
+                                                    className="col-span-1 p-2 rounded-lg text-rose-500 hover:bg-rose-50 flex items-center justify-center cursor-pointer"
+                                                    title={isKa ? 'წაშლა' : 'Remove'}
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Treatment / Nutrition / Prevention Notes */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                                        {isKa ? 'დამუშავების ინსტრუქცია' : 'Treatment Notes'}
+                                    </label>
+                                    <textarea
+                                        rows={2}
+                                        value={treatmentNotes}
+                                        onChange={e => setTreatmentNotes(e.target.value)}
+                                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                                        {isKa ? 'კვების პროტოკოლი' : 'Nutrition Notes'}
+                                    </label>
+                                    <textarea
+                                        rows={2}
+                                        value={nutritionNotes}
+                                        onChange={e => setNutritionNotes(e.target.value)}
+                                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                                        {isKa ? 'პრევენცია' : 'Prevention'}
+                                    </label>
+                                    <textarea
+                                        rows={2}
+                                        value={preventionNotes}
+                                        onChange={e => setPreventionNotes(e.target.value)}
+                                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                                <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                                    <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
+                                    <span>
+                                        {canDispatchToAgronomy
+                                            ? isKa
+                                                ? 'შეგიძლიათ შეინახოთ არქივში ან გადასცეთ აგრონომიის გეგმებში.'
+                                                : 'Save to archive or dispatch directly to Agronomy nutrition plans.'
+                                            : isKa
+                                            ? 'პერსონალური რეჟიმი: ჩანაწერები ინახება თქვენს პირად არქივში.'
+                                            : 'Personal mode: records are saved privately to your archive.'}
+                                    </span>
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <button
+                                        type="button"
+                                        disabled={isSaving || isDispatching}
+                                        onClick={handleSaveOnly}
+                                        className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                                    >
+                                        {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                        <span>{isKa ? 'შენახვა' : 'Save'}</span>
+                                    </button>
+
+                                    {canDispatchToAgronomy && (
+                                        <button
+                                            type="button"
+                                            disabled={isSaving || isDispatching}
+                                            onClick={handleSaveAndDispatchToAgronomy}
+                                            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                                        >
+                                            {isDispatching ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                                            <span>{isKa ? 'შენახვა და აგრონომიაში დამატება' : 'Save & Add to Agronomy'}</span>
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
     );
-  });
-
-  return (
-    <div className={`flex flex-col h-full bg-slate-50 text-slate-800 ${mode === 'compact' ? 'text-xs' : 'text-sm'}`}>
-      {/* Top Header & Tool Switcher */}
-      <div className="p-3 bg-white border-b border-slate-200 shrink-0 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
-            <Stethoscope size={mode === 'compact' ? 16 : 18} />
-          </div>
-          <div>
-            <h3 className="font-black text-slate-900 uppercase tracking-tight flex items-center gap-1.5">
-              <span>{isKa ? 'AI აგრო ანალიტიკოსი & დიაგნოსტიკა' : 'AI Agro Diagnostic & Clinical Suite'}</span>
-              <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-200">
-                Peer-Learning
-              </span>
-            </h3>
-            <p className="text-[10px] text-slate-500 font-medium">
-              {isKa 
-                ? 'დაავადებების, მავნებლების აღრიცხვა, რეცეპტები & აგრონომთა გამოცდილება' 
-                : 'Pest/disease diagnostics, agronomist prescriptions & AI cross-learning'}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => triggerAiDiagnosticsModal()}
-            className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
-            title="AI Diagnostics & Key Configuration"
-          >
-            <Cpu size={12} className="text-emerald-600" />
-            <span>AI Gateway</span>
-          </button>
-          {onClose && (
-            <button 
-              onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-            >
-              <X size={16} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Primary Tool Switcher Tabs */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 bg-slate-100 p-1.5 border-b border-slate-200 shrink-0 gap-1.5">
-        <button
-          onClick={() => setActiveTab('disease')}
-          className={`py-2 px-2 rounded-lg font-black text-[10px] sm:text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer min-h-[38px] ${
-            activeTab === 'disease'
-              ? 'bg-emerald-600 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-white/80'
-          }`}
-        >
-          <Leaf size={14} className="shrink-0" />
-          <span className="truncate">{isKa ? 'დაავადებები' : 'Disease'}</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('document')}
-          className={`py-2 px-2 rounded-lg font-black text-[10px] sm:text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer min-h-[38px] ${
-            activeTab === 'document'
-              ? 'bg-blue-600 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-white/80'
-          }`}
-        >
-          <FileText size={14} className="shrink-0" />
-          <span className="truncate">{isKa ? 'დოკუმენტები' : 'Docs'}</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('agro_image')}
-          className={`py-2 px-2 rounded-lg font-black text-[10px] sm:text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer min-h-[38px] ${
-            activeTab === 'agro_image'
-              ? 'bg-purple-600 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-white/80'
-          }`}
-        >
-          <Eye size={14} className="shrink-0" />
-          <span className="truncate">{isKa ? 'აგრო ხედვა' : 'Vision'}</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('history')}
-          className={`py-2 px-2 rounded-lg font-black text-[10px] sm:text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer relative min-h-[38px] ${
-            activeTab === 'history'
-              ? 'bg-amber-600 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-white/80'
-          }`}
-        >
-          <History size={14} className="shrink-0" />
-          <span className="truncate">{isKa ? 'არქივი' : 'Ledger'}</span>
-          {savedRecords.length > 0 && (
-            <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[9px] font-black bg-white/30 text-current">
-              {savedRecords.length}
-            </span>
-          )}
-        </button>
-      </div>
-
-      {/* Main Content Workspace */}
-      <div className={`flex-1 overflow-y-auto p-3 sm:p-5 ${
-        mode === 'full' 
-          ? 'grid grid-cols-1 lg:grid-cols-2 gap-5 items-start' 
-          : 'space-y-4'
-      }`}>
-        <div className="space-y-4">
-        
-        {/* --- TAB 1: PLANT DISEASE DIAGNOSTIC --- */}
-        {activeTab === 'disease' && (
-          <div className="space-y-3">
-            <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2 shadow-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase text-emerald-800 tracking-wider flex items-center gap-1">
-                  <Leaf size={12} /> {isKa ? 'ფოტოს ატვირთვა დიაგნოსტიკისთვის' : 'Upload Leaf/Plant Photo for AI Diagnostics'}
-                </span>
-                {plantImageDataUrl && (
-                  <button 
-                    onClick={() => { setPlantImageFile(null); setPlantImageDataUrl(''); setActiveDiseaseResult(null); }}
-                    className="text-[9px] text-red-600 font-bold hover:underline"
-                  >
-                    {isKa ? 'გასუფთავება' : 'Clear'}
-                  </button>
-                )}
-              </div>
-
-              <div 
-                onClick={() => plantInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-xl p-3 text-center cursor-pointer bg-slate-50 hover:bg-emerald-50/50 transition-all"
-              >
-                <input 
-                  type="file" 
-                  ref={plantInputRef} 
-                  onChange={handlePlantImageSelect} 
-                  accept="image/*" 
-                  className="hidden" 
-                />
-                {plantImageDataUrl ? (
-                  <div className="relative rounded-lg overflow-hidden max-h-40 mx-auto">
-                    <img src={plantImageDataUrl} alt="Plant Preview" className="w-full h-36 object-cover rounded-lg" />
-                  </div>
-                ) : (
-                  <div className="py-3">
-                    <Upload size={22} className="mx-auto text-slate-400 mb-1" />
-                    <p className="text-[11px] font-bold text-slate-700">
-                      {isKa ? 'დააჭირეთ ფოთლის ან მცენარის ფოტოს ასატვირთად' : 'Click to select plant photo'}
-                    </p>
-                    <p className="text-[9px] text-slate-400">JPG, PNG, WebP</p>
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={handleRunPlantDiseaseAnalysis}
-                disabled={isAnalyzingDisease || (!plantImageFile && !plantImageDataUrl)}
-                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
-              >
-                {isAnalyzingDisease ? (
-                  <>
-                    <RefreshCw size={13} className="animate-spin" />
-                    <span>{isKa ? 'მიმდინარეობს დიაგნოსტიკა...' : 'Running Diagnostics...'}</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={13} />
-                    <span>{isKa ? 'დიაგნოსტიკის დაწყება' : 'Run AI Diagnostic'}</span>
-                  </>
-                )}
-              </button>
-            </div>
-
-            {/* Diagnostic Result Card */}
-            {(activeDiseaseResult || (selectedRecord && selectedRecord.type === 'disease')) && (() => {
-              const raw = activeDiseaseResult || selectedRecord?.rawAiResult;
-              const isLocal = Boolean(raw?.isAutonomousFallback || raw?.diagnosticSource?.includes('Autonomous'));
-              return (
-              <div className={`p-3 rounded-xl border space-y-2 text-xs transition-all ${
-                isLocal 
-                  ? 'bg-amber-50 border-2 border-amber-400 text-amber-950 shadow-md'
-                  : 'bg-red-50/80 border-red-200 text-slate-800'
-              }`}>
-                <div className="flex items-center justify-between border-b border-black/10 pb-2 gap-2">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <AiSourceBadge 
-                      source={isLocal ? 'local' : 'cloud'}
-                      isLocal={isLocal}
-                      reason="Plant disease diagnostic served via Autonomous Clinical Agronomic Engine."
-                      isKa={isKa}
-                      compact
-                    />
-                    <AlertTriangle size={15} className={isLocal ? 'text-amber-600' : 'text-red-600'} />
-                    <span className="font-black uppercase tracking-tight">
-                      {activeDiseaseResult?.diseaseName || selectedRecord?.title}
-                    </span>
-                  </div>
-                  {activeDiseaseResult?.confidence && (
-                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black ${
-                      isLocal ? 'bg-amber-200 text-amber-900' : 'bg-red-200 text-red-800'
-                    }`}>
-                      {(activeDiseaseResult.confidence * 100).toFixed(0)}% Match
-                    </span>
-                  )}
-                </div>
-
-                <p className="text-[11px] text-slate-700 font-medium leading-relaxed">
-                  {activeDiseaseResult?.description || selectedRecord?.rawAiResult?.description}
-                </p>
-
-                {/* Treatment Suggestions from AI */}
-                <div className="bg-white/80 p-2.5 rounded-lg border border-red-100 space-y-1">
-                  <span className="text-[9px] font-black uppercase text-red-900 tracking-wider block">
-                    {isKa ? 'AI-ს რეკომენდებული საწყისი პროტოკოლი:' : 'AI Suggested Treatment Protocol:'}
-                  </span>
-                  <ul className="space-y-1 text-[10px] text-slate-700 font-medium">
-                    {(activeDiseaseResult?.treatmentSuggestions || selectedRecord?.rawAiResult?.treatmentSuggestions || []).map((s: string, idx: number) => (
-                      <li key={idx} className="flex items-start gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1 shrink-0" />
-                        <span>{s}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-              );
-            })()}
-          </div>
-        )}
-
-        {/* --- TAB 2: DOCUMENT & REPORT COMPARISON --- */}
-        {activeTab === 'document' && (
-          <div className="space-y-3">
-            <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2 shadow-xs">
-              <span className="text-[10px] font-black uppercase text-blue-800 tracking-wider flex items-center gap-1">
-                <FileText size={12} /> {isKa ? 'დოკუმენტების შედარება & ტენდენციები' : 'Compare Reports & Agronomic Trends'}
-              </span>
-
-              <div 
-                onClick={() => docInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-xl p-3 text-center cursor-pointer bg-slate-50 hover:bg-blue-50/50 transition-all"
-              >
-                <input 
-                  type="file" 
-                  ref={docInputRef} 
-                  onChange={handleDocUpload} 
-                  multiple 
-                  className="hidden" 
-                />
-                <Upload size={20} className="mx-auto text-slate-400 mb-1" />
-                <p className="text-[11px] font-bold text-slate-700">
-                  {isKa ? 'ატვირთეთ PDF ან ტექსტური რეპორტები' : 'Upload Lab PDFs or Field Memos'}
-                </p>
-                <p className="text-[9px] text-slate-400">PDF, TXT, CSV</p>
-              </div>
-
-              {uploadedDocs.length > 0 && (
-                <div className="space-y-1">
-                  <span className="text-[9px] font-black text-slate-400 uppercase">
-                    {isKa ? 'არჩეული ფაილები:' : 'Selected Files:'}
-                  </span>
-                  {uploadedDocs.map((d, i) => (
-                    <div key={d.id} className="flex items-center justify-between p-1.5 bg-slate-100 rounded-lg text-[10px] font-bold text-slate-700">
-                      <span className="truncate">{d.fileName}</span>
-                      <button 
-                        onClick={() => setUploadedDocs(prev => prev.filter((_, idx) => idx !== i))}
-                        className="text-red-500 hover:text-red-700 font-black ml-2"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <button
-                onClick={handleRunDocComparison}
-                disabled={isAnalyzingDocs || uploadedDocs.length === 0}
-                className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
-              >
-                {isAnalyzingDocs ? (
-                  <>
-                    <RefreshCw size={13} className="animate-spin" />
-                    <span>{isKa ? 'შედარება...' : 'Comparing...'}</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={13} />
-                    <span>{isKa ? 'დოკუმენტების შედარება' : 'Analyze & Compare'}</span>
-                  </>
-                )}
-              </button>
-            </div>
-
-            {(docAnalysisSummary || (selectedRecord && selectedRecord.type === 'document')) && (
-              <div className="p-3 bg-blue-50 rounded-xl border border-blue-200 text-[11px] text-slate-700 leading-relaxed whitespace-pre-wrap font-medium">
-                <span className="font-black text-blue-900 uppercase tracking-wider text-[10px] block mb-1">
-                  {isKa ? 'შედარების ანალიტიკური ანგარიში:' : 'Comparative Analysis Report:'}
-                </span>
-                {docAnalysisSummary || selectedRecord?.rawAiResult?.comparisonReport}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* --- TAB 3: AGRO VISION & GENERAL IMAGE --- */}
-        {activeTab === 'agro_image' && (
-          <div className="space-y-3">
-            <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2 shadow-xs">
-              <span className="text-[10px] font-black uppercase text-purple-800 tracking-wider flex items-center gap-1">
-                <Eye size={12} /> {isKa ? 'ზოგადი აგრო ხედვა & ნიადაგის ინსპექცია' : 'General Crop, Soil & Yield Vision'}
-              </span>
-
-              <div 
-                onClick={() => agroImageInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-300 hover:border-purple-500 rounded-xl p-3 text-center cursor-pointer bg-slate-50 hover:bg-purple-50/50 transition-all"
-              >
-                <input 
-                  type="file" 
-                  ref={agroImageInputRef} 
-                  onChange={handleAgroImageSelect} 
-                  accept="image/*" 
-                  className="hidden" 
-                />
-                {agroImageDataUrl ? (
-                  <div className="relative rounded-lg overflow-hidden max-h-40 mx-auto">
-                    <img src={agroImageDataUrl} alt="Agro Preview" className="w-full h-36 object-cover rounded-lg" />
-                  </div>
-                ) : (
-                  <div className="py-3">
-                    <Upload size={22} className="mx-auto text-slate-400 mb-1" />
-                    <p className="text-[11px] font-bold text-slate-700">
-                      {isKa ? 'ატვირთეთ ნაკვეთის, კულტურის ან ნიადაგის ფოტო' : 'Upload orchard/soil photo'}
-                    </p>
-                    <p className="text-[9px] text-slate-400">JPG, PNG, WebP</p>
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={handleRunAgroImageAnalysis}
-                disabled={isAnalyzingAgroImage || (!agroImageFile && !agroImageDataUrl)}
-                className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
-              >
-                {isAnalyzingAgroImage ? (
-                  <>
-                    <RefreshCw size={13} className="animate-spin" />
-                    <span>{isKa ? 'ხედვის ანალიზი...' : 'Analyzing Vision...'}</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={13} />
-                    <span>{isKa ? 'აგრო ხედვის ანალიზი' : 'Inspect Crop / Soil Vision'}</span>
-                  </>
-                )}
-              </button>
-            </div>
-
-            {(activeAgroImageResult || (selectedRecord && selectedRecord.type === 'agro_image')) && (
-              <div className="p-3 bg-purple-50 rounded-xl border border-purple-200 space-y-2 text-xs">
-                <div className="border-b border-purple-200 pb-1.5">
-                  <span className="text-[9px] font-black uppercase text-purple-700 block tracking-widest">
-                    {isKa ? 'იდენტიფიცირებული ობიექტი:' : 'Identified Subject:'}
-                  </span>
-                  <p className="font-black text-purple-950 text-sm">
-                    {activeAgroImageResult?.subject || selectedRecord?.title}
-                  </p>
-                </div>
-
-                <div>
-                  <span className="text-[9px] font-black uppercase text-purple-700 block tracking-widest">
-                    {isKa ? 'მდგომარეობის შეფასება:' : 'Condition Assessment:'}
-                  </span>
-                  <p className="text-[11px] text-slate-700 font-medium">
-                    {activeAgroImageResult?.condition || selectedRecord?.rawAiResult?.condition}
-                  </p>
-                </div>
-
-                {(activeAgroImageResult?.metrics || selectedRecord?.rawAiResult?.metrics) && (
-                  <div>
-                    <span className="text-[9px] font-black uppercase text-purple-700 block tracking-widest">
-                      {isKa ? 'გამოთვლილი მეტრიკები:' : 'Calculated Metrics:'}
-                    </span>
-                    <p className="text-[11px] text-slate-700 font-medium">
-                      {activeAgroImageResult?.metrics || selectedRecord?.rawAiResult?.metrics}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* --- TAB 4: HISTORICAL ANALYSES ARCHIVE & LEDGER --- */}
-        {activeTab === 'history' && (
-          <div className="space-y-3">
-            {/* Search filter */}
-            <div className="relative">
-              <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
-              <input
-                type="text"
-                value={searchFilter}
-                onChange={e => setSearchFilter(e.target.value)}
-                placeholder={isKa ? 'ძიება დაავადების, ნაკვეთის ან აგრონომის მიხედვით...' : 'Filter clinical history...'}
-                className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              />
-            </div>
-
-            {/* List of saved clinical analyses */}
-            <div className="space-y-2">
-              {filteredHistory.length === 0 ? (
-                <div className="p-6 text-center text-slate-400 font-medium text-xs">
-                  {isKa ? 'ანალიზების ისტორია ცარიელია' : 'No recorded analyses found'}
-                </div>
-              ) : (
-                filteredHistory.map(record => {
-                  const isSelected = selectedRecord?.id === record.id;
-                  return (
-                    <div
-                      key={record.id}
-                      onClick={() => setSelectedRecord(record)}
-                      className={`p-3 rounded-xl border transition-all cursor-pointer ${
-                        isSelected
-                          ? 'bg-emerald-50 border-emerald-500 shadow-xs'
-                          : 'bg-white border-slate-200 hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2 mb-1">
-                        <div className="flex items-center gap-1.5">
-                          {record.type === 'disease' ? (
-                            <Leaf size={14} className="text-emerald-600 shrink-0" />
-                          ) : record.type === 'document' ? (
-                            <FileText size={14} className="text-blue-600 shrink-0" />
-                          ) : (
-                            <Eye size={14} className="text-purple-600 shrink-0" />
-                          )}
-                          <span className="font-black text-slate-900 text-xs truncate">
-                            {record.title}
-                          </span>
-                        </div>
-                        <span className="text-[9px] font-bold text-slate-400 shrink-0">
-                          {new Date(record.createdAt).toLocaleDateString()}
-                        </span>
-                      </div>
-
-                      {/* Agronomist Conclusion Badge */}
-                      {record.agronomistConclusion ? (
-                        <div className="mt-1 pt-1 border-t border-slate-100 flex items-center justify-between text-[9px]">
-                          <span className="font-bold text-emerald-800 flex items-center gap-1">
-                            <CheckCircle2 size={10} className="text-emerald-600" />
-                            {record.agronomistConclusion.authorName || 'Agronomist Verified'}
-                          </span>
-                          <span className={`font-black px-1.5 py-0.2 rounded ${
-                            record.agronomistConclusion.severity === 'Critical' ? 'bg-red-100 text-red-800' :
-                            record.agronomistConclusion.severity === 'Severe' ? 'bg-orange-100 text-orange-800' :
-                            'bg-slate-100 text-slate-700'
-                          }`}>
-                            {record.agronomistConclusion.severity}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="text-[9px] text-amber-600 font-bold mt-1">
-                          {isKa ? 'აგრონომის დასკვნა შესავსებია' : 'Pending Agronomist Prescription'}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        )}
-        </div>
-
-        {/* --- DEDICATED WINDOW: AGRONOMIST'S CLINICAL CONCLUSION & PRESCRIPTION --- */}
-        {/* User requirement: Add a window for the agronomist's conclusion and notes, and save it also */}
-        <div className="space-y-4">
-          <div className="p-3.5 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-black text-xs">
-                <Stethoscope size={13} />
-              </div>
-              <div>
-                <h4 className="font-black text-slate-900 uppercase tracking-tight text-xs">
-                  {isKa ? 'აგრონომის კლინიკური დასკვნა & რეცეპტურა' : "Agronomist's Conclusion & Prescriptions"}
-                </h4>
-                <span className="text-[9px] text-slate-400 font-bold block">
-                  {selectedRecord ? selectedRecord.title : (isKa ? 'აირჩიეთ ან შეასრულეთ ანალიზი' : 'Select an analysis to prescribe')}
-                </span>
-              </div>
-            </div>
-
-            <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-slate-100 text-slate-700">
-              {isKa ? 'აღრიცხვა & სწავლება' : 'Record & Learn'}
-            </span>
-          </div>
-
-          {/* Severity & Target Plot */}
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[9px] font-black uppercase text-slate-500 tracking-wider block mb-1">
-                {isKa ? 'სიმძიმის ხარისხი:' : 'Severity Level:'}
-              </label>
-              <select
-                value={conclusionSeverity}
-                onChange={e => setConclusionSeverity(e.target.value as any)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-xs font-bold text-slate-800 focus:bg-white"
-              >
-                <option value="Mild">{isKa ? 'მსუბუქი (Mild)' : 'Mild'}</option>
-                <option value="Moderate">{isKa ? 'საშუალო (Moderate)' : 'Moderate'}</option>
-                <option value="Severe">{isKa ? 'მძიმე (Severe)' : 'Severe'}</option>
-                <option value="Critical">{isKa ? 'კრიტიკული (Critical)' : 'Critical'}</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="text-[9px] font-black uppercase text-slate-500 tracking-wider block mb-1">
-                {isKa ? 'სამიზნე სექტორი / ნაკვეთი:' : 'Target Sector / Plot:'}
-              </label>
-              <input
-                type="text"
-                value={targetSector}
-                onChange={e => setTargetSector(e.target.value)}
-                placeholder="Sector A, Row 12..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-xs font-bold text-slate-800 focus:bg-white"
-              />
-            </div>
-          </div>
-
-          {/* 1. Agronomist's Clinical Notes */}
-          <div>
-            <label className="text-[9px] font-black uppercase text-slate-500 tracking-wider block mb-1">
-              {isKa ? '1. აგრონომის შეფასება & დასკვნა (Clinical Notes):' : '1. Clinical Observations & Diagnosis:'}
-            </label>
-            <textarea
-              rows={2}
-              value={conclusionNotes}
-              onChange={e => setConclusionNotes(e.target.value)}
-              placeholder={isKa ? 'აღწერეთ ინფექციის გავრცელების მასშტაბი, ფენოფაზა და სიმპტომები...' : 'Describe severity, infection spread, canopy symptoms...'}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-medium text-slate-800 focus:bg-white resize-none"
-            />
-          </div>
-
-          {/* 2. Active Ingredients Quick Selector */}
-          <div>
-            <label className="text-[9px] font-black uppercase text-slate-500 tracking-wider block mb-1">
-              {isKa ? 'აქტიური ნივთიერებები (Active Ingredients):' : 'Active Ingredients Selected:'}
-            </label>
-            <div className="flex flex-wrap gap-1">
-              {commonIngredients.map(ing => {
-                const isSelected = activeIngredients.includes(ing);
-                return (
-                  <button
-                    key={ing}
-                    type="button"
-                    onClick={() => toggleActiveIngredient(ing)}
-                    className={`px-1.5 py-0.5 rounded text-[9px] font-bold border transition-all cursor-pointer ${
-                      isSelected
-                        ? 'bg-emerald-600 text-white border-emerald-600'
-                        : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
-                    }`}
-                  >
-                    {isSelected ? '✓ ' : '+ '}{ing}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 3. Prescribed Treatment & Dosage */}
-          <div className="grid grid-cols-3 gap-2">
-            <div className="col-span-2">
-              <label className="text-[9px] font-black uppercase text-slate-500 tracking-wider block mb-1">
-                {isKa ? '2. დანიშნული მკურნალობის გეგმა:' : '2. Prescribed Treatment Plan:'}
-              </label>
-              <input
-                type="text"
-                value={prescribedTreatment}
-                onChange={e => setPrescribedTreatment(e.target.value)}
-                placeholder={isKa ? 'ფუნგიციდი, ბაქტერიოციდი, ბიოპრეპარატი...' : 'Fungicide / bio-control prescription...'}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-xs font-bold text-slate-800 focus:bg-white"
-              />
-            </div>
-            <div>
-              <label className="text-[9px] font-black uppercase text-slate-500 tracking-wider block mb-1">
-                {isKa ? 'დოზირება:' : 'Dosage:'}
-              </label>
-              <input
-                type="text"
-                value={recommendedDosage}
-                onChange={e => setRecommendedDosage(e.target.value)}
-                placeholder="2.5 kg/ha"
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-xs font-bold text-slate-800 focus:bg-white"
-              />
-            </div>
-          </div>
-
-          {/* 4. Prescribed Nutrition Plan */}
-          <div>
-            <label className="text-[9px] font-black uppercase text-slate-500 tracking-wider block mb-1">
-              {isKa ? '3. დანიშნული კვების გეგმა (Nutrition Plan):' : '3. Prescribed Nutrition Support:'}
-            </label>
-            <input
-              type="text"
-              value={prescribedNutrition}
-              onChange={e => setPrescribedNutrition(e.target.value)}
-              placeholder={isKa ? 'ფოსფიტები, სილიციუმი, კალციუმი, იმუნოსტიმულატორი...' : 'Phosphites, foliar silicon, biostimulants to harden cuticle...'}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-xs font-bold text-slate-800 focus:bg-white"
-            />
-          </div>
-
-          {/* 5. Preventive Measures & Monitoring */}
-          <div>
-            <label className="text-[9px] font-black uppercase text-slate-500 tracking-wider block mb-1">
-              {isKa ? '4. პრევენციული ზომები & მონიტორინგი (Preventive Measures):' : '4. Preventive Measures & Monitoring:'}
-            </label>
-            <input
-              type="text"
-              value={preventiveMeasures}
-              onChange={e => setPreventiveMeasures(e.target.value)}
-              placeholder={isKa ? 'მორწყვის გრაფიკის კორექცია, ვარჯის გაფურჩქნა, ინსპექცია 5 დღეში...' : 'Aeration pruning, drip timing, reinspect in 5 days...'}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-xs font-bold text-slate-800 focus:bg-white"
-            />
-          </div>
-
-          {/* Action Buttons */}
-          <div className="pt-2 border-t border-slate-100 flex flex-wrap gap-2">
-            <button
-              onClick={handleSaveAgronomistConclusion}
-              disabled={isSavingConclusion || !selectedRecord}
-              className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
-            >
-              {isSavingConclusion ? <RefreshCw size={12} className="animate-spin" /> : <Database size={12} />}
-              <span>{isKa ? 'დასკვნის შენახვა' : 'Save Prescription'}</span>
-            </button>
-
-            {/* Peer Comparison / AI Cross-Learning Button */}
-            <button
-              onClick={handleOpenPeerComparison}
-              disabled={!selectedRecord}
-              className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer"
-              title="Compare with prescriptions made by other agronomists"
-            >
-              <Cpu size={12} className="text-indigo-600" />
-              <span>{isKa ? 'AI სწავლება & შედარება' : 'Peer Learning'}</span>
-            </button>
-
-            {/* Quick Operational Dispatchers */}
-            {onAddTask && (
-              <button
-                onClick={handleCreateTreatmentTask}
-                className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
-                title="Create Treatment Work Order"
-              >
-                + {isKa ? 'დავალება' : 'Task'}
-              </button>
-            )}
-
-            {onAddNutritionPlan && (
-              <button
-                onClick={handleCreateNutritionPlan}
-                className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
-                title="Create Nutrition Plan"
-              >
-                + {isKa ? 'კვება' : 'Nutrition'}
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-
-      {/* --- MODAL: PEER AGRONOMIST COMPARISON & AI LEARNING --- */}
-      {/* What sets our AI apart is its ability to observe, compare, and learn from the prescriptions and decisions made by other agronomists */}
-      {showPeerComparisonModal && peerComparisonData && (
-        <div className="fixed inset-0 z-[6000] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3">
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh]">
-            <div className="p-3 bg-indigo-900 text-white flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2">
-                <Cpu size={16} className="text-indigo-300" />
-                <div>
-                  <h4 className="font-black text-xs uppercase tracking-tight">
-                    {isKa ? 'AI სწავლება: სხვა აგრონომების გამოცდილება' : 'AI Cross-Agronomist Peer Comparison'}
-                  </h4>
-                  <span className="text-[9px] text-indigo-200">
-                    {peerComparisonData.targetCondition} ({peerComparisonData.similarCasesFound} {isKa ? 'შესადარებელი შემთხვევა' : 'peer cases observed'})
-                  </span>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowPeerComparisonModal(false)}
-                className="p-1 hover:bg-white/10 rounded-lg text-white/80 hover:text-white"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <div className="p-4 overflow-y-auto space-y-4 text-xs">
-              {/* Top Active Ingredients Consensus */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                <span className="text-[9px] font-black uppercase text-slate-700 tracking-wider block">
-                  {isKa ? 'სხვა აგრონომების მიერ გამოყენებული აქტიური ნივთიერებები:' : 'Most Prescribed Active Ingredients by Peer Agronomists:'}
-                </span>
-                <div className="space-y-1.5">
-                  {peerComparisonData.topActiveIngredients.map((item, idx) => (
-                    <div key={idx} className="flex items-center justify-between text-[11px] bg-white p-2 rounded-lg border border-slate-100">
-                      <span className="font-bold text-slate-800">{item.ingredient}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-slate-500 font-bold">{item.usagePercentage}% {isKa ? 'შემთხვევებში' : 'share'}</span>
-                        <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-emerald-100 text-emerald-800">
-                          {item.avgRecoveryRate}% {isKa ? 'აღდგენა' : 'recovery'}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Consensus Synthesized Protocol */}
-              <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl space-y-1">
-                <span className="text-[9px] font-black uppercase text-indigo-900 tracking-wider block">
-                  {isKa ? 'AI-ს მიერ სინთეზირებული აგრონომიული კონსენსუსი:' : 'AI Synthesized Agronomic Consensus:'}
-                </span>
-                <p className="text-[11px] text-slate-700 leading-relaxed font-medium">
-                  {peerComparisonData.consensusTreatmentProtocol}
-                </p>
-              </div>
-
-              {/* Observed Clinical Cases */}
-              <div className="space-y-2">
-                <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider block">
-                  {isKa ? 'დაკვირვებული პრაქტიკული შემთხვევები & გადაწყვეტილებები:' : 'Real Historical Prescriptions by Other Agronomists:'}
-                </span>
-                <div className="space-y-2">
-                  {peerComparisonData.observedCases.map((c, i) => (
-                    <div key={i} className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-[10px] space-y-1">
-                      <div className="flex items-center justify-between font-bold text-slate-800">
-                        <span>{c.agronomistName}</span>
-                        <span className="text-slate-400">{c.organization}</span>
-                      </div>
-                      <p className="text-slate-700">
-                        <strong className="text-slate-900">{isKa ? 'მკურნალობა:' : 'Treatment:'}</strong> {c.prescribedTreatment} ({c.dosage})
-                      </p>
-                      <p className="text-slate-700">
-                        <strong className="text-slate-900">{isKa ? 'კვება:' : 'Nutrition:'}</strong> {c.prescribedNutrition}
-                      </p>
-                      <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 text-[9px]">
-                        <span className="text-slate-500">{c.date}</span>
-                        <span className="font-black text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded">
-                          {c.recoveryOutcomePercent}% {isKa ? 'გამოჯანმრთელების მაჩვენებელი' : 'Canopy Recovery'}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="p-3 bg-slate-100 border-t border-slate-200 shrink-0 text-right">
-              <button
-                onClick={() => setShowPeerComparisonModal(false)}
-                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold"
-              >
-                {isKa ? 'დახურვა' : 'Close'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
 };
 
 export default AiAnalysisSuite;

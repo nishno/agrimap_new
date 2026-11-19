@@ -1,8 +1,9 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { UserPlus } from 'lucide-react';
 import { XCircleIcon, BellIcon, AtSignIcon, HashIcon, CheckIcon, TrashIcon } from './Icons';
-import { Alert, User } from '../types';
+import { Alert, JoinRequest, User } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface NotificationHubProps {
@@ -13,11 +14,28 @@ interface NotificationHubProps {
     onMarkAsRead: (id: string) => void;
     onAlertClick: (alert: Alert) => void;
     currentUser: User | null;
+    joinRequests?: JoinRequest[];
+    onApproveJoinRequest?: (request: JoinRequest) => Promise<void> | void;
+    onDeclineJoinRequest?: (request: JoinRequest) => Promise<void> | void;
 }
 
-export const NotificationHub: React.FC<NotificationHubProps> = ({ isOpen, onClose, alerts, onClearAll, onMarkAsRead, onAlertClick, currentUser }) => {
+export const NotificationHub: React.FC<NotificationHubProps> = ({
+    isOpen,
+    onClose,
+    alerts,
+    onClearAll,
+    onMarkAsRead,
+    onAlertClick,
+    currentUser,
+    joinRequests = [],
+    onApproveJoinRequest,
+    onDeclineJoinRequest
+}) => {
     const { language } = useLanguage();
     const isKa = language === 'ka';
+    const [busyRequestId, setBusyRequestId] = useState<string | null>(null);
+    const pendingJoinRequests = joinRequests.filter(r => r.status === 'pending');
+    const totalCount = alerts.length + pendingJoinRequests.length;
     return (
         <AnimatePresence>
             {isOpen && (
@@ -52,7 +70,9 @@ export const NotificationHub: React.FC<NotificationHubProps> = ({ isOpen, onClos
                         </div>
 
                         <div className="p-4 bg-slate-50 border-b flex justify-between items-center px-8">
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{alerts.length} New Alerts</span>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                                {totalCount} {isKa ? 'შეტყობინება' : 'New Alerts'}
+                            </span>
                             <button 
                                 onClick={onClearAll}
                                 className="flex items-center gap-1.5 text-[10px] font-black text-red-600 uppercase tracking-widest hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors"
@@ -62,7 +82,80 @@ export const NotificationHub: React.FC<NotificationHubProps> = ({ isOpen, onClos
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-4 space-y-4 px-8">
-                            {alerts.length === 0 ? (
+                            {pendingJoinRequests.length > 0 && (
+                                <div className="space-y-3 pb-2 border-b border-slate-100">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest flex items-center gap-1.5">
+                                            <UserPlus className="w-3.5 h-3.5" />
+                                            {isKa ? 'გაწევრიანების მოთხოვნები' : 'Pending Join Requests'}
+                                        </span>
+                                        <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md tabular-nums">
+                                            {pendingJoinRequests.length}
+                                        </span>
+                                    </div>
+                                    {pendingJoinRequests.map(req => {
+                                        const isBusy = busyRequestId === req.id;
+                                        return (
+                                            <div
+                                                key={req.id}
+                                                className="p-4 rounded-2xl border border-emerald-200 bg-emerald-50/40 space-y-2.5"
+                                            >
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div className="min-w-0">
+                                                        <h4 className="font-black text-slate-900 text-xs truncate">{req.userName}</h4>
+                                                        {req.userEmail && (
+                                                            <p className="text-[11px] text-slate-500 truncate">{req.userEmail}</p>
+                                                        )}
+                                                        <p className="text-[10px] font-semibold text-slate-500 mt-1">
+                                                            {req.organizationName} • {new Date(req.createdAt).toLocaleDateString()}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                {req.message && (
+                                                    <p className="text-xs text-slate-600 leading-relaxed">{req.message}</p>
+                                                )}
+                                                <div className="flex items-center gap-2 pt-1">
+                                                    <button
+                                                        type="button"
+                                                        disabled={isBusy || !onApproveJoinRequest}
+                                                        onClick={async (e) => {
+                                                            e.stopPropagation();
+                                                            if (!onApproveJoinRequest) return;
+                                                            setBusyRequestId(req.id);
+                                                            try {
+                                                                await onApproveJoinRequest(req);
+                                                            } finally {
+                                                                setBusyRequestId(null);
+                                                            }
+                                                        }}
+                                                        className="px-3.5 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors cursor-pointer"
+                                                    >
+                                                        {isBusy ? (isKa ? '...' : 'Working...') : (isKa ? 'დადასტურება' : 'Approve')}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={isBusy || !onDeclineJoinRequest}
+                                                        onClick={async (e) => {
+                                                            e.stopPropagation();
+                                                            if (!onDeclineJoinRequest) return;
+                                                            setBusyRequestId(req.id);
+                                                            try {
+                                                                await onDeclineJoinRequest(req);
+                                                            } finally {
+                                                                setBusyRequestId(null);
+                                                            }
+                                                        }}
+                                                        className="px-3.5 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-600 hover:text-white disabled:opacity-50 transition-colors cursor-pointer"
+                                                    >
+                                                        {isKa ? 'უარყოფა' : 'Decline'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                            {alerts.length === 0 && pendingJoinRequests.length === 0 ? (
                                 <div className="h-full flex flex-col items-center justify-center text-center p-12">
                                     <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-6 shadow-inner">
                                         <BellIcon className="h-10 w-10 text-slate-300" />

@@ -49,6 +49,8 @@ interface AiAnalystViewProps {
   onSetIsMapFullScreen: (isFull: boolean) => void;
   onAddToDashboard?: (widget: Omit<DashboardWidget, 'id' | 'order' | 'isVisible'>) => void;
   onSetNutritionPlans?: React.Dispatch<React.SetStateAction<NutritionPlan[]>>;
+  onUpsertNutritionPlan?: (plan: NutritionPlan) => void | Promise<void>;
+  personalOnly?: boolean;
   allUsers?: User[];
   organizations?: Organization[];
   crops?: Crop[];
@@ -81,13 +83,28 @@ const AiAnalystView: React.FC<AiAnalystViewProps> = (props) => {
         initialTab, onTabChange
     } = props;
 
-    const [activeTab, setActiveTab] = useState<'agro' | 'global' | 'market' | 'cross_module' | 'diagnostics'>(initialTab || 'agro');
+    const [activeTab, setActiveTab] = useState<'agro' | 'global' | 'market' | 'cross_module' | 'diagnostics'>(() => {
+        if (props.personalOnly && initialTab && ['cross_module', 'global', 'market'].includes(initialTab)) {
+            return 'diagnostics';
+        }
+        return initialTab || 'agro';
+    });
+
+    useEffect(() => {
+        if (props.personalOnly && ['cross_module', 'global', 'market'].includes(activeTab)) {
+            setActiveTab('diagnostics');
+        }
+    }, [props.personalOnly, activeTab]);
 
     useEffect(() => {
         if (initialTab) {
-            setActiveTab(initialTab);
+            if (props.personalOnly && ['cross_module', 'global', 'market'].includes(initialTab)) {
+                setActiveTab('diagnostics');
+            } else {
+                setActiveTab(initialTab);
+            }
         }
-    }, [initialTab]);
+    }, [initialTab, props.personalOnly]);
 
     const handleTabChange = (tab: 'agro' | 'global' | 'market' | 'cross_module' | 'diagnostics') => {
         setActiveTab(tab);
@@ -400,9 +417,13 @@ const AiAnalystView: React.FC<AiAnalystViewProps> = (props) => {
                 <div className="flex items-center">
                     <TabButton id="agro" label={t('ai.agro_intel')} icon={<BeakerIcon className="h-5 w-5" />} />
                     <TabButton id="diagnostics" label={isKa ? 'დიაგნოსტიკა & კლინიკა' : 'Diagnostics & Clinical Tools'} icon={<Stethoscope className="h-5 w-5 text-emerald-600" />} />
-                    <TabButton id="cross_module" label={isKa ? 'ოპერაციული ანალიზი & განრიგი' : 'Operational Anomaly & Schedule'} icon={<ClockIcon className="h-5 w-5 text-emerald-600" />} />
-                    <TabButton id="global" label={t('ai.global_intel')} icon={<SparklesIcon className="h-5 w-5" />} />
-                    <TabButton id="market" label={t('ai.market_analysis')} icon={<ChartBarIcon className="h-5 w-5" />} />
+                    {!props.personalOnly && (
+                        <>
+                            <TabButton id="cross_module" label={isKa ? 'ოპერაციული ანალიზი & განრიგი' : 'Operational Anomaly & Schedule'} icon={<ClockIcon className="h-5 w-5 text-emerald-600" />} />
+                            <TabButton id="global" label={t('ai.global_intel')} icon={<SparklesIcon className="h-5 w-5" />} />
+                            <TabButton id="market" label={t('ai.market_analysis')} icon={<ChartBarIcon className="h-5 w-5" />} />
+                        </>
+                    )}
 
                     {/* Tablet/Mobile Map / Panel Switcher Button - Hidden on PC */}
                     <button 
@@ -430,10 +451,23 @@ const AiAnalystView: React.FC<AiAnalystViewProps> = (props) => {
                 <div className="flex-1 overflow-hidden h-full flex flex-col bg-slate-50">
                     <AiAnalysisSuite
                         mode="full"
-                        activeOrgId={props.activeOrgId}
+                        activeOrgId={props.personalOnly ? '' : (props.activeOrgId || '')}
                         currentUser={props.currentUser}
-                        onAddTask={props.onAddTask}
-                        onAddNutritionPlan={props.onSetNutritionPlans ? (p) => props.onSetNutritionPlans(prev => [p, ...(prev || [])]) : undefined}
+                        sectorOptions={props.personalOnly ? [] : (Array.from(new Set((props.plantationFeatures || []).map((f: any) => f?.name).filter(Boolean))) as string[])}
+                        onAddTask={props.personalOnly ? undefined : props.onAddTask}
+                        onAddNutritionPlan={
+                            props.personalOnly
+                                ? undefined
+                                : props.onUpsertNutritionPlan
+                                    ? props.onUpsertNutritionPlan
+                                    : props.onSetNutritionPlans
+                                        ? (p) => props.onSetNutritionPlans!(prev => {
+                                            const list = prev || [];
+                                            const idx = list.findIndex(item => item.id === p.id);
+                                            return idx >= 0 ? list.map(item => item.id === p.id ? p : item) : [p, ...list];
+                                        })
+                                        : undefined
+                        }
                     />
                 </div>
             ) : (
