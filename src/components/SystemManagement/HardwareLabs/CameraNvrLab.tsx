@@ -23,7 +23,7 @@ export interface PlantationCamera {
     blindZoneRadiusM?: number;
     isPtz: boolean;
     isNightVision: boolean;
-    status: 'ONLINE' | 'STANDBY' | 'RECORDING';
+    status: 'ONLINE' | 'STANDBY' | 'RECORDING' | 'OFFLINE';
     ptzSpeed?: number;
     currentPreset?: number;
     isPatrolling?: boolean;

@@ -8,8 +8,7 @@ import {
     RotateCcw, Scan, Activity, Power, Crosshair
 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { PlantationCamera } from './SystemManagement/HardwareLabs/CameraNvrLab';
-import type { DroneFlightMission, DroneFlightWaypoint } from './DroneFlightPathPlanner';
+import type { PlantationCamera, DroneFlightMission, DroneFlightWaypoint } from '../types/hardwareContract';
 import { computeBlindZoneDistanceM } from '../utils/cameraGeospatial';
 
 interface MapElementPropertiesPanelProps {

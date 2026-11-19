@@ -6,7 +6,7 @@ import type {
   WorkAssignment, InventoryItem, HarvestEvent, NutritionPlan, Account, 
   DailyLogEntry, Listing, DashboardWidgetType, HarvestEntry, Crop, Employee,
   AiAnomalyAlert, AiAnalysisReport, AiAnalysisScheduleConfig, AnalysisModuleScope, AnalysisTriggerMode,
-  Role, ForumPost
+  Role, ForumPost, Machinery
 } from '../types';
 import {
   LeafIcon, TractorIcon, WaterDropIcon, ArrowTrendingUpIcon,
@@ -50,7 +50,7 @@ import { Maximize2, Cpu, Calendar, Grid, Sprout, ShoppingBag, Briefcase, Tractor
 import { safeStorage } from '../services/storageService';
 import { MapCanvasContextMenu } from './MapCanvasContextMenu';
 import { MapWorkTaskModal } from './MapWorkTaskModal';
-import DroneSimulationModal from './DroneSimulationModal';
+import { launchExternalModule } from '../services/ExternalModuleBridge';
 import { toast } from 'sonner';
 
 export type DashboardMapPosition = 'top' | 'with_profile' | 'upper' | 'bottom' | 'floating';
@@ -82,6 +82,7 @@ interface DashboardProps extends Omit<MapComponentProps, 'onUpdateFeature' | 'ac
   dailyLogs: DailyLogEntry[];
   onSetDailyLogs?: (logs: DailyLogEntry[]) => void;
   employees?: Employee[];
+  machinery?: Machinery[];
   listings: Listing[];
   harvestEntries: HarvestEntry[];
   users: User[];
@@ -639,10 +640,6 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
   const [workTaskModalCoords, setWorkTaskModalCoords] = useState<{ lat: number; lng: number } | undefined>(undefined);
   const [workTaskInitialMode, setWorkTaskInitialMode] = useState<'work' | 'task' | 'note'>('work');
 
-  // Drone simulation modal state
-  const [isDroneModalOpen, setIsDroneModalOpen] = useState(false);
-  const [droneStartCoords, setDroneStartCoords] = useState<{ lat: number; lng: number } | undefined>(undefined);
-
   useEffect(() => {
     const handleOpenIntercom = () => setIsIntercomPopUpOpen(true);
     window.addEventListener('agrimap_open_intercom', handleOpenIntercom);
@@ -1148,8 +1145,16 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
                   <button
                     type="button"
                     onClick={() => {
-                      setDroneStartCoords(props.center ? { lat: props.center[0], lng: props.center[1] } : undefined);
-                      setIsDroneModalOpen(true);
+                      launchExternalModule({
+                        moduleId: 'drone',
+                        orgId: props.activeOrgId || 'personal',
+                        userId: props.currentUser?.id || 'operator',
+                        userName: props.currentUser?.name,
+                        center: props.center || [41.7151, 44.8271],
+                        plantationFeatures: props.plantationFeatures,
+                        employees: props.employees,
+                        machinery: props.machinery,
+                      });
                       setIsDashboardMapToolsOpen(false);
                     }}
                     className="flex items-center justify-between w-full px-3 py-2 rounded-xl text-xs font-bold hover:bg-slate-800/80 text-slate-200 transition-all text-left group cursor-pointer border border-indigo-500/20 bg-indigo-950/20"
@@ -1389,8 +1394,16 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
               setIsWorkTaskModalOpen(true);
             }}
             onOpenDroneSimulation={(coords) => {
-              setDroneStartCoords(coords);
-              setIsDroneModalOpen(true);
+              launchExternalModule({
+                moduleId: 'drone',
+                orgId: props.activeOrgId || 'personal',
+                userId: props.currentUser?.id || 'operator',
+                userName: props.currentUser?.name,
+                center: coords ? [coords.lat, coords.lng] : (props.center || [41.7151, 44.8271]),
+                plantationFeatures: props.plantationFeatures,
+                employees: props.employees,
+                machinery: props.machinery,
+              });
             }}
             onOpenAiAnalysis={() => {
               handleOpenAiHub('on_demand', 'plantation');
@@ -1495,16 +1508,6 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
           />
         )}
 
-        {/* Drone Mission Simulation Modal on Dashboard */}
-        {isDroneModalOpen && (
-          <DroneSimulationModal
-            isOpen={isDroneModalOpen}
-            onClose={() => setIsDroneModalOpen(false)}
-            plantationFeatures={props.plantationFeatures}
-            activeMapCenter={droneStartCoords ? [droneStartCoords.lat, droneStartCoords.lng] : (props.center || [41.7151, 44.8271])}
-          />
-        )}
-
         <WidgetManagerModal 
             isOpen={isManageModalOpen} 
             onClose={() => setIsManageModalOpen(false)} 
@@ -1562,6 +1565,7 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
             onSetUsers={props.onSetUsers}
             roles={props.roles || []}
             plantationFeatures={props.plantationFeatures}
+            organizations={props.organizations || []}
             mapProps={props}
         />
         

@@ -630,7 +630,7 @@ export const ReSyncNotificationPrompt: React.FC<ReSyncNotificationPromptProps> =
             await onConfirmSync();
             onClose();
         } catch (e) {
-            toast.error(isKa ? "ღრუბლოვანი ატვირთვის შეცდომა." : "Cloud upload conflict or host unresponsive. Retrying...");
+            toast.error(isKa ? "ღრუბლოვანი ატვირთვის შეცდომა." : "Cloud upload conflict or host unresponsive. Retrying...", { id: 'agrimap-cloud-sync', duration: 4000 });
         } finally {
             setIsSynchronizing(false);
         }

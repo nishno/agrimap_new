@@ -1644,10 +1644,12 @@ const ProfileView: React.FC<ProfileViewProps> = (props) => {
                                                     createdBy: user.id,
                                                     metadata: { 
                                                         membershipId, 
-                                                        userId: user.id
+                                                        userId: user.id,
+                                                        orgId: discoveryOrg.id
                                                     },
                                                     actions: [
-                                                        { label: 'Approve', actionType: 'approve_join', actionData: { membershipId, userId: user.id } }
+                                                        { label: 'Approve', actionType: 'approve_join', actionData: { membershipId, userId: user.id, orgId: discoveryOrg.id } },
+                                                        { label: 'Decline', actionType: 'decline_join', actionData: { membershipId, userId: user.id, orgId: discoveryOrg.id } }
                                                     ]
                                                 });
                                             } else {
@@ -1673,19 +1675,45 @@ const ProfileView: React.FC<ProfileViewProps> = (props) => {
                                                     organizationId: discoveryOrg.id
                                                 };
                                                 const savedEmployees = safeStorage.safeParse(localStorage.getItem('mock_employees'), []);
-                                                localStorage.setItem('mock_employees', JSON.stringify([...savedEmployees, newEmployee]));
+                                                localStorage.setItem('mock_employees', JSON.stringify([...savedEmployees.filter((e: any) => e.id !== newEmployee.id), newEmployee]));
+
+                                                const alertId = `alert-join-${Date.now()}`;
+                                                const newAlert = {
+                                                    id: alertId,
+                                                    organizationId: discoveryOrg.id,
+                                                    title: 'New Join Request',
+                                                    content: `${user.name} has requested to join ${discoveryOrg.name}.`,
+                                                    type: 'info',
+                                                    timestamp: new Date().toISOString(),
+                                                    isRead: false,
+                                                    createdBy: user.id,
+                                                    metadata: { membershipId, userId: user.id, orgId: discoveryOrg.id },
+                                                    actions: [
+                                                        { label: 'Approve', actionType: 'approve_join', actionData: { membershipId, userId: user.id, orgId: discoveryOrg.id } },
+                                                        { label: 'Decline', actionType: 'decline_join', actionData: { membershipId, userId: user.id, orgId: discoveryOrg.id } }
+                                                    ]
+                                                };
+                                                const savedAlerts = safeStorage.safeParse(localStorage.getItem('mock_alerts'), []);
+                                                localStorage.setItem('mock_alerts', JSON.stringify([newAlert, ...savedAlerts.filter((a: any) => a.id !== alertId)]));
                                             }
 
-                                            // Write direct message post for community hub
+                                            // Write post for community hub
                                             if (props.onAddPost) {
                                                 props.onAddPost({
+                                                    title: 'Join Request',
                                                     content: `Formal Join Request: ${user.name} has requested to join ${discoveryOrg.name} as a professional partner.`,
-                                                    channelId: 'internal',
+                                                    channelId: 'general',
                                                     hubType: 'internal',
-                                                    isDirectMessage: true,
+                                                    isDirectMessage: false,
+                                                    organizationId: discoveryOrg.id,
                                                     recipientId: discoveryOrg.createdBy || 'founder',
                                                     authorId: user.id,
                                                     authorName: user.name,
+                                                    ticketType: 'company_join',
+                                                    ticketStatus: 'pending',
+                                                    ticketOrgId: discoveryOrg.id,
+                                                    ticketOrgName: discoveryOrg.name,
+                                                    ticketMembershipId: membershipId,
                                                     timestamp: new Date().toISOString(),
                                                     replies: []
                                                 });

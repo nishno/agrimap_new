@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import L from 'leaflet';
 import { useMapEvents, Marker, MapContainer, TileLayer } from 'react-leaflet';
 import { toast } from 'sonner';
-import type { User, ForumPost, ForumReply, PlantationFeature, AppMode, MessageAttachment, Employee, Organization, UserRole, Crop } from '../types';
+import type { User, ForumPost, ForumReply, PlantationFeature, AppMode, MessageAttachment, Employee, Organization, UserRole, Crop, Membership, Role, Alert } from '../types';
 import { isValidCoordinate } from '../types';
 import { SparklesIcon, UserGroupIcon, PaperAirplaneIcon, MapPinIcon, 
     ChevronRightIcon, AcademicCapIcon, UserCircleIcon, 
@@ -13,11 +13,18 @@ import { SparklesIcon, UserGroupIcon, PaperAirplaneIcon, MapPinIcon,
     CameraIcon, ShoppingBagIcon, AtSignIcon, VideoCameraIcon,
     RefreshCwIcon
 } from './Icons';
-import { MessageSquare, Users, Video, Link2, ExternalLink, Check, Copy, AlertCircle, Plus, PhoneCall, Globe, WifiOff, Share2, UserPlus, Mail, UserCheck, MessageCircle, UserSearch } from 'lucide-react';
+import { MessageSquare, Users, Video, Link2, ExternalLink, Check, Copy, AlertCircle, Plus, PhoneCall, Globe, WifiOff, Share2, UserPlus, Mail, UserCheck, MessageCircle, UserSearch, X } from 'lucide-react';
 import MapComponent, { type MapComponentProps } from './MapComponent';
 import ResizableDivider from './common/ResizableDivider';
 import { safeStorage } from '../services/storageService';
-import { initGoogleAuth, googleSignIn, getAccessToken } from '../firebase';
+import { USE_FIREBASE } from '../config';
+import { auth, db, doc, setDoc, initGoogleAuth, googleSignIn, getAccessToken } from '../firebase';
+import {
+    getTicketResolutionState,
+    isCompanyJoinTicketPost,
+    resolveCompanyTicketOrJoin,
+    resolveTicketTargetOrgId
+} from '../utils/companyTicketActions';
 import { 
     listGoogleChatSpaces, 
     createGoogleChatSpace, 
@@ -50,10 +57,17 @@ interface CommunicationHubPanelProps {
     initialConversationId?: string | null;
     onForwardToAnalyst?: (data: any) => void;
     isManualOffline?: boolean;
-    alerts?: any[];
-    setAlerts?: React.Dispatch<React.SetStateAction<any[]>>;
+    alerts?: Alert[];
+    setAlerts?: React.Dispatch<React.SetStateAction<Alert[]>>;
     onSetAiTab?: (tab: 'agro' | 'global' | 'market') => void;
     onMarkPostAsRead?: (postId: string) => void;
+    activeOrgId?: string | null;
+    memberships?: Membership[];
+    onSetMemberships?: (memberships: Membership[]) => void;
+    onSetEmployees?: (employees: Employee[]) => void;
+    onSetUsers?: (users: User[]) => void;
+    roles?: Role[];
+    onUpdatePost?: (postId: string, updates: Partial<ForumPost>) => void;
 }
 
 const QuickMessageModal: React.FC<{
@@ -155,7 +169,33 @@ const isUserOnline = (user?: User) => {
 };
 
 const CommunicationHubPanel: React.FC<CommunicationHubPanelProps> = (props) => {
-    const { allUsers = [], organizations = [], crops = [], onSetAppMode, mapProps, onAddPost, currentUser, forumPosts, onAddReply, initialConversationId, onClearInitialConversation, onForwardToAnalyst, isManualOffline, setAlerts, onSetAiTab, onMarkPostAsRead } = props;
+    const {
+        allUsers = [],
+        organizations = [],
+        crops = [],
+        onSetAppMode,
+        mapProps,
+        onAddPost,
+        currentUser,
+        forumPosts,
+        onAddReply,
+        initialConversationId,
+        onClearInitialConversation,
+        onForwardToAnalyst,
+        isManualOffline,
+        alerts = [],
+        setAlerts,
+        onSetAiTab,
+        onMarkPostAsRead,
+        activeOrgId = null,
+        memberships = [],
+        onSetMemberships,
+        employees = [],
+        onSetEmployees,
+        onSetUsers,
+        roles = [],
+        onUpdatePost
+    } = props;
     const [mainTab, setMainTab] = useState<'GOOGLE_CHAT' | 'GOOGLE_MEET' | 'COMMUNICATOR' | 'PARTNERS'>('GOOGLE_CHAT');
     const [hubType, setHubType] = useState<'INTERNAL' | 'REGIONAL' | 'GLOBAL'>('INTERNAL');
     const [searchQuery, setSearchQuery] = useState('');
@@ -228,6 +268,8 @@ const CommunicationHubPanel: React.FC<CommunicationHubPanelProps> = (props) => {
     const [replyToPostId, setReplyToPostId] = useState<string | null>(null);
     const [hoveredPartnerId, setHoveredPartnerId] = useState<string | null>(null);
     const [quickMessageRecipient, setQuickMessageRecipient] = useState<{ id: string, name: string, type: 'user' | 'org' } | null>(null);
+    const [ticketRolesByPost, setTicketRolesByPost] = useState<Record<string, string>>({});
+    const [processingTicketPostId, setProcessingTicketPostId] = useState<string | null>(null);
 
     const [needsAuth, setNeedsAuth] = useState(false);
     const [token, setToken] = useState<string | null>(null);
@@ -1401,6 +1443,142 @@ const CommunicationHubPanel: React.FC<CommunicationHubPanelProps> = (props) => {
                                             <p className="text-xs text-slate-600 leading-relaxed font-medium">
                                                 {renderContentWithMentions(post.content)}
                                             </p>
+                                            {isCompanyJoinTicketPost(post) && post.authorId !== currentUser?.id && (() => {
+                                                const targetOrgId = resolveTicketTargetOrgId({
+                                                    post,
+                                                    activeOrgId,
+                                                    organizations,
+                                                    memberships
+                                                });
+                                                const resolutionState = getTicketResolutionState(post, memberships, targetOrgId);
+                                                const targetOrg = organizations.find(o => o.id === targetOrgId);
+                                                const availableRoles = Array.from(new Set(['Employee', 'Field Manager', 'Admin', 'Agronomist', 'Accountant', ...(roles || []).map(r => r.name).filter(Boolean)]));
+                                                const chosenRole = ticketRolesByPost[post.id] || 'Employee';
+                                                const isBusy = processingTicketPostId === post.id;
+
+                                                if (resolutionState === 'approved') {
+                                                    return (
+                                                        <div className="px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center gap-2 text-emerald-700 text-[10px] font-black uppercase tracking-wider">
+                                                            <Check size={14} />
+                                                            <span>{isKa ? 'დამტკიცებულია • დამატებულია კომპანიაში' : 'Approved • Added to Company'}</span>
+                                                        </div>
+                                                    );
+                                                }
+                                                if (resolutionState === 'declined') {
+                                                    return (
+                                                        <div className="px-3.5 py-2 rounded-xl bg-rose-50 border border-rose-200 flex items-center gap-2 text-rose-700 text-[10px] font-black uppercase tracking-wider">
+                                                            <X size={14} />
+                                                            <span>{isKa ? 'უარყოფილია' : 'Request Declined'}</span>
+                                                        </div>
+                                                    );
+                                                }
+                                                return (
+                                                    <div className="p-3.5 bg-white rounded-2xl border border-blue-200 space-y-2.5">
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className="text-[10px] font-black uppercase tracking-wider text-blue-900">
+                                                                {isKa ? 'კომპანიაში დამატების მოთხოვნა' : 'Company Join Ticket'}
+                                                            </span>
+                                                            <select
+                                                                value={chosenRole}
+                                                                onChange={e => setTicketRolesByPost(prev => ({ ...prev, [post.id]: e.target.value }))}
+                                                                disabled={isBusy}
+                                                                className="px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 outline-none"
+                                                            >
+                                                                {availableRoles.map(rName => (
+                                                                    <option key={rName} value={rName}>{rName}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <button
+                                                                type="button"
+                                                                disabled={isBusy}
+                                                                onClick={async () => {
+                                                                    if (!targetOrgId) {
+                                                                        toast.error(isKa ? 'აირჩიეთ კომპანია დასამატებლად' : 'Please select an active organization first.');
+                                                                        return;
+                                                                    }
+                                                                    setProcessingTicketPostId(post.id);
+                                                                    try {
+                                                                        await resolveCompanyTicketOrJoin({
+                                                                            decision: 'approve',
+                                                                            userId: post.authorId,
+                                                                            userName: post.authorName,
+                                                                            orgId: targetOrgId,
+                                                                            orgName: targetOrg?.name || post.ticketOrgName,
+                                                                            membershipId: post.ticketMembershipId,
+                                                                            selectedRole: chosenRole,
+                                                                            postId: post.id,
+                                                                            currentUser,
+                                                                            memberships,
+                                                                            onSetMemberships,
+                                                                            employees,
+                                                                            onSetEmployees,
+                                                                            users: allUsers,
+                                                                            allUsers,
+                                                                            onSetUsers,
+                                                                            roles,
+                                                                            organizations,
+                                                                            forumPosts,
+                                                                            onAddPost,
+                                                                            onUpdatePost,
+                                                                            alerts,
+                                                                            onSetAlerts: setAlerts,
+                                                                            isKa
+                                                                        });
+                                                                    } finally {
+                                                                        setProcessingTicketPostId(null);
+                                                                    }
+                                                                }}
+                                                                className="py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 cursor-pointer"
+                                                            >
+                                                                <Check size={13} />
+                                                                <span>{isKa ? 'მიღება' : 'Approve'}</span>
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                disabled={isBusy}
+                                                                onClick={async () => {
+                                                                    setProcessingTicketPostId(post.id);
+                                                                    try {
+                                                                        await resolveCompanyTicketOrJoin({
+                                                                            decision: 'decline',
+                                                                            userId: post.authorId,
+                                                                            userName: post.authorName,
+                                                                            orgId: targetOrgId,
+                                                                            orgName: targetOrg?.name || post.ticketOrgName,
+                                                                            membershipId: post.ticketMembershipId,
+                                                                            postId: post.id,
+                                                                            currentUser,
+                                                                            memberships,
+                                                                            onSetMemberships,
+                                                                            employees,
+                                                                            onSetEmployees,
+                                                                            users: allUsers,
+                                                                            allUsers,
+                                                                            onSetUsers,
+                                                                            roles,
+                                                                            organizations,
+                                                                            forumPosts,
+                                                                            onAddPost,
+                                                                            onUpdatePost,
+                                                                            alerts,
+                                                                            onSetAlerts: setAlerts,
+                                                                            isKa
+                                                                        });
+                                                                    } finally {
+                                                                        setProcessingTicketPostId(null);
+                                                                    }
+                                                                }}
+                                                                className="py-2 bg-white hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                                                            >
+                                                                <X size={13} />
+                                                                <span>{isKa ? 'უარყოფა' : 'Decline'}</span>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
                                             <div className="flex items-center justify-between">
                                                 <div className="flex gap-2">
                                                     <button 
@@ -1711,7 +1889,7 @@ const CommunicationHubPanel: React.FC<CommunicationHubPanelProps> = (props) => {
                     isOpen={!!quickMessageRecipient}
                     onClose={() => setQuickMessageRecipient(null)}
                     recipientName={quickMessageRecipient.name}
-                    onSend={(text, type) => {
+                    onSend={async (text, type) => {
                         if (type === 'chat') {
                              onAddPost({
                                 title: `Direct Session: ${quickMessageRecipient.name}`,
@@ -1723,23 +1901,141 @@ const CommunicationHubPanel: React.FC<CommunicationHubPanelProps> = (props) => {
                             });
                             setMainTab('COMMUNICATOR');
                         } else {
-                             onAddPost({
+                            const ticketPostId = `ticket-${Date.now()}`;
+                            const resolvedTargetOrg =
+                                quickMessageRecipient.type === 'org'
+                                    ? organizations.find(o => o.id === quickMessageRecipient.id)
+                                    : organizations.find(o => o.createdBy === quickMessageRecipient.id) ||
+                                      (() => {
+                                          const ownerMem = memberships.find(
+                                              m =>
+                                                  m.userId === quickMessageRecipient.id &&
+                                                  (m.status === 'active' || !m.status) &&
+                                                  ['Founder', 'Admin', 'Co-Founder'].includes(m.role)
+                                          );
+                                          return ownerMem ? organizations.find(o => o.id === ownerMem.organizationId) : undefined;
+                                      })();
+                            const targetOrgId = resolvedTargetOrg?.id || (activeOrgId && activeOrgId !== 'ALL' && activeOrgId !== 'personal' ? activeOrgId : undefined);
+                            const targetRecipientUserId = quickMessageRecipient.type === 'user' ? quickMessageRecipient.id : resolvedTargetOrg?.createdBy;
+                            const membershipId = currentUser?.id && targetOrgId ? `${currentUser.id}_${targetOrgId}` : undefined;
+
+                            // Create pending membership so request also surfaces directly in HR Module & Notification Center
+                            if (currentUser?.id && targetOrgId && membershipId) {
+                                const alreadyActive = memberships.some(
+                                    m => m.userId === currentUser.id && m.organizationId === targetOrgId && m.status === 'active'
+                                );
+                                if (!alreadyActive) {
+                                    const pendingMem: Membership = {
+                                        id: membershipId,
+                                        userId: currentUser.id,
+                                        organizationId: targetOrgId,
+                                        role: 'Employee',
+                                        permissionLevel: 'write',
+                                        status: 'pending',
+                                        joinedAt: new Date().toISOString()
+                                    };
+                                    if (onSetMemberships) {
+                                        onSetMemberships([
+                                            ...memberships.filter(m => m.id !== membershipId),
+                                            pendingMem
+                                        ]);
+                                    } else {
+                                        const savedMems = safeStorage.safeParse(localStorage.getItem('mock_memberships'), []);
+                                        localStorage.setItem(
+                                            'mock_memberships',
+                                            JSON.stringify([...savedMems.filter((m: any) => m.id !== membershipId), pendingMem])
+                                        );
+                                    }
+                                    if (USE_FIREBASE && auth.currentUser && currentUser.id !== 'root-system') {
+                                        setDoc(doc(db, 'memberships', membershipId), pendingMem).catch(err =>
+                                            console.warn('[Ticket] Pending membership write failed:', err)
+                                        );
+                                    }
+                                }
+                            }
+
+                            onAddPost({
+                                id: ticketPostId,
                                 title: `Official Ticket for ${quickMessageRecipient.name}`,
                                 content: `[TICKET-REQUEST]\n${text}`,
                                 isDirectMessage: false,
-                                hubType: 'internal'
+                                channelId: ticketPostId,
+                                hubType: 'internal',
+                                recipientId: targetRecipientUserId,
+                                recipientName: quickMessageRecipient.name,
+                                organizationId: targetOrgId || activeOrgId || 'personal',
+                                ticketType: 'company_join',
+                                ticketStatus: 'pending',
+                                ticketOrgId: targetOrgId,
+                                ticketOrgName: resolvedTargetOrg?.name || quickMessageRecipient.name,
+                                ticketMembershipId: membershipId
                             });
-                            toast.success("Ticket dispatched to company logistics.");
-                            if (setAlerts) {
-                                setAlerts(prev => [{
-                                    id: `ticket-${Date.now()}`,
-                                    title: 'Ticket Dispatched',
-                                    content: `Your official ticket for ${quickMessageRecipient.name} has been recorded in the logistics ledger.`,
-                                    type: 'success',
-                                    timestamp: new Date().toISOString(),
-                                    isRead: false
-                                } as any, ...prev]);
+
+                            const alertId = `alert-ticket-${Date.now()}`;
+                            const ticketAlert: Alert = {
+                                id: alertId,
+                                organizationId: targetOrgId || 'personal',
+                                recipientId: targetRecipientUserId,
+                                createdBy: currentUser?.id,
+                                title: isKa ? 'კომპანიაში დამატების მოთხოვნა (ტიკეტი)' : `Company Ticket Request`,
+                                content: `${currentUser?.name || 'User'} sent an official ticket to join ${resolvedTargetOrg?.name || quickMessageRecipient.name}: "${text || 'Join Request'}"`,
+                                type: 'info',
+                                timestamp: new Date().toISOString(),
+                                isRead: false,
+                                metadata: {
+                                    membershipId,
+                                    userId: currentUser?.id,
+                                    userName: currentUser?.name,
+                                    orgId: targetOrgId,
+                                    orgName: resolvedTargetOrg?.name || quickMessageRecipient.name,
+                                    postId: ticketPostId
+                                },
+                                actions: [
+                                    {
+                                        label: 'Approve',
+                                        actionType: 'approve_join',
+                                        actionData: {
+                                            membershipId,
+                                            userId: currentUser?.id,
+                                            userName: currentUser?.name,
+                                            orgId: targetOrgId,
+                                            orgName: resolvedTargetOrg?.name || quickMessageRecipient.name,
+                                            postId: ticketPostId
+                                        }
+                                    },
+                                    {
+                                        label: 'Decline',
+                                        actionType: 'decline_join',
+                                        actionData: {
+                                            membershipId,
+                                            userId: currentUser?.id,
+                                            userName: currentUser?.name,
+                                            orgId: targetOrgId,
+                                            orgName: resolvedTargetOrg?.name || quickMessageRecipient.name,
+                                            postId: ticketPostId
+                                        }
+                                    }
+                                ]
+                            };
+
+                            if (USE_FIREBASE && auth.currentUser && currentUser?.id !== 'root-system') {
+                                const firestoreAlert: Record<string, any> = { ...ticketAlert };
+                                Object.keys(firestoreAlert).forEach(k => {
+                                    if (firestoreAlert[k] === undefined) delete firestoreAlert[k];
+                                });
+                                setDoc(doc(db, 'alerts', alertId), firestoreAlert).catch(err =>
+                                    console.warn('[Ticket] Firestore alert creation failed:', err)
+                                );
+                            } else {
+                                const savedAlerts = safeStorage.safeParse(localStorage.getItem('mock_alerts'), []);
+                                localStorage.setItem('mock_alerts', JSON.stringify([ticketAlert, ...savedAlerts]));
                             }
+
+                            if (setAlerts) {
+                                setAlerts(prev => [ticketAlert, ...prev]);
+                            }
+
+                            toast.success(isKa ? "მოთხოვნა გაიგზავნა და აისახა შეტყობინებებსა და HR-ში." : "Ticket dispatched to company Intercom, Notification Center, and HR.");
                         }
                     }}
                 />

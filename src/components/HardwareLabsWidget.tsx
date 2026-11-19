@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { 
-    Cpu, Scale, QrCode, Printer, Wifi, WifiOff, 
-    RefreshCw, ChevronRight, Activity, CheckCircle, Zap 
+    Cpu, Scale, QrCode, Printer, RefreshCw, ChevronRight, Activity, Zap, Video, Plane, Navigation
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '../contexts/LanguageContext';
+import { launchExternalModule } from '../services/ExternalModuleBridge';
+import { useFirebaseDataContext } from '../contexts/FirebaseDataContext';
 
 export interface HardwareLabsWidgetProps {
     onNavigateMode?: (mode: string) => void;
@@ -12,9 +13,11 @@ export interface HardwareLabsWidgetProps {
 }
 
 export const HardwareLabsWidget: React.FC<HardwareLabsWidgetProps> = ({
-    onNavigateMode
+    onNavigateMode,
+    organizationId
 }) => {
     const { t } = useLanguage();
+    const { plantationFeatures, employees, machinery, deviceRegistry } = useFirebaseDataContext();
     const [isScaleZeroed, setIsScaleZeroed] = useState(false);
     const [lastScanCode, setLastScanCode] = useState<string>('BX-HARVEST-2026-089');
 
@@ -31,6 +34,18 @@ export const HardwareLabsWidget: React.FC<HardwareLabsWidgetProps> = ({
             detail: { code: randomBox, source: 'Bluetooth Wedge Scanner' }
         }));
         toast.success(`Barcode Scanned: ${randomBox}`);
+    };
+
+    const handleLaunchExternal = (moduleId: 'vision' | 'drone' | 'gps_iot') => {
+        launchExternalModule({
+            moduleId,
+            orgId: organizationId || 'personal',
+            userId: 'operator',
+            plantationFeatures,
+            employees,
+            machinery,
+            devices: deviceRegistry,
+        });
     };
 
     return (
@@ -79,7 +94,7 @@ export const HardwareLabsWidget: React.FC<HardwareLabsWidgetProps> = ({
                             </span>
                             <span className="w-2 h-2 rounded-full bg-emerald-500" />
                         </div>
-                        <p className="text-sm font-black text-slate-800 truncate">{lastScanCode}</p>
+                        <p className="text-sm font-black text-slate-800 truncate tabular-nums">{lastScanCode}</p>
                         <p className="text-[8px] font-bold text-blue-600 mt-0.5">{t('hardware_widget.keyboard_wedge')}</p>
                     </div>
 
@@ -105,14 +120,15 @@ export const HardwareLabsWidget: React.FC<HardwareLabsWidgetProps> = ({
                             </span>
                             <span className="w-2 h-2 rounded-full bg-emerald-500" />
                         </div>
-                        <p className="text-sm font-black text-slate-800">22.4°C • 68%</p>
+                        <p className="text-sm font-black text-slate-800 tabular-nums">22.4°C • 68%</p>
                         <p className="text-[8px] font-bold text-emerald-600 mt-0.5">{t('hardware_widget.soil_optimal')}</p>
                     </div>
                 </div>
 
                 {/* Quick actions row */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 mb-3">
                     <button
+                        type="button"
                         onClick={handleTareScale}
                         disabled={isScaleZeroed}
                         className="flex-1 py-1.5 px-2.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1 cursor-pointer"
@@ -122,6 +138,7 @@ export const HardwareLabsWidget: React.FC<HardwareLabsWidgetProps> = ({
                     </button>
 
                     <button
+                        type="button"
                         onClick={handleSimulateScan}
                         className="flex-1 py-1.5 px-2.5 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1 cursor-pointer"
                     >
@@ -129,11 +146,43 @@ export const HardwareLabsWidget: React.FC<HardwareLabsWidgetProps> = ({
                         <span>{t('hardware_widget.test_scan')}</span>
                     </button>
                 </div>
+
+                {/* Decoupled External Hardware Bridge Launchers */}
+                <div className="grid grid-cols-3 gap-1.5">
+                    <button
+                        type="button"
+                        onClick={() => handleLaunchExternal('vision')}
+                        className="py-1.5 px-2 rounded-xl border border-slate-200 hover:border-sky-400 hover:bg-sky-50 text-slate-700 text-[9px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                        title="Open Camera Live View (External App)"
+                    >
+                        <Video size={11} className="text-sky-600 shrink-0" />
+                        <span className="truncate">Vision NVR</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => handleLaunchExternal('drone')}
+                        className="py-1.5 px-2 rounded-xl border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50 text-slate-700 text-[9px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                        title="Launch Drone 3D Mission (External App)"
+                    >
+                        <Plane size={11} className="text-emerald-600 shrink-0" />
+                        <span className="truncate">Drone 3D</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => handleLaunchExternal('gps_iot')}
+                        className="py-1.5 px-2 rounded-xl border border-slate-200 hover:border-amber-400 hover:bg-amber-50 text-slate-700 text-[9px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                        title="Open GPS Fleet Hub (External App)"
+                    >
+                        <Navigation size={11} className="text-amber-600 shrink-0" />
+                        <span className="truncate">GPS Hub</span>
+                    </button>
+                </div>
             </div>
 
             {/* Operational footer launcher */}
             <div className="pt-4 border-t border-slate-100 mt-4 flex items-center gap-2">
                 <button
+                    type="button"
                     onClick={() => {
                         if (onNavigateMode) onNavigateMode('labs');
                         else window.dispatchEvent(new CustomEvent('agrimap_set_mode', { detail: 'labs' }));

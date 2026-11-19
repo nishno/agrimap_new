@@ -34,7 +34,7 @@ import {
     Search
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { syncManager } from '../../services/SyncManager';
+import { syncManager, CLOUD_SYNC_TOAST_ID } from '../../services/SyncManager';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { 
     getDetailedSyncQueue, 
@@ -240,24 +240,22 @@ export const SyncConflictModal: React.FC<SyncConflictModalProps> = ({
 
     const handleConfirmMerge = async () => {
         setIsProcessing(true);
-        toast.loading(isKa ? "მიმდინარეობს სინქრონიზაცია Cloud-თან..." : "Merging with Cloud Database...", { id: 'conflict-sync' });
+        toast.loading(isKa ? "მიმდინარეობს სინქრონიზაცია Cloud-თან..." : "Merging with Cloud Database...", { id: CLOUD_SYNC_TOAST_ID });
         
         try {
-            const success = await syncManager.pushAllToCloud();
+            const success = await syncManager.pushAllToCloud({ toastId: CLOUD_SYNC_TOAST_ID, includeErrored: true });
             if (success) {
                 toast.success(
                     isKa 
                     ? "🎉 სინქრონიზაცია წარმატებით დასრულდა! მონაცემები უსაფრთხოდ გაერთიანდა." 
                     : "🎉 Data merged successfully! Core modules synced atomically with 0% data collision.", 
-                    { id: 'conflict-sync', duration: 5000 }
+                    { id: CLOUD_SYNC_TOAST_ID, duration: 5000 }
                 );
                 onClose();
-            } else {
-                toast.error(isKa ? "სინქრონიზაცია ვერ მოხერხდა. სცადეთ მოგვიანებით." : "Merge failed. Please verify connection and retry.", { id: 'conflict-sync' });
             }
         } catch (err) {
             console.error(err);
-            toast.error(isKa ? "მიერთება ჩაიშალა." : "Merge process crashed.", { id: 'conflict-sync' });
+            toast.error(isKa ? "მიერთება ჩაიშალა." : "Merge process crashed.", { id: CLOUD_SYNC_TOAST_ID });
         } finally {
             setIsProcessing(false);
         }

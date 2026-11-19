@@ -547,28 +547,29 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             `;
         }
 
-        // Global input visibility safety rule: inputs in white/light containers and modals must ALWAYS have visible dark text, and dark inputs must have light text
+        // Global input visibility safety rule: light-surface inputs get dark text, while dark containers & translucent/colored inputs ALWAYS keep crisp bright text
         dynamicCss += `
-            input:not([type="button"]):not([type="submit"]):not([type="checkbox"]):not([type="radio"]),
-            select,
-            textarea {
+            :where(input:not([type="button"]):not([type="submit"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea) {
                 color: #0f172a;
-                -webkit-text-fill-color: #0f172a;
+                -webkit-text-fill-color: currentColor;
             }
-            .dark input:not([type="button"]):not([type="submit"]):not([type="checkbox"]):not([type="radio"]):not(.bg-white):not([class*="bg-white"]):not([class*="bg-slate-50"]):not([class*="bg-slate-100"]):not([class*="bg-slate-200"]),
-            .dark select:not(.bg-white):not([class*="bg-white"]):not([class*="bg-slate-50"]),
-            .dark textarea:not(.bg-white):not([class*="bg-white"]):not([class*="bg-slate-50"]),
-            input.bg-slate-900, input.bg-slate-800, input.bg-zinc-900, input.bg-slate-950,
-            textarea.bg-slate-900, textarea.bg-slate-800, textarea.bg-zinc-900, textarea.bg-slate-950,
-            select.bg-slate-900, select.bg-slate-800, select.bg-zinc-900 {
-                color: #f8fafc !important;
-                -webkit-text-fill-color: #f8fafc !important;
+            .dark input:not([type="button"]):not([type="submit"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(.bg-white):not([class*="bg-slate-50"]):not([class*="bg-slate-100"]):not([class*="bg-slate-200"]),
+            .dark select:not(.bg-white):not([class*="bg-slate-50"]),
+            .dark textarea:not(.bg-white):not([class*="bg-slate-50"]),
+            :is(.bg-slate-900, .bg-slate-950, .bg-slate-800, .bg-zinc-900, .bg-gray-900, .bg-black, .bg-indigo-900, .bg-indigo-950, .bg-emerald-900, .bg-emerald-950, [class*="from-slate-9"], [class*="from-indigo-9"]) :is(input, select, textarea):not([type="button"]):not([type="submit"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(.bg-white):not([class*="bg-slate-50"]):not([class*="bg-slate-100"]),
+            input[class*="bg-slate-9"], input[class*="bg-slate-8"], input[class*="bg-zinc-9"], input[class*="bg-black"], input[class*="bg-white/"],
+            textarea[class*="bg-slate-9"], textarea[class*="bg-slate-8"], textarea[class*="bg-zinc-9"], textarea[class*="bg-black"], textarea[class*="bg-white/"],
+            select[class*="bg-slate-9"], select[class*="bg-slate-8"], select[class*="bg-zinc-9"], select[class*="bg-white/"] {
+                color: #f8fafc;
+                -webkit-text-fill-color: currentColor !important;
+                caret-color: #f8fafc;
             }
             select option {
                 background-color: #ffffff;
                 color: #0f172a;
             }
-            .dark select option {
+            .dark select option,
+            :is(.bg-slate-900, .bg-slate-950, .bg-slate-800) select option {
                 background-color: #0f172a;
                 color: #f8fafc;
             }
@@ -665,16 +666,15 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             .module-map_planner {
                 font-size: ${mapScale === 'compact' ? '0.8125rem' : mapScale === 'relaxed' ? '1.0625rem' : mapScale === 'large' ? '1.1875rem' : '0.9375rem'};
             }
-            /* High-contrast and readability protection in all inputs, dropdowns, and select options */
-            .module-labs input:not([type="checkbox"]):not([type="radio"]), 
-            .module-labs select, 
-            .module-labs textarea {
-                color: #163022 !important;
-                background-color: #FAFBF8 !important;
-                border-color: #CFDCCB !important;
+            /* High-contrast and readability protection in light-surface labs inputs while preserving dark-panel inputs */
+            .module-labs input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([class*="bg-slate-9"]):not([class*="bg-slate-8"]):not([class*="bg-black"]):not([class*="bg-white/"]):not(.bg-transparent), 
+            .module-labs select:not([class*="bg-slate-9"]):not([class*="bg-slate-8"]):not([class*="bg-black"]), 
+            .module-labs textarea:not([class*="bg-slate-9"]):not([class*="bg-slate-8"]):not([class*="bg-black"]) {
+                color: #163022;
+                background-color: #FAFBF8;
+                border-color: #CFDCCB;
             }
             .module-labs label, .module-labs .field-label {
-                color: #244130 !important;
                 font-weight: 600;
             }
         `;

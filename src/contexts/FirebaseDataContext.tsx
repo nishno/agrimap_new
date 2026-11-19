@@ -8,6 +8,11 @@ import {
     ForumPost, Listing, Bid, Review, Alert, PurchaseOrder, Supplier,
     Note, Checkpoint, SystemLog, SubscriptionRequest, Crop, StockTransaction, HarvestedProduce
 } from '../types';
+import type {
+    DeviceRegistryRecord,
+    SystemNotificationRecord,
+    AgronomistDiagnosisRecord,
+} from '../types/hardwareContract';
 
 interface FirebaseDataContextType {
     plantationFeatures: PlantationFeature[];
@@ -85,6 +90,12 @@ interface FirebaseDataContextType {
     setCropVarieties: React.Dispatch<React.SetStateAction<string[]>>;
     crops: Crop[];
     setCrops: React.Dispatch<React.SetStateAction<Crop[]>>;
+    deviceRegistry: DeviceRegistryRecord[];
+    setDeviceRegistry: React.Dispatch<React.SetStateAction<DeviceRegistryRecord[]>>;
+    systemNotifications: SystemNotificationRecord[];
+    setSystemNotifications: React.Dispatch<React.SetStateAction<SystemNotificationRecord[]>>;
+    agronomistDiagnoses: AgronomistDiagnosisRecord[];
+    setAgronomistDiagnoses: React.Dispatch<React.SetStateAction<AgronomistDiagnosisRecord[]>>;
 
     // Connection Indicators
     isSyncing: boolean;
@@ -316,6 +327,9 @@ export const FirebaseDataProvider: React.FC<FirebaseDataProviderProps> = ({ chil
             subscriptionRequests: sanitizeCollection<SubscriptionRequest>(d.subscriptionRequests),
             cropVarieties: Array.isArray(d.cropVarieties) ? d.cropVarieties : [],
             crops: sanitizeCollection<Crop>(d.crops),
+            deviceRegistry: sanitizeCollection<DeviceRegistryRecord>(d.deviceRegistry),
+            systemNotifications: sanitizeCollection<SystemNotificationRecord>(d.systemNotifications),
+            agronomistDiagnoses: sanitizeCollection<AgronomistDiagnosisRecord>(d.agronomistDiagnoses),
         };
     }, [rawData]);
 
@@ -359,6 +373,9 @@ export const FirebaseDataProvider: React.FC<FirebaseDataProviderProps> = ({ chil
         setSubscriptionRequests: rawData?.setSubscriptionRequests || (() => {}),
         setCropVarieties: rawData?.setCropVarieties || (() => {}),
         setCrops: rawData?.setCrops || (() => {}),
+        setDeviceRegistry: rawData?.setDeviceRegistry || (() => {}),
+        setSystemNotifications: rawData?.setSystemNotifications || (() => {}),
+        setAgronomistDiagnoses: rawData?.setAgronomistDiagnoses || (() => {}),
         
         isSyncing,
         onlineStatus,

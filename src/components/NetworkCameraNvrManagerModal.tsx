@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { safeStorage } from '../services/storageService';
-import type { PlantationCamera } from './SystemManagement/HardwareLabs/CameraNvrLab';
+import type { PlantationCamera } from '../types/hardwareContract';
 import { NvrCameraMasterConsole } from './SystemManagement/HardwareLabs/NvrCameraMasterConsole';
 import type { PlantationFeature } from '../types';
 

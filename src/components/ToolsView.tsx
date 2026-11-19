@@ -1,13 +1,20 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
-import type { Role, Permission, Employee, EmployeeGroup, Machinery, PaymentType, ThemeSettings, User, UserRole, UploadedDocument, PlantDiseaseAnalysis, ForumPost, PlantationFeature, Membership, Organization, SubscriptionRequest, WorkAssignment, HarvestEvent, HarvestEntry, DailyLogEntry } from '../types';
+import type { Role, Permission, Employee, EmployeeGroup, Machinery, PaymentType, ThemeSettings, User, UserRole, UploadedDocument, PlantDiseaseAnalysis, ForumPost, PlantationFeature, Membership, Organization, SubscriptionRequest, WorkAssignment, HarvestEvent, HarvestEntry, DailyLogEntry, Alert } from '../types';
 import { ALL_PERMISSIONS, PAYMENT_TYPES } from '../types';
 import * as d3 from 'd3';
 import { db, updateDoc, doc, deleteDoc, auth } from '../firebase';
 import type { SyncLogEntry } from '../firebase';
 import { syncManager } from '../services/SyncManager';
 import { USE_FIREBASE } from '../config';
+import {
+    extractTicketDisplayBody,
+    getTicketResolutionState,
+    isCompanyJoinTicketPost,
+    resolveCompanyTicketOrJoin,
+    resolveTicketTargetOrgId
+} from '../utils/companyTicketActions';
 import EmployeeModal from './EmployeeModal';
 import ForemanManagerModal from './ForemanManagerModal';
 import EmployeeIdCard from './EmployeeIdCard';
@@ -92,6 +99,8 @@ interface ToolsViewProps {
     harvestEntries?: HarvestEntry[];
     dailyLogs?: DailyLogEntry[];
     onSetDailyLogs?: (logs: DailyLogEntry[]) => void;
+    alerts?: Alert[];
+    onSetAlerts?: React.Dispatch<React.SetStateAction<Alert[]>> | ((alerts: Alert[]) => void);
 }
 
 const ToolsView: React.FC<ToolsViewProps> = (props) => {
@@ -99,12 +108,41 @@ const ToolsView: React.FC<ToolsViewProps> = (props) => {
     const [activeTab, setActiveTab] = useState<'roles' | 'hr' | 'daily' | 'groups' | 'system' | 'ai_tools' | 'team_hub' | 'root'>('hr');
     const [isGoogleSheetsOpen, setIsGoogleSheetsOpen] = useState(false);
     const [googleSheetsModule, setGoogleSheetsModule] = useState<GoogleSheetsModuleType>('workers');
-    const { t: translate } = useLanguage();
+    const { t: translate, language } = useLanguage();
     
     const unreadCount = useMemo(() => {
         if (!props.currentUser) return 0;
         return props.forumPosts.filter(p => p.isDirectMessage && p.recipientId === props.currentUser?.id && !p.isRead).length;
     }, [props.forumPosts, props.currentUser]);
+
+    const pendingHrRequestCount = useMemo(() => {
+        const activeOrg = props.activeOrgId;
+        const matchedKeys = new Set<string>();
+        let count = 0;
+        (props.memberships || []).forEach(m => {
+            if (m.status === 'pending' && (!activeOrg || activeOrg === 'ALL' || m.organizationId === activeOrg)) {
+                matchedKeys.add(`${m.userId}_${m.organizationId}`);
+                count += 1;
+            }
+        });
+        (props.forumPosts || []).forEach(p => {
+            if (!isCompanyJoinTicketPost(p) || p.authorId === props.currentUser?.id) return;
+            const targetOrgId = resolveTicketTargetOrgId({
+                post: p,
+                activeOrgId: activeOrg,
+                organizations: props.organizations,
+                memberships: props.memberships
+            });
+            if (activeOrg && activeOrg !== 'ALL' && targetOrgId && targetOrgId !== activeOrg) return;
+            if (getTicketResolutionState(p, props.memberships, targetOrgId) !== 'pending') return;
+            const key = `${p.authorId}_${targetOrgId || 'unknown'}`;
+            if (!matchedKeys.has(key)) {
+                matchedKeys.add(key);
+                count += 1;
+            }
+        });
+        return count;
+    }, [props.memberships, props.forumPosts, props.activeOrgId, props.organizations, props.currentUser?.id]);
 
     if (!currentUserPermissions.has('edit_roles') && !currentUserPermissions.has('edit_employees')) {
         return (
@@ -134,9 +172,14 @@ const ToolsView: React.FC<ToolsViewProps> = (props) => {
                             <button 
                                 onClick={() => setActiveTab('hr')} 
                                 data-active={activeTab === 'hr' ? "true" : "false"}
-                                className={`px-6 py-3 text-[10px] font-black uppercase tracking-widest rounded-2xl transition-all standing-light standing-beam ${activeTab === 'hr' ? 'bg-blue-600 text-white shadow-md underglow-box-active active' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'}`}
+                                className={`px-6 py-3 text-[10px] font-black uppercase tracking-widest rounded-2xl transition-all relative standing-light standing-beam ${activeTab === 'hr' ? 'bg-blue-600 text-white shadow-md underglow-box-active active' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'}`}
                             >
                                 Human Resources
+                                {pendingHrRequestCount > 0 && (
+                                    <span className="ml-2 inline-flex items-center justify-center px-1.5 py-0.5 bg-amber-500 text-white text-[9px] font-black rounded-full">
+                                        {pendingHrRequestCount}
+                                    </span>
+                                )}
                             </button>
                             <button 
                                 onClick={() => setActiveTab('daily')} 
@@ -235,9 +278,13 @@ const HrManager: React.FC<ToolsViewProps> = (props) => {
     const { 
         employees, onSetEmployees, roles, users, onSetUsers, activeOrgId, 
         memberships, onSetMemberships, autoOpenHRModal, organizations, machinery,
-        workAssignments = [], harvestEvents = [], harvestEntries = [], plantationFeatures = []
+        workAssignments = [], harvestEvents = [], harvestEntries = [], plantationFeatures = [],
+        forumPosts = [], onAddPost, onUpdatePost, currentUser, allUsers = [], alerts = [], onSetAlerts
     } = props;
-    const { t: translate } = useLanguage();
+    const { t: translate, language } = useLanguage();
+    const isKa = language === 'ka';
+    const [pendingRoles, setPendingRoles] = useState<Record<string, string>>({});
+    const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState<'alphabet' | 'number' | 'data'>('alphabet');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -253,6 +300,89 @@ const HrManager: React.FC<ToolsViewProps> = (props) => {
     const [isGoogleSheetsOpen, setIsGoogleSheetsOpen] = useState(false);
     const [googleSheetsModule, setGoogleSheetsModule] = useState<GoogleSheetsModuleType>('workers');
     const [isHrLaborAiOpen, setIsHrLaborAiOpen] = useState(false);
+
+    const pendingJoinRequests = useMemo(() => {
+        const userPool = allUsers.length > 0 ? allUsers : users;
+        const seenKeys = new Set<string>();
+        const list: Array<{
+            key: string;
+            userId: string;
+            userName: string;
+            userEmail?: string;
+            userPhone?: string;
+            orgId?: string;
+            orgName?: string;
+            membershipId?: string;
+            postId?: string;
+            message?: string;
+            timestamp: string;
+            source: 'membership' | 'ticket';
+        }> = [];
+
+        (memberships || []).forEach(m => {
+            if (m.status !== 'pending') return;
+            if (activeOrgId && activeOrgId !== 'ALL' && m.organizationId !== activeOrgId) return;
+            const reqUser = userPool.find(u => u.id === m.userId);
+            const org = organizations.find(o => o.id === m.organizationId);
+            const linkedPost = (forumPosts || []).find(
+                p =>
+                    isCompanyJoinTicketPost(p) &&
+                    p.authorId === m.userId &&
+                    (p.ticketMembershipId === m.id || resolveTicketTargetOrgId({ post: p, activeOrgId, organizations, memberships }) === m.organizationId)
+            );
+            const key = `${m.userId}_${m.organizationId}`;
+            seenKeys.add(key);
+            list.push({
+                key,
+                userId: m.userId,
+                userName: reqUser?.name || linkedPost?.authorName || 'Applicant',
+                userEmail: reqUser?.email,
+                userPhone: reqUser?.phone,
+                orgId: m.organizationId,
+                orgName: org?.name,
+                membershipId: m.id,
+                postId: linkedPost?.id,
+                message: linkedPost ? extractTicketDisplayBody(linkedPost) : undefined,
+                timestamp: linkedPost?.timestamp || m.joinedAt || new Date().toISOString(),
+                source: linkedPost?.content?.startsWith('[TICKET-REQUEST]') ? 'ticket' : 'membership'
+            });
+        });
+
+        (forumPosts || []).forEach(p => {
+            if (!isCompanyJoinTicketPost(p) || p.authorId === currentUser?.id) return;
+            const targetOrgId = resolveTicketTargetOrgId({
+                post: p,
+                activeOrgId,
+                organizations,
+                memberships
+            });
+            if (activeOrgId && activeOrgId !== 'ALL' && targetOrgId && targetOrgId !== activeOrgId) return;
+            if (getTicketResolutionState(p, memberships, targetOrgId) !== 'pending') return;
+
+            const key = `${p.authorId}_${targetOrgId || 'unknown'}`;
+            if (seenKeys.has(key)) return;
+            seenKeys.add(key);
+
+            const reqUser = userPool.find(u => u.id === p.authorId);
+            const org = organizations.find(o => o.id === targetOrgId);
+            list.push({
+                key,
+                userId: p.authorId,
+                userName: reqUser?.name || p.authorName || 'Applicant',
+                userEmail: reqUser?.email,
+                userPhone: reqUser?.phone,
+                orgId: targetOrgId,
+                orgName: org?.name || p.ticketOrgName,
+                membershipId: p.ticketMembershipId,
+                postId: p.id,
+                message: extractTicketDisplayBody(p),
+                timestamp: p.timestamp,
+                source: 'ticket'
+            });
+        });
+
+        return list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    }, [memberships, forumPosts, activeOrgId, organizations, users, allUsers, currentUser?.id]);
 
     useEffect(() => {
         initGlobalHardwareScannerListener();
@@ -1050,6 +1180,177 @@ const HrManager: React.FC<ToolsViewProps> = (props) => {
                         {!globalUserSearch && (
                             <div className="col-span-full py-4 text-center text-[10px] font-black text-blue-300 uppercase tracking-widest">Start typing to search global database...</div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {pendingJoinRequests.length > 0 && (
+                <div className="mb-8 p-6 bg-amber-50/80 rounded-3xl border border-amber-200 shadow-sm space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                            <h3 className="text-xs font-black text-amber-900 uppercase tracking-widest flex items-center gap-2">
+                                <UsersIcon size={16} className="text-amber-600" />
+                                <span>{isKa ? 'კომპანიაში გაწევრიანების და ტიკეტების მოთხოვნები' : 'Pending Join & Ticket Requests'}</span>
+                                <span className="px-2 py-0.5 rounded-full bg-amber-600 text-white text-[9px] font-black">
+                                    {pendingJoinRequests.length}
+                                </span>
+                            </h3>
+                            <p className="text-[10px] font-bold text-amber-700/80 mt-0.5">
+                                {isKa
+                                    ? 'დაადასტურეთ ან უარყავით მომხმარებლების მოთხოვნები კომპანიაში დამატებაზე.'
+                                    : 'Approve or decline incoming company membership and ticket requests.'}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {pendingJoinRequests.map(req => {
+                            const availableRoles = Array.from(
+                                new Set([
+                                    'Employee',
+                                    'Field Manager',
+                                    'Admin',
+                                    'Agronomist',
+                                    'Accountant',
+                                    ...(roles || []).map(r => r.name).filter(Boolean)
+                                ])
+                            );
+                            const chosenRole = pendingRoles[req.key] || 'Employee';
+                            const isBusy = processingRequestId === req.key;
+                            const targetOrg = req.orgId || (activeOrgId && activeOrgId !== 'ALL' ? activeOrgId : undefined);
+
+                            return (
+                                <div key={req.key} className="p-4 bg-white rounded-2xl border border-amber-200/80 shadow-xs space-y-3">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 font-black text-sm flex items-center justify-center shrink-0 uppercase">
+                                                {req.userName.charAt(0)}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <h4 className="text-xs font-black text-slate-900 truncate">{req.userName}</h4>
+                                                <p className="text-[10px] font-bold text-slate-400 truncate">
+                                                    {req.userEmail || req.userPhone || req.userId.slice(0, 10)}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col items-end gap-1 shrink-0">
+                                            <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[8px] font-black uppercase tracking-wider">
+                                                {req.source === 'ticket' ? (isKa ? 'ტიკეტი' : 'Ticket') : (isKa ? 'მოთხოვნა' : 'Join Request')}
+                                            </span>
+                                            {req.orgName && (
+                                                <span className="text-[9px] font-bold text-slate-500 truncate max-w-[120px]">{req.orgName}</span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {req.message && (
+                                        <p className="text-[11px] font-medium text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100 line-clamp-2">
+                                            {req.message}
+                                        </p>
+                                    )}
+
+                                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
+                                        <select
+                                            value={chosenRole}
+                                            onChange={e => setPendingRoles(prev => ({ ...prev, [req.key]: e.target.value }))}
+                                            disabled={isBusy}
+                                            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-black text-slate-700 outline-none"
+                                        >
+                                            {availableRoles.map(rName => (
+                                                <option key={rName} value={rName}>{rName}</option>
+                                            ))}
+                                        </select>
+                                        <div className="flex gap-2 flex-1">
+                                            <button
+                                                type="button"
+                                                disabled={isBusy}
+                                                onClick={async () => {
+                                                    if (!targetOrg) {
+                                                        toast.error(isKa ? 'აირჩიეთ კომპანია დასამატებლად' : 'Please select an active company first.');
+                                                        return;
+                                                    }
+                                                    setProcessingRequestId(req.key);
+                                                    try {
+                                                        await resolveCompanyTicketOrJoin({
+                                                            decision: 'approve',
+                                                            userId: req.userId,
+                                                            userName: req.userName,
+                                                            orgId: targetOrg,
+                                                            orgName: req.orgName,
+                                                            membershipId: req.membershipId,
+                                                            selectedRole: chosenRole,
+                                                            postId: req.postId,
+                                                            currentUser,
+                                                            memberships,
+                                                            onSetMemberships,
+                                                            employees,
+                                                            onSetEmployees,
+                                                            users,
+                                                            allUsers,
+                                                            onSetUsers,
+                                                            roles,
+                                                            organizations,
+                                                            forumPosts,
+                                                            onAddPost,
+                                                            onUpdatePost,
+                                                            alerts,
+                                                            onSetAlerts,
+                                                            isKa
+                                                        });
+                                                    } finally {
+                                                        setProcessingRequestId(null);
+                                                    }
+                                                }}
+                                                className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1 cursor-pointer shadow-xs"
+                                            >
+                                                <CheckIcon className="h-3.5 w-3.5" />
+                                                <span>{isKa ? 'დადასტურება' : 'Approve'}</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                disabled={isBusy}
+                                                onClick={async () => {
+                                                    setProcessingRequestId(req.key);
+                                                    try {
+                                                        await resolveCompanyTicketOrJoin({
+                                                            decision: 'decline',
+                                                            userId: req.userId,
+                                                            userName: req.userName,
+                                                            orgId: targetOrg,
+                                                            orgName: req.orgName,
+                                                            membershipId: req.membershipId,
+                                                            postId: req.postId,
+                                                            currentUser,
+                                                            memberships,
+                                                            onSetMemberships,
+                                                            employees,
+                                                            onSetEmployees,
+                                                            users,
+                                                            allUsers,
+                                                            onSetUsers,
+                                                            roles,
+                                                            organizations,
+                                                            forumPosts,
+                                                            onAddPost,
+                                                            onUpdatePost,
+                                                            alerts,
+                                                            onSetAlerts,
+                                                            isKa
+                                                        });
+                                                    } finally {
+                                                        setProcessingRequestId(null);
+                                                    }
+                                                }}
+                                                className="flex-1 py-2 px-3 bg-white hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 disabled:opacity-50 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                                            >
+                                                <XIcon className="h-3.5 w-3.5" />
+                                                <span>{isKa ? 'უარყოფა' : 'Decline'}</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             )}
@@ -2012,6 +2313,9 @@ const ToolsTeamHubWrapper: React.FC<ToolsViewProps> = (props) => {
             onSetUsers={props.onSetUsers}
             roles={props.roles || []}
             plantationFeatures={props.plantationFeatures}
+            organizations={props.organizations || []}
+            alerts={props.alerts || []}
+            onSetAlerts={props.onSetAlerts}
             mapProps={props.mapProps}
             onOpenPopUp={() => window.dispatchEvent(new CustomEvent("agrimap_open_intercom"))}
         />

@@ -12,12 +12,12 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { HarvestEvent, HarvestEntry, Pallet, PlantationFeature, AreaPlantationFeature, InventoryItem, Employee, EmployeeGroup, HarvestStatus, HarvestLog, YieldByVariety, PostHarvestAction, DashboardWidget, HarvestSaleDetails, ActiveDrawingTool, Machinery, LinePlantationFeature, Layer, Crop, HARVEST_METHODS, Account, Transaction, StockTransaction, User, Role, Permission, AssignedPicker } from '../../types';
 import { isValidCoordinate } from '../../types';
 import type { MapComponentProps } from '../MapComponent';
-import { Fingerprint, QrCode, RefreshCcw, Boxes, Scale, Wifi, WifiOff, CloudUpload, HardDrive, MapPin, Database, ChevronDown, ListFilter, ShieldCheck, Play as PlayIcon, Share2, History, Users, ScanLine } from 'lucide-react';
+import { Fingerprint, QrCode, RefreshCcw, Boxes, Scale, Wifi, WifiOff, CloudUpload, HardDrive, MapPin, Database, ChevronDown, ListFilter, ShieldCheck, Play as PlayIcon, Share2, History, Users, ScanLine, Eye, EyeOff, DollarSign, Layers } from 'lucide-react';
 import { toast } from 'sonner';
 import QrScannerModal from '../QrScannerModal';
 import { findMatchingEmployee } from '../../utils/employeeMatching';
 import { getDetailedSyncQueue, SyncLogEntry, auth } from '../../firebase';
-import { syncManager } from '../../services/SyncManager';
+import { syncManager, CLOUD_SYNC_TOAST_ID } from '../../services/SyncManager';
 import { syncBroker } from '../../services/SyncBroker';
 import { PresenceEngine } from '../../../new_engine/PresenceEngine';
 import { PresenceUser } from '../../../new_engine/types';
@@ -122,8 +122,11 @@ const HarvestLocalSyncPanel: React.FC<{
     onToggleSimulation: (enabled: boolean) => void;
     simulatedCount: number;
     onCommitSimulation: () => void;
-}> = ({ event, onPushToCloud, onSyncToLAN, isLocalMode, isSimulationMode, onToggleSimulation, simulatedCount, onCommitSimulation }) => {
+    isContentVisible?: boolean;
+    onToggleVisibility?: () => void;
+}> = ({ event, onPushToCloud, onSyncToLAN, isLocalMode, isSimulationMode, onToggleSimulation, simulatedCount, onCommitSimulation, isContentVisible = true, onToggleVisibility }) => {
     const { t } = useLanguage();
+    const isKa = t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka';
     const [isOnline, setIsOnline] = useState(navigator.onLine);
     const [showLog, setShowLog] = useState(false);
     const [syncQueue, setSyncQueue] = useState<SyncLogEntry[]>([]);
@@ -150,7 +153,7 @@ const HarvestLocalSyncPanel: React.FC<{
     return (
         <div className="bg-[#FAFBF8] border border-[#D8E3D4] rounded-[20px] overflow-hidden shadow-2xs transition-all duration-500 text-[#163022]">
             <div className="p-4 space-y-3">
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center gap-2">
                     <div className="flex items-center gap-2">
                         <div className={`p-2 rounded-xl ${isOnline ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
                             {isOnline ? <Wifi size={16} /> : <WifiOff size={16} />}
@@ -167,11 +170,26 @@ const HarvestLocalSyncPanel: React.FC<{
                             </p>
                         </div>
                     </div>
-                    <div className="text-right">
-                        <p className="text-[9px] font-black uppercase tracking-widest text-[#5C7867] leading-none mb-1">{t('harvest.local_node')}</p>
-                        <p className="text-xs font-black text-indigo-700">192.168.10.152</p>
+                    <div className="flex items-center gap-2">
+                        <div className="text-right">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-[#5C7867] leading-none mb-1">{t('harvest.local_node')}</p>
+                            <p className="text-xs font-black text-indigo-700">192.168.10.152</p>
+                        </div>
+                        {onToggleVisibility && (
+                            <button
+                                type="button"
+                                onClick={onToggleVisibility}
+                                className="p-1.5 bg-white hover:bg-slate-100 border border-[#CFDCCB] rounded-lg text-[#244130] transition-colors cursor-pointer"
+                                title={isContentVisible ? (isKa ? 'დამალვა' : 'Hide section') : (isKa ? 'ჩვენება' : 'Show section')}
+                            >
+                                {isContentVisible ? <Eye size={14} /> : <EyeOff size={14} className="text-slate-400" />}
+                            </button>
+                        )}
                     </div>
                 </div>
+
+                {isContentVisible && (
+                <>
 
                 {/* Simulation Sandbox Engine Section */}
                 <div className="p-3 bg-white border border-[#D8E3D4] rounded-xl space-y-2 shadow-2xs">
@@ -260,9 +278,11 @@ const HarvestLocalSyncPanel: React.FC<{
                     {t('harvest.view_detailed_sync_log')} ({relevantLogs.length})
                     <ChevronDown size={10} className={`transition-transform ${showLog ? 'rotate-180' : ''}`} />
                 </button>
+                </>
+                )}
             </div>
 
-            {showLog && (
+            {isContentVisible && showLog && (
                 <div className="border-t border-[#D8E3D4] bg-[#EEF3EA]/50 max-h-48 overflow-y-auto scrollbar-hide">
                     <div className="p-4 space-y-2">
                         {relevantLogs.length === 0 ? (
@@ -292,13 +312,15 @@ const HarvestLocalSyncPanel: React.FC<{
                 </div>
             )}
             
-            <div className="px-4 py-2 bg-[#EEF3EA] border-t border-[#D8E3D4] flex justify-between items-center text-[8px] font-bold text-[#5C7867]">
-                <span className="flex items-center gap-1.5">
-                    <ShieldCheck size={10} className="text-emerald-600" />
-                    Data Redundancy Active
-                </span>
-                <span className="uppercase tracking-widest">{renderSafeString(event.syncStatus) || 'Local Only'}</span>
-            </div>
+            {isContentVisible && (
+                <div className="px-4 py-2 bg-[#EEF3EA] border-t border-[#D8E3D4] flex justify-between items-center text-[8px] font-bold text-[#5C7867]">
+                    <span className="flex items-center gap-1.5">
+                        <ShieldCheck size={10} className="text-emerald-600" />
+                        Data Redundancy Active
+                    </span>
+                    <span className="uppercase tracking-widest">{renderSafeString(event.syncStatus) || 'Local Only'}</span>
+                </div>
+            )}
         </div>
     );
 };
@@ -337,55 +359,76 @@ const DailyHarvestModal: React.FC<{
     }, [isOpen, initialTab]);
 
     if (!isOpen) return null;
+    const isKa = t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka';
     return (
-        <div className="fixed inset-0 bg-black/60 z-[3000] flex items-center justify-center p-2 sm:p-4 md:p-6 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
-            <div className="bg-gray-50 w-full rounded-2xl sm:rounded-3xl shadow-2xl max-w-7xl h-[95vh] sm:h-[90vh] max-h-[95vh] sm:max-h-[90vh] flex flex-col overflow-hidden border border-slate-200/80" onClick={e => e.stopPropagation()}>
-                <div className="p-3.5 sm:p-4 border-b flex justify-between items-center bg-white flex-shrink-0 shadow-xs">
-                    <div className="flex items-center gap-4">
-                        <h2 className="text-base sm:text-xl font-black text-gray-900 uppercase tracking-tight">{t('adv.title')}</h2>
-                        <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
+        <div className="fixed inset-0 bg-slate-900/70 z-[3000] flex items-center justify-center p-1.5 sm:p-4 backdrop-blur-xs animate-in fade-in duration-200" onClick={onClose}>
+            <div className="bg-white w-full rounded-xl sm:rounded-2xl shadow-2xl max-w-7xl h-[96vh] sm:h-[92vh] max-h-[96vh] sm:max-h-[92vh] flex flex-col overflow-hidden border border-slate-200" onClick={e => e.stopPropagation()}>
+                <div className="bg-slate-900 text-white px-3 sm:px-5 py-2.5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 flex-shrink-0">
+                    <div className="flex items-center justify-between gap-2 min-w-0">
+                        <div className="min-w-0">
+                            <h2 className="text-sm sm:text-base font-black text-white uppercase tracking-tight truncate">{t('adv.title')}</h2>
+                        </div>
+                        <div className="flex items-center gap-1.5 lg:hidden shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setIsHarvestBoxQrOpen(true)}
+                                className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-[11px] font-bold flex items-center gap-1.5 cursor-pointer border border-slate-700 whitespace-nowrap"
+                                title={isKa ? "მოსავლის ყუთების QR კოდების გენერირება & ბეჭდვა" : "Generate & Print Harvest Box QR Codes"}
+                            >
+                                <QrCode size={13} className="text-emerald-400" />
+                                <span>{isKa ? 'ყუთების QR' : 'Box QRs'}</span>
+                            </button>
+                            <button onClick={onClose} className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors flex items-center justify-center cursor-pointer" aria-label="Close">
+                                <XIcon className="h-4 w-4" />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 min-w-0">
+                        <div className="flex items-center bg-slate-800/90 p-1 rounded-lg gap-1 overflow-x-auto no-scrollbar max-w-full border border-slate-700/80">
                             <button 
                                 onClick={() => setActiveTab('stats')}
-                                className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${activeTab === 'stats' ? 'bg-indigo-600 text-white shadow-xs font-black' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'}`}
+                                className={`px-2.5 sm:px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0 ${activeTab === 'stats' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-300 hover:text-white hover:bg-slate-700/70'}`}
                             >
-                                Yield Control
+                                {isKa ? 'მოსავლის კონტროლი' : 'Yield Control'}
                             </button>
                             <button 
                                 onClick={() => setActiveTab('statistics')}
-                                className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${activeTab === 'statistics' ? 'bg-indigo-600 text-white shadow-xs font-black' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'}`}
+                                className={`px-2.5 sm:px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0 ${activeTab === 'statistics' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-300 hover:text-white hover:bg-slate-700/70'}`}
                             >
-                                <span>📊</span>
-                                <span>Statistics & Audit Hub</span>
+                                {isKa ? 'სტატისტიკა და აუდიტი' : 'Statistics & Audit'}
                             </button>
                             <button 
                                 onClick={() => setActiveTab('logistics')}
-                                className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${activeTab === 'logistics' ? 'bg-indigo-600 text-white shadow-xs font-black' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'}`}
+                                className={`px-2.5 sm:px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0 ${activeTab === 'logistics' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-300 hover:text-white hover:bg-slate-700/70'}`}
                             >
-                                Logistics & Resources
+                                {isKa ? 'ლოგისტიკა' : 'Logistics & Resources'}
                             </button>
                             <button 
                                 onClick={() => setActiveTab('management')}
-                                className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${activeTab === 'management' ? 'bg-indigo-600 text-white shadow-xs font-black' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'}`}
+                                className={`px-2.5 sm:px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0 ${activeTab === 'management' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-300 hover:text-white hover:bg-slate-700/70'}`}
                             >
-                                <span>⚙️</span>
-                                <span>Management & Other Tools</span>
+                                {isKa ? 'მენეჯმენტი' : 'Management'}
                             </button>
                         </div>
-                        <button
-                            type="button"
-                            onClick={() => setIsHarvestBoxQrOpen(true)}
-                            className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 active:scale-95 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
-                            title={t('language') === 'ka' ? "მოსავლის ყუთების QR კოდების გენერირება & ბეჭდვა" : "Generate & Print Harvest Box QR Codes"}
-                        >
-                            <QrCode size={14} className="text-emerald-400" />
-                            <span>{t('language') === 'ka' ? 'ყუთების QR' : 'Box QRs'}</span>
-                        </button>
+
+                        <div className="hidden lg:flex items-center gap-2 shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setIsHarvestBoxQrOpen(true)}
+                                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer border border-slate-700 transition-colors whitespace-nowrap"
+                                title={isKa ? "მოსავლის ყუთების QR კოდების გენერირება & ბეჭდვა" : "Generate & Print Harvest Box QR Codes"}
+                            >
+                                <QrCode size={14} className="text-emerald-400" />
+                                <span>{isKa ? 'ყუთების QR' : 'Box QRs'}</span>
+                            </button>
+                            <button onClick={onClose} className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors flex items-center justify-center cursor-pointer" aria-label="Close">
+                                <XIcon className="h-4 w-4" />
+                            </button>
+                        </div>
                     </div>
-                    <button onClick={onClose} className="p-2 min-w-[40px] min-h-[40px] hover:bg-gray-100 rounded-full transition-colors flex items-center justify-center active:scale-95">
-                        <XIcon className="h-6 w-6 text-gray-400 hover:text-gray-600" />
-                    </button>
                 </div>
-                <div className="flex-grow overflow-hidden min-h-0 flex flex-col">
+                <div className="flex-grow overflow-hidden min-h-0 flex flex-col bg-white">
                     {activeTab === 'stats' && (
                         <PickerStats 
                             viewMode="payroll"
@@ -943,11 +986,25 @@ const BoxScannerOverlay: React.FC<{
     );
 };
 
-const YieldByVarietyWidget: React.FC<{ yields?: YieldByVariety[], totalWeight: number }> = ({ yields = [], totalWeight }) => {
+const YieldByVarietyWidget: React.FC<{ yields?: YieldByVariety[], totalWeight: number, isContentVisible?: boolean, onToggleVisibility?: () => void }> = ({ yields = [], totalWeight, isContentVisible = true, onToggleVisibility }) => {
     const { t } = useLanguage();
+    const isKa = t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka';
     return (
     <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-        <h3 className="font-semibold text-gray-700 text-sm mb-3">{t('harvest.yield_by_variety')}</h3>
+        <div className={`flex justify-between items-center ${isContentVisible ? 'mb-3' : ''}`}>
+            <h3 className="font-semibold text-gray-700 text-sm">{t('harvest.yield_by_variety')}</h3>
+            {onToggleVisibility && (
+                <button
+                    type="button"
+                    onClick={onToggleVisibility}
+                    className="p-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-600 transition-colors cursor-pointer"
+                    title={isContentVisible ? (isKa ? 'დამალვა' : 'Hide section') : (isKa ? 'ჩვენება' : 'Show section')}
+                >
+                    {isContentVisible ? <Eye size={14} /> : <EyeOff size={14} className="text-slate-400" />}
+                </button>
+            )}
+        </div>
+        {isContentVisible && (
         <div className="space-y-3">
             {yields.map(({ variety, weightKg }) => (
                 <div key={variety}>
@@ -961,6 +1018,7 @@ const YieldByVarietyWidget: React.FC<{ yields?: YieldByVariety[], totalWeight: n
                 </div>
             ))}
         </div>
+        )}
     </div>
     );
 };
@@ -969,8 +1027,12 @@ const OperationLogWidget: React.FC<{
     employees: Employee[], 
     onDetailedViewClick: () => void,
     onUpdateEntry: (entryId: string, updates: Partial<HarvestEntry>) => void,
-    onDeleteEntry: (entryId: string) => void
-}> = ({ entries, employees, onDetailedViewClick, onUpdateEntry, onDeleteEntry }) => {
+    onDeleteEntry: (entryId: string) => void,
+    isContentVisible?: boolean,
+    onToggleVisibility?: () => void
+}> = ({ entries, employees, onDetailedViewClick, onUpdateEntry, onDeleteEntry, isContentVisible = true, onToggleVisibility }) => {
+    const { t } = useLanguage();
+    const isKa = t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka';
     const [editingId, setEditingId] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [editData, setEditData] = useState<{ netWeightKg: number }>({ netWeightKg: 0 });
@@ -998,16 +1060,29 @@ const OperationLogWidget: React.FC<{
     };
 
     return (
-        <div className="space-y-2">
-            <div className="flex justify-between items-center">
-                <h3 className="font-semibold text-gray-700 text-sm uppercase">Operation Log</h3>
-                <button 
-                    onClick={onDetailedViewClick}
-                    className="text-[10px] font-black text-blue-600 hover:text-blue-700 uppercase tracking-widest bg-blue-50 px-2 py-1 rounded-lg transition-colors border border-blue-100"
-                >
-                    Detailed View
-                </button>
+        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-2">
+            <div className="flex justify-between items-center gap-2">
+                <h3 className="font-semibold text-gray-700 text-sm uppercase">Operation Log ({entries?.length || 0})</h3>
+                <div className="flex items-center gap-1.5">
+                    <button 
+                        onClick={onDetailedViewClick}
+                        className="text-[10px] font-black text-blue-600 hover:text-blue-700 uppercase tracking-widest bg-blue-50 px-2 py-1 rounded-lg transition-colors border border-blue-100 cursor-pointer"
+                    >
+                        Detailed View
+                    </button>
+                    {onToggleVisibility && (
+                        <button
+                            type="button"
+                            onClick={onToggleVisibility}
+                            className="p-1.5 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-600 transition-colors cursor-pointer"
+                            title={isContentVisible ? (isKa ? 'დამალვა' : 'Hide section') : (isKa ? 'ჩვენება' : 'Show section')}
+                        >
+                            {isContentVisible ? <Eye size={14} /> : <EyeOff size={14} className="text-slate-400" />}
+                        </button>
+                    )}
+                </div>
             </div>
+            {isContentVisible && (
             <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
                 {[...(entries || [])].sort((a, b) => {
                     const sA = a.scannedAt || '';
@@ -1118,6 +1193,7 @@ const OperationLogWidget: React.FC<{
                     );
                 })}
             </div>
+            )}
         </div>
     );
 };
@@ -1441,6 +1517,33 @@ const HarvestDashboard: React.FC<HarvestDashboardProps> = (props) => {
 
     const [isFleetManagerOpen, setIsFleetManagerOpen] = useState(false);
     const [isMaterialsModalOpen, setIsMaterialsModalOpen] = useState(false);
+
+    const [visibleSections, setVisibleSections] = useState<Record<string, boolean>>(() => {
+        try {
+            const saved = safeStorage.getItem('harvest_monitoring_sections_v1');
+            if (saved) return JSON.parse(saved);
+        } catch (e) {}
+        return {
+            yieldVisibility: true,
+            productionMass: true,
+            financialSummary: true,
+            yieldByVariety: true,
+            sessionControls: true,
+            syncTopology: true,
+            operationLog: true,
+        };
+    });
+
+    const isSectionVisible = useCallback((key: string) => visibleSections[key] !== false, [visibleSections]);
+    const toggleSectionVisibility = useCallback((key: string) => {
+        setVisibleSections(prev => {
+            const next = { ...prev, [key]: prev[key] === false };
+            try {
+                safeStorage.setItem('harvest_monitoring_sections_v1', JSON.stringify(next));
+            } catch (e) {}
+            return next;
+        });
+    }, []);
 
     // Packaging & Punet OPEX Settings box state
     const [boxQtyInput, setBoxQtyInput] = useState<number | string>(event.totalBoxes || 0);
@@ -2102,19 +2205,18 @@ const HarvestDashboard: React.FC<HarvestDashboardProps> = (props) => {
     };
 
     const handlePushToCloud = async () => {
-        const id = toast.loading('Syncing Local Vault to Global Firestore...');
+        const id = CLOUD_SYNC_TOAST_ID;
+        toast.loading('Syncing Local Vault to Global Firestore...', { id });
         try {
-            const success = await syncManager.pushAllToCloud();
+            const success = await syncManager.pushAllToCloud({ toastId: id });
             if (success) {
                 const updatedEvent: HarvestEvent = { ...event, syncStatus: 'cloud_synced', isSyncRequired: false };
                 onSetHarvestEvents(harvestEvents.map(e => e.id === event.id ? updatedEvent : e));
-                toast.success('Seasonal Records Secured in Global Cloud.', { id });
-            } else {
-                toast.error('Cloud Sync failed or nothing to sync.', { id });
+                toast.success('Seasonal Records Secured in Global Cloud.', { id, duration: 4000 });
             }
         } catch (error: any) {
             console.error("Cloud push failed:", error);
-            toast.error(`Cloud Sync Failed: ${error?.message || error}`, { id });
+            toast.error(`Cloud Sync Failed: ${error?.message || error}`, { id, duration: 4000 });
         }
     };
 
@@ -2781,506 +2883,643 @@ const HarvestDashboard: React.FC<HarvestDashboardProps> = (props) => {
                         </div>
                     ) : (
                         <>
-                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
-                        <div className="flex flex-col gap-3 mb-3">
-                            <div className="flex justify-between items-center">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('harvest.yield_visibility')}</label>
-                                <div className="flex gap-2">
-                                    <button 
-                                        onClick={() => setSelectedVarieties(activeVarieties)}
-                                        className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-[9px] font-black text-blue-600 hover:bg-blue-50 uppercase transition-all"
-                                    >
-                                        {t('harvest.all')}
-                                    </button>
-                                    <button 
-                                        onClick={() => setSelectedVarieties([])}
-                                        className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-[9px] font-black text-red-600 hover:bg-red-50 uppercase transition-all"
-                                    >
-                                        {t('harvest.none')}
-                                    </button>
-                                </div>
-                            </div>
-                            <select 
-                                className="w-full p-3 bg-white border-2 border-slate-100 rounded-xl font-bold text-xs outline-none focus:border-indigo-500 uppercase tracking-widest transition-all"
-                                value={selectedVarieties.length === 1 ? selectedVarieties[0] : ''}
-                                onChange={(e) => {
-                                    if (e.target.value) setSelectedVarieties([e.target.value]);
-                                    else setSelectedVarieties(activeVarieties);
-                                }}
-                            >
-                                <option value="">Select Specific Variety...</option>
-                                {activeVarieties.map(v => (
-                                    <option key={v} value={v}>{v}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
-                            {activeVarieties.map(v => {
-                                const stats = filteredTotals.yieldByVariety.find(y => y.variety === v);
-                                const weightKg = stats?.weightKg || 0;
-                                const isSelected = selectedVarieties.includes(v);
-                                return (
-                                    <button 
-                                        key={v}
-                                        onClick={() => toggleVariety(v)}
-                                        className={`p-3 rounded-xl border flex items-center justify-between transition-all group ${isSelected ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                                    >
-                                        <div className="flex items-center gap-2 truncate">
-                                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${isSelected ? 'bg-white border-white' : 'bg-slate-100 border-slate-300 group-hover:border-indigo-400'}`}>
-                                                {isSelected && <div className="w-2 h-2 bg-indigo-600 rounded-sm" />}
-                                            </div>
-                                            <span className="text-[10px] font-black uppercase truncate">{v}</span>
-                                        </div>
-                                        <div className="flex flex-col items-end">
-                                            <span className={`text-[10px] font-black ${isSelected ? 'text-white' : 'text-slate-900'}`}>{formatCleanWeight(weightKg)}kg</span>
-                                            <span className={`text-[8px] font-bold ${isSelected ? 'text-indigo-200' : 'text-slate-400'}`}>{t('harvest.yield')}</span>
-                                        </div>
-                                    </button>
-                                );
-                            })}
-                            {activeVarieties.length === 0 && (
-                                <div className="col-span-full py-8 flex flex-col items-center justify-center text-slate-400 border border-dashed border-slate-200 rounded-2xl">
-                                    <p className="text-[10px] font-black uppercase tracking-widest italic">No varieties detected in sector</p>
-                                </div>
-                            )}
-                        </div>
-                    </div>
+                            {/* Fixed Quick Action Controls (Always visible, never collapsed or hidden) */}
+                            <div className="space-y-2.5">
+                                {/* 1. Weigh Station + Scanner */}
+                                {event.status !== 'completed' && event.status !== 'partially_sold' && (
+                                    <div className="flex gap-2">
+                                        {event.type === 'box_counting' || event.protocol === 5 || event.protocol === 6 ? (
+                                            <button 
+                                                onClick={() => {
+                                                    setIsWeighModalOpen(true);
+                                                }} 
+                                                className="flex-1 py-4 sm:py-5 bg-orange-600 text-white rounded-2xl font-black text-lg sm:text-xl flex items-center justify-center gap-3 shadow-xl hover:bg-orange-700 transition-all cursor-pointer"
+                                            >
+                                                <span className="p-2 sm:p-3 bg-white/20 rounded-xl">
+                                                    {event.protocol === 6 ? <Fingerprint size={24} /> : <ArchiveBoxIcon className="h-4 w-4"/>}
+                                                </span>
+                                                <span>{event.protocol === 6 ? t('harvest.identify_smart_crate') : (event.protocol === 5 ? t('harvest.count_bulk_batch') : t('harvest.scan_box_tick'))}</span>
+                                            </button>
+                                        ) : (
+                                            <button onClick={() => setIsWeighModalOpen(true)} className="flex-1 py-4 bg-green-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-green-700 transition-all cursor-pointer">
+                                                <Scale size={20} />
+                                                <span>{event.protocol === 2 ? t('harvest.identify_weigh') : t('harvest.weigh_crate_add_entry')}</span>
+                                            </button>
+                                        )}
 
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsBoxScannerOpen(true)}
+                                            className="px-4 py-4 bg-slate-900 hover:bg-slate-800 active:scale-95 text-white rounded-xl font-black uppercase text-xs tracking-wider flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer shrink-0 border border-slate-700 group"
+                                            title={t('language') === 'ka' ? "სკანერის ფანჯრის გახსნა (USB / კამერა / QR)" : "Open Scanner Pop-up (USB / Camera / QR)"}
+                                        >
+                                            <ScanLine size={18} className="text-emerald-400 group-hover:scale-110 transition-transform" />
+                                            <span className="hidden sm:inline">{t('language') === 'ka' ? 'სკანერი' : 'Scanner'}</span>
+                                        </button>
+                                    </div>
+                                )}
 
-
-                    <div className="grid grid-cols-1 gap-3">
-                        {/* Only show Log on Map if not drawing, to avoid duplicate visual noise */}
-                        {!activeDrawingTool.tool && (
-                            <button 
-                                onClick={handleLogOnMap}
-                                className="flex items-center gap-4 p-5 rounded-[2rem] font-black text-xs uppercase tracking-widest transition-all active:scale-95 shadow-xl bg-slate-900 text-white shadow-slate-100"
-                            >
-                                <div className="p-2 bg-white/10 rounded-xl"><MapPin size={24}/></div>
-                                {t('harvest.log_map')}
-                            </button>
-                        )}
-                        {activeDrawingTool.tool && (
-                             <div className="flex items-center gap-4 p-5 rounded-[2rem] font-black text-xs uppercase tracking-widest bg-amber-500 text-white shadow-xl shadow-amber-100 animate-pulse">
-                                <div className="p-2 bg-white/10 rounded-xl"><div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" /></div>
-                                {t('harvest.drawing_log_area')}
-                             </div>
-                        )}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3 mb-2">
-                        <div className="bg-slate-900 rounded-2xl p-5 text-white shadow-xl flex flex-col items-center justify-center border border-white/10">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-1">{t('harvest.harvested_mass')}</p>
-                            <div className="flex items-baseline gap-1">
-                                <span className="text-3xl font-black">{formatCleanWeight(filteredTotals.totalWeight)}</span>
-                                <span className="text-xs font-bold text-slate-400 uppercase">KG</span>
-                            </div>
-                        </div>
-                        <div className="bg-slate-900 rounded-2xl p-5 text-white shadow-xl flex flex-col items-center justify-center border border-white/10">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-blue-400 mb-1">{t('harvest.total_containers')}</p>
-                            <div className="flex items-baseline gap-1">
-                                <span className="text-2xl sm:text-3xl font-black">
-                                    {safeNumericVal(filteredTotals?.totalBoxes, 0)}/{
-                                        (safeNumericVal(event?.totalPunets) >= safeNumericVal(filteredTotals?.totalBoxes, 0) * 6 && safeNumericVal(event?.totalPunets) > 0)
-                                            ? safeNumericVal(event?.totalPunets)
-                                            : ((safeNumericVal(event?.physicalPunets) >= safeNumericVal(filteredTotals?.totalBoxes, 0) * 6 && safeNumericVal(event?.physicalPunets) > 0)
-                                                ? safeNumericVal(event?.physicalPunets)
-                                                : (calculatedPunetsFromEntries > 0 
-                                                    ? calculatedPunetsFromEntries 
-                                                    : (safeNumericVal(filteredTotals?.totalBoxes, 0) * safeNumericVal(event?.punetsPerBox, 12))))
-                                    }
-                                </span>
-                                <span className="text-xs font-bold text-slate-400 uppercase">Bxs/Pnts</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <HarvestStatsGrid
-                        event={{
-                            ...event,
-                            totalNetWeightKg: filteredTotals.totalWeight,
-                            totalGrossWeightKg: filteredTotals.totalGrossWeight,
-                            totalBoxes: filteredTotals.totalBoxes,
-                            finalNetYieldKg: undefined // Force using totalNetWeightKg for live monitoring
-                        }}
-                        durationHours={durationHours}
-                        entries={filteredEntries}
-                        inventoryItems={inventoryItems}
-                        machinery={machinery}
-                        employees={employees}
-                    />
-                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-4">
-                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block border-b pb-1">{t('harvest.costs_filters')}</label>
-                        
-                        {/* 1. Daily Paid Harvest Card */}
-                        <div className="bg-gradient-to-br from-indigo-900 to-slate-900 text-white p-4 rounded-2xl shadow-md border border-indigo-800/50 space-y-2">
-                            <div className="flex justify-between items-center">
-                                <h3 className="font-extrabold text-[11px] uppercase tracking-wider text-indigo-200">Daily Paid Harvest</h3>
+                                {/* 2. Click for Detail / Adjust button (right under Weigh Station) */}
                                 <button 
+                                    type="button"
                                     onClick={() => {
                                         setDailyHarvestModalTab('stats');
                                         setShowDailyHarvestModal(true);
                                     }}
-                                    className="text-[10px] font-black text-white bg-emerald-600 hover:bg-emerald-500 active:scale-95 px-3 py-1.5 rounded-lg transition-all uppercase border-2 border-emerald-300 shadow-lg animate-pulse flex items-center gap-1 cursor-pointer"
+                                    className="w-full py-3 px-4 text-xs font-black text-white bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] rounded-xl transition-all uppercase tracking-wider border-2 border-emerald-300 shadow-md flex items-center justify-center gap-2 cursor-pointer"
                                 >
                                     Click for Detail / Adjust &rarr;
                                 </button>
-                            </div>
-                            <div className="text-2xl font-black text-white tracking-tight">
-                                {formatCurrency(event.totalPickerCost || 0)}
-                            </div>
-                            <p className="text-[10px] text-indigo-300 font-semibold uppercase tracking-wider">
-                                Total pay for hourly/daily/weight workers.
-                            </p>
-                        </div>
-                        
-                        {/* 2. Unified Buttons */}
-                        <div className="grid grid-cols-2 gap-2 mt-2">
-                            <button
-                                onClick={() => {
-                                    setDailyHarvestModalTab('logistics');
-                                    setShowDailyHarvestModal(true);
-                                }}
-                                className="bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-800 py-3 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors flex items-center justify-center gap-2 shadow-xs group cursor-pointer"
-                                title="Open Logistics & Resources Transport"
-                            >
-                                <span className="text-base group-hover:scale-110 transition-transform">🚜</span>
-                                Vehicles +
-                            </button>
-                            <button
-                                onClick={() => setIsMaterialsModalOpen(true)}
-                                className="bg-amber-50 border border-amber-200 hover:bg-amber-100 text-amber-800 py-3 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors flex items-center justify-center gap-2 shadow-xs group cursor-pointer"
-                                title="Record materials from Stock Supplies"
-                            >
-                                <span className="text-base group-hover:scale-110 transition-transform">📦</span>
-                                Materials +
-                            </button>
-                        </div>
-                        
-                        {/* 3. Packaging & Punet OPEX Settings Box */}
-                        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/90 shadow-sm space-y-3">
-                            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                                <div className="flex items-center gap-1.5">
-                                    <span className="text-sm">🍓</span>
-                                    <label className="text-[10px] font-black text-slate-800 uppercase tracking-wide">
-                                        PACKAGING & PUNET OPEX SETTINGS
-                                    </label>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setBoxQtyInput(filteredTotals?.totalBoxes || 0);
-                                            setPunetQtyInput((filteredTotals?.totalBoxes || 0) * (event.punetsPerBox || 12));
-                                        }}
-                                        className="text-[8px] font-extrabold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded border border-indigo-200 uppercase transition-colors"
-                                        title={`Autofill from Scale Records (${filteredTotals?.totalBoxes || 0} boxes)`}
-                                    >
-                                        Scale Records ({filteredTotals?.totalBoxes || 0})
-                                    </button>
-                                    <button
-                                        onClick={handleSyncPackagingQuantities}
-                                        className="text-[9px] font-black text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded border border-emerald-200 uppercase transition-colors cursor-pointer"
-                                    >
-                                        SYNC TO STOCK
-                                    </button>
-                                </div>
-                            </div>
 
-                            <div className="grid grid-cols-3 gap-2">
-                                <div>
-                                    <label className="text-[9px] font-extrabold text-slate-500 uppercase block mb-1">BOX QUANTITY</label>
-                                    <input
-                                        type="number"
-                                        value={boxQtyInput === '' || isNaN(Number(boxQtyInput)) ? '' : boxQtyInput}
-                                        onChange={e => setBoxQtyInput(e.target.value)}
-                                        className="w-full p-1.5 text-xs font-black bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:border-indigo-500 outline-none"
-                                    />
-                                    <span className="text-[8px] font-bold text-slate-400 block mt-0.5 truncate">
-                                        Synced: {renderSafeNumber(event.totalBoxes) || renderSafeNumber(filteredTotals?.totalBoxes) || '0'}
-                                    </span>
-                                </div>
-
-                                <div>
-                                    <label className="text-[9px] font-extrabold text-slate-500 uppercase block mb-1">PUNET QUANTITY</label>
-                                    <input
-                                        type="number"
-                                        value={punetQtyInput === '' || isNaN(Number(punetQtyInput)) ? '' : punetQtyInput}
-                                        onChange={e => setPunetQtyInput(e.target.value)}
-                                        className="w-full p-1.5 text-xs font-black bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:border-indigo-500 outline-none"
-                                    />
-                                    <span className="text-[8px] font-bold text-slate-400 block mt-0.5 truncate">
-                                        Synced: {renderSafeNumber(event.physicalPunets) || String((safeNumericVal(event.totalBoxes) || 0) * (safeNumericVal(event.punetsPerBox, 12)))}
-                                    </span>
-                                </div>
-
-                                <div>
-                                    <label className="text-[9px] font-extrabold text-slate-500 uppercase block mb-1">PUNETS / BOX</label>
-                                    <input
-                                        type="number"
-                                        value={punetsPerBoxInput === '' || isNaN(Number(punetsPerBoxInput)) ? '' : punetsPerBoxInput}
-                                        onChange={e => setPunetsPerBoxInput(e.target.value)}
-                                        className="w-full p-1.5 text-xs font-black bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:border-indigo-500 outline-none"
-                                    />
-                                    <span className="text-[8px] font-bold text-slate-400 block mt-0.5">Def: 12</span>
-                                </div>
-                            </div>
-
-                            <button
-                                onClick={handleSyncPackagingQuantities}
-                                className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors shadow-xs flex items-center justify-center gap-1.5 active:scale-[0.99]"
-                            >
-                                <span>⚡</span>
-                                SYNC NEW QUANTITIES
-                            </button>
-                        </div>
-
-                        
-                        {/* Other custom items */}
-                        <div className="border-t pt-2 border-slate-100">
-                            <div className="flex justify-between items-center mb-1">
-                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">{t('harvest.other_costs')}</label>
-                                <button 
-                                    onClick={() => {
-                                        setIsAddingOpexItem(!isAddingOpexItem);
-                                    }}
-                                    className="text-[8px] font-black text-indigo-600 uppercase tracking-widest hover:underline text-right"
-                                >
-                                    {isAddingOpexItem ? (t('common.cancel') || 'Cancel') : t('harvest.add_item')}
-                                </button>
-                            </div>
-
-                            {/* Inline input form if isAddingOpexItem is true */}
-                            {isAddingOpexItem && (
-                                <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-2 mt-1 mb-2 shadow-sm">
-                                    <div className="flex items-center gap-2">
-                                        <input 
-                                            type="text" 
-                                            placeholder={t('harvest.cost_name')}
-                                            className="flex-1 p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-indigo-500 font-sans"
-                                            value={newOpexItemName}
-                                            onChange={(e) => setNewOpexItemName(e.target.value)}
-                                        />
-                                        <input 
-                                            type="number" 
-                                            placeholder={t('harvest.cost_amount')}
-                                            className="w-20 p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-indigo-500 font-sans"
-                                            value={newOpexItemCost}
-                                            onChange={(e) => setNewOpexItemCost(e.target.value)}
-                                        />
-                                    </div>
-                                    <div className="flex gap-2 justify-end">
-                                        <button 
-                                            onClick={() => {
-                                                setIsAddingOpexItem(false);
-                                                setNewOpexItemName("");
-                                                setNewOpexItemCost("");
-                                            }}
-                                            className="px-2.5 py-1 text-[10px] font-black uppercase text-slate-500 hover:bg-slate-100 rounded-lg transition-all"
-                                        >
-                                            {t('common.cancel') || 'Cancel'}
-                                        </button>
-                                        <button 
-                                            onClick={() => {
-                                                const cost = parseFloat(newOpexItemCost);
-                                                if (newOpexItemName.trim() && !isNaN(cost) && cost >= 0) {
-                                                    const currentItems = event.otherOpexItems || [];
-                                                    const updatedItems = [...currentItems, { id: `item-${Date.now()}`, name: newOpexItemName.trim(), cost }];
-                                                    const updatedEvent = { ...event, otherOpexItems: updatedItems };
-                                                    onSetHarvestEvents((harvestEvents || []).map(e => e.id === event.id ? updatedEvent : e));
-                                                    setIsAddingOpexItem(false);
-                                                    setNewOpexItemName("");
-                                                    setNewOpexItemCost("");
-                                                } else {
-                                                    toast.error("Please enter a valid item name and amount.");
-                                                }
-                                            }}
-                                            className="px-2.5 py-1 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 rounded-lg transition-all shadow-md active:scale-95"
-                                        >
-                                            {t('common.save') || 'Save'}
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="space-y-1">
-                                {(event.otherOpexItems || []).map((item) => (
-                                    <div key={item.id} className="flex justify-between items-center bg-white p-1.5 rounded-xl border border-slate-100 text-[10px]">
-                                        <span className="font-bold text-slate-600">{renderSafeString(item.name)}</span>
-                                        <div className="flex items-center gap-1.5 bg-white">
-                                            <span className="font-black text-slate-800">
-                                                {currency === 'GEL' ? `GEL ${safeNumericVal(item.cost).toFixed(2)}` : `$${safeNumericVal(item.cost).toFixed(2)}`}
-                                            </span>
+                                {/* 3. Pause / Resume & Finish Job buttons (right under Click for Detail / Adjust) */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    {event.status !== 'completed' && event.status !== 'partially_sold' ? (
+                                        <>
                                             <button 
-                                                onClick={() => {
-                                                    const updatedItems = (event.otherOpexItems || []).filter(i => i.id !== item.id);
-                                                    const updatedEvent = { ...event, otherOpexItems: updatedItems };
-                                                    onSetHarvestEvents((harvestEvents || []).map(e => e.id === event.id ? updatedEvent : e));
-                                                }}
-                                                className="text-red-500 hover:text-red-700 font-extrabold text-xs"
+                                                onClick={handleToggleStatus} 
+                                                className={`py-3 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all cursor-pointer ${event.status === 'active' ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'}`}
                                             >
-                                                ×
+                                                {event.status === 'active' ? t('harvest.pause_session') : t('harvest.resume_session')}
                                             </button>
+                                            <button 
+                                                onClick={() => setIsCloseModalOpen(true)} 
+                                                className="py-3 bg-slate-900 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-slate-100 cursor-pointer"
+                                            >
+                                                {t('harvest.finish_job')}
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <button 
+                                            onClick={() => {
+                                                const activeUser = getStoredActiveUser();
+                                                if (onSetHarvestEvents) {
+                                                    onSetHarvestEvents(harvestEvents.map(e => e.id === event.id ? { ...e, status: 'active', actualEndDate: undefined } : e));
+                                                }
+                                                WorkerLog.appendDelta(
+                                                    'REACTIVATE_HARVEST_SEASON',
+                                                    event.id,
+                                                    {
+                                                        eventName: event.name,
+                                                        status: 'active',
+                                                        reactivatedBy: activeUser.name,
+                                                        reactivatedByRole: activeUser.role,
+                                                        timestamp: new Date().toISOString()
+                                                    },
+                                                    activeUser.name
+                                                ).catch(err => console.error('Failed to log audit delta:', err));
+                                                const isKaLang = t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka';
+                                                toast.success(isKaLang ? 'სეზონი წარმატებით განახლდა!' : 'Harvest session reactivated & unlocked!');
+                                            }} 
+                                            className="col-span-2 py-3 bg-emerald-100 text-emerald-700 rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-emerald-200 transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer"
+                                        >
+                                            <RefreshCcw size={16} /> {t('harvest.resume_session_unlock')}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Category 1: Yield Visibility (Weighted Varieties) */}
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                                <div className={`flex flex-col gap-3 ${isSectionVisible('yieldVisibility') ? 'mb-3' : ''}`}>
+                                    <div className="flex justify-between items-center gap-2">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('harvest.yield_visibility')}</label>
+                                        <div className="flex items-center gap-1.5">
+                                            <button 
+                                                type="button"
+                                                onClick={() => toggleSectionVisibility('yieldVisibility')}
+                                                className="p-1.5 bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-100 transition-all cursor-pointer flex items-center justify-center"
+                                                title={isSectionVisible('yieldVisibility') ? (isKa ? 'დამალვა' : 'Hide category') : (isKa ? 'ჩვენება' : 'Show category')}
+                                            >
+                                                {isSectionVisible('yieldVisibility') ? <Eye size={13} /> : <EyeOff size={13} className="text-slate-400" />}
+                                            </button>
+                                            {isSectionVisible('yieldVisibility') && (
+                                                <>
+                                                    <button 
+                                                        onClick={() => setSelectedVarieties(activeVarieties)}
+                                                        className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-[9px] font-black text-blue-600 hover:bg-blue-50 uppercase transition-all"
+                                                    >
+                                                        {t('harvest.all')}
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => setSelectedVarieties([])}
+                                                        className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-[9px] font-black text-red-600 hover:bg-red-50 uppercase transition-all"
+                                                    >
+                                                        {t('harvest.none')}
+                                                    </button>
+                                                </>
+                                            )}
                                         </div>
                                     </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        <LogisticsTransportWidget 
-                            event={event} 
-                            harvestEvents={harvestEvents || []} 
-                            onSetHarvestEvents={onSetHarvestEvents || (() => {})} 
-                            machinery={machinery || []} 
-                            onSetMachinery={onSetMachinery}
-                            inventoryItems={inventoryItems || []} 
-                            onSetInventoryItems={onSetInventoryItems} 
-                            employees={employees || []}
-                            isCollapsedSummary={true}
-                            onOpenLogisticsModal={() => {
-                                setDailyHarvestModalTab('logistics');
-                                setShowDailyHarvestModal(true);
-                            }}
-                        />
-
-                        {/* Date Filter also kept small at the bottom */}
-                        <div className="pt-2 border-t border-slate-200">
-                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-1">{t('harvest.filter_logs_by_date')}</label>
-                            <div className="flex gap-2">
-                                <input 
-                                    type="date" 
-                                    className="flex-grow p-1.5 bg-white border border-slate-200 rounded font-bold text-[10px] outline-none"
-                                    value={visibleLogsDate || ''}
-                                    onChange={(e) => setVisibleLogsDate(e.target.value || null)}
-                                />
-                                {visibleLogsDate && (
-                                    <button 
-                                        onClick={() => setVisibleLogsDate(null)}
-                                        className="text-[8px] font-black text-blue-600 uppercase tracking-widest hover:underline"
-                                    >
-                                        {t('harvest.clear')}
-                                    </button>
+                                    {isSectionVisible('yieldVisibility') && (
+                                        <select 
+                                            className="w-full p-3 bg-white border-2 border-slate-100 rounded-xl font-bold text-xs outline-none focus:border-indigo-500 uppercase tracking-widest transition-all"
+                                            value={selectedVarieties.length === 1 ? selectedVarieties[0] : ''}
+                                            onChange={(e) => {
+                                                if (e.target.value) setSelectedVarieties([e.target.value]);
+                                                else setSelectedVarieties(activeVarieties);
+                                            }}
+                                        >
+                                            <option value="">Select Specific Variety...</option>
+                                            {activeVarieties.map(v => (
+                                                <option key={v} value={v}>{v}</option>
+                                            ))}
+                                        </select>
+                                    )}
+                                </div>
+                                {isSectionVisible('yieldVisibility') && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                                        {activeVarieties.map(v => {
+                                            const stats = filteredTotals.yieldByVariety.find(y => y.variety === v);
+                                            const weightKg = stats?.weightKg || 0;
+                                            const isSelected = selectedVarieties.includes(v);
+                                            return (
+                                                <button 
+                                                    key={v}
+                                                    onClick={() => toggleVariety(v)}
+                                                    className={`p-3 rounded-xl border flex items-center justify-between transition-all group ${isSelected ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                                >
+                                                    <div className="flex items-center gap-2 truncate">
+                                                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${isSelected ? 'bg-white border-white' : 'bg-slate-100 border-slate-300 group-hover:border-indigo-400'}`}>
+                                                            {isSelected && <div className="w-2 h-2 bg-indigo-600 rounded-sm" />}
+                                                        </div>
+                                                        <span className="text-[10px] font-black uppercase truncate">{v}</span>
+                                                    </div>
+                                                    <div className="flex flex-col items-end">
+                                                        <span className={`text-[10px] font-black ${isSelected ? 'text-white' : 'text-slate-900'}`}>{formatCleanWeight(weightKg)}kg</span>
+                                                        <span className={`text-[8px] font-bold ${isSelected ? 'text-white/80' : 'text-slate-400'}`}>{t('harvest.yield')}</span>
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                        {activeVarieties.length === 0 && (
+                                            <div className="col-span-full py-8 flex flex-col items-center justify-center text-slate-400 border border-dashed border-slate-200 rounded-2xl">
+                                                <p className="text-[10px] font-black uppercase tracking-widest italic">No varieties detected in sector</p>
+                                            </div>
+                                        )}
+                                    </div>
                                 )}
                             </div>
-                        </div>
-                    </div>
 
+                            {/* Category 2: Production, Map Log & Harvest Mass (Operational Metrics) */}
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3">
+                                <div className="flex justify-between items-center border-b border-slate-200/70 pb-2">
+                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                                        <Layers size={13} className="text-emerald-600" />
+                                        {isKa ? 'მოსავლიანობა და მოცულობა' : 'Production & Harvest Mass'}
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={() => toggleSectionVisibility('productionMass')}
+                                        className="p-1.5 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-600 transition-colors cursor-pointer"
+                                        title={isSectionVisible('productionMass') ? (isKa ? 'დამალვა' : 'Hide category') : (isKa ? 'ჩვენება' : 'Show category')}
+                                    >
+                                        {isSectionVisible('productionMass') ? <Eye size={13} /> : <EyeOff size={13} className="text-slate-400" />}
+                                    </button>
+                                </div>
 
+                                {isSectionVisible('productionMass') && (
+                                    <>
+                                        <div className="grid grid-cols-1 gap-3">
+                                            {/* Only show Log on Map if not drawing, to avoid duplicate visual noise */}
+                                            {!activeDrawingTool.tool && (
+                                                <button 
+                                                    onClick={handleLogOnMap}
+                                                    className="flex items-center gap-4 p-5 rounded-[2rem] font-black text-xs uppercase tracking-widest transition-all active:scale-95 shadow-xl bg-slate-900 text-white shadow-slate-100"
+                                                >
+                                                    <div className="p-2 bg-white/10 rounded-xl"><MapPin size={24}/></div>
+                                                    {t('harvest.log_map')}
+                                                </button>
+                                            )}
+                                            {activeDrawingTool.tool && (
+                                                <div className="flex items-center gap-4 p-5 rounded-[2rem] font-black text-xs uppercase tracking-widest bg-amber-500 text-white shadow-xl shadow-amber-100 animate-pulse">
+                                                    <div className="p-2 bg-white/10 rounded-xl"><div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" /></div>
+                                                    {t('harvest.drawing_log_area')}
+                                                </div>
+                                            )}
+                                        </div>
 
-                    <YieldByVarietyWidget yields={filteredTotals.yieldByVariety} totalWeight={filteredTotals.totalWeight} />
-                    
-                    {event.status !== 'completed' && event.status !== 'partially_sold' && (
-                        <div className="flex gap-2">
-                            {event.type === 'box_counting' || event.protocol === 5 || event.protocol === 6 ? (
-                                <button 
-                                    onClick={() => {
-                                        setIsWeighModalOpen(true);
-                                    }} 
-                                    className="flex-1 py-4 sm:py-5 bg-orange-600 text-white rounded-2xl font-black text-lg sm:text-xl flex items-center justify-center gap-3 shadow-xl hover:bg-orange-700 transition-all cursor-pointer"
-                                >
-                                    <span className="p-2 sm:p-3 bg-white/20 rounded-xl">
-                                        {event.protocol === 6 ? <Fingerprint size={24} /> : <ArchiveBoxIcon className="h-4 w-4"/>}
-                                    </span>
-                                    <span>{event.protocol === 6 ? t('harvest.identify_smart_crate') : (event.protocol === 5 ? t('harvest.count_bulk_batch') : t('harvest.scan_box_tick'))}</span>
-                                </button>
-                            ) : (
-                                <button onClick={() => setIsWeighModalOpen(true)} className="flex-1 py-4 bg-green-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-green-700 transition-all cursor-pointer">
-                                    <Scale size={20} />
-                                    <span>{event.protocol === 2 ? t('harvest.identify_weigh') : t('harvest.weigh_crate_add_entry')}</span>
-                                </button>
-                            )}
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="bg-slate-900 rounded-2xl p-5 text-white shadow-xl flex flex-col items-center justify-center border border-white/10">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-1">{t('harvest.harvested_mass')}</p>
+                                                <div className="flex items-baseline gap-1">
+                                                    <span className="text-3xl font-black">{formatCleanWeight(filteredTotals.totalWeight)}</span>
+                                                    <span className="text-xs font-bold text-slate-400 uppercase">KG</span>
+                                                </div>
+                                            </div>
+                                            <div className="bg-slate-900 rounded-2xl p-5 text-white shadow-xl flex flex-col items-center justify-center border border-white/10">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-blue-400 mb-1">{t('harvest.total_containers')}</p>
+                                                <div className="flex items-baseline gap-1">
+                                                    <span className="text-2xl sm:text-3xl font-black">
+                                                        {safeNumericVal(filteredTotals?.totalBoxes, 0)}/{
+                                                            (safeNumericVal(event?.totalPunets) >= safeNumericVal(filteredTotals?.totalBoxes, 0) * 6 && safeNumericVal(event?.totalPunets) > 0)
+                                                                ? safeNumericVal(event?.totalPunets)
+                                                                : ((safeNumericVal(event?.physicalPunets) >= safeNumericVal(filteredTotals?.totalBoxes, 0) * 6 && safeNumericVal(event?.physicalPunets) > 0)
+                                                                    ? safeNumericVal(event?.physicalPunets)
+                                                                    : (calculatedPunetsFromEntries > 0 
+                                                                        ? calculatedPunetsFromEntries 
+                                                                        : (safeNumericVal(filteredTotals?.totalBoxes, 0) * safeNumericVal(event?.punetsPerBox, 12))))
+                                                        }
+                                                    </span>
+                                                    <span className="text-xs font-bold text-slate-400 uppercase">Bxs/Pnts</span>
+                                                </div>
+                                            </div>
+                                        </div>
 
-                            <button
-                                type="button"
-                                onClick={() => setIsBoxScannerOpen(true)}
-                                className="px-4 py-4 bg-slate-900 hover:bg-slate-800 active:scale-95 text-white rounded-xl font-black uppercase text-xs tracking-wider flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer shrink-0 border border-slate-700 group"
-                                title={t('language') === 'ka' ? "სკანერის ფანჯრის გახსნა (USB / კამერა / QR)" : "Open Scanner Pop-up (USB / Camera / QR)"}
-                            >
-                                <ScanLine size={18} className="text-emerald-400 group-hover:scale-110 transition-transform" />
-                                <span className="hidden sm:inline">{t('language') === 'ka' ? 'სკანერი' : 'Scanner'}</span>
-                            </button>
-                        </div>
-                    )}
-
-                    <div className="grid grid-cols-2 gap-3">
-                        {event.status !== 'completed' && event.status !== 'partially_sold' ? (
-                            <>
-                                <button 
-                                    onClick={handleToggleStatus} 
-                                    className={`py-3 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all ${event.status === 'active' ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'}`}
-                                >
-                                    {event.status === 'active' ? t('harvest.pause_session') : t('harvest.resume_session')}
-                                </button>
-                                <button 
-                                    onClick={() => setIsCloseModalOpen(true)} 
-                                    className="py-3 bg-slate-900 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-slate-100"
-                                >
-                                    {t('harvest.finish_job')}
-                                </button>
-                            </>
-                        ) : (
-                            <button 
-                                onClick={() => {
-                                    const activeUser = getStoredActiveUser();
-                                    if (onSetHarvestEvents) {
-                                        onSetHarvestEvents(harvestEvents.map(e => e.id === event.id ? { ...e, status: 'active', actualEndDate: undefined } : e));
-                                    }
-                                    WorkerLog.appendDelta(
-                                        'REACTIVATE_HARVEST_SEASON',
-                                        event.id,
-                                        {
-                                            eventName: event.name,
-                                            status: 'active',
-                                            reactivatedBy: activeUser.name,
-                                            reactivatedByRole: activeUser.role,
-                                            timestamp: new Date().toISOString()
-                                        },
-                                        activeUser.name
-                                    ).catch(err => console.error('Failed to log audit delta:', err));
-                                    const isKaLang = t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka';
-                                    toast.success(isKaLang ? 'სეზონი წარმატებით განახლდა!' : 'Harvest session reactivated & unlocked!');
-                                }} 
-                                className="col-span-2 py-3 bg-emerald-100 text-emerald-700 rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-emerald-200 transition-all shadow-lg flex items-center justify-center gap-2"
-                            >
-                                <RefreshCcw size={16} /> {t('harvest.resume_session_unlock')}
-                            </button>
-                        )}
-                    </div>
-
-                    <div className="bg-indigo-600 rounded-2xl p-4 shadow-lg text-white">
-                        <div className="flex items-center gap-3 mb-2">
-                            <div className="p-2 bg-white/20 rounded-lg">
-                                {event.protocol === 1 ? <QrCode size={20} /> :
-                                 event.protocol === 2 ? <Fingerprint size={20} /> :
-                                 event.protocol === 3 ? <RefreshCcw size={20} /> :
-                                 event.protocol === 4 ? <Boxes size={20} /> :
-                                 event.protocol === 5 ? <Scale size={20} /> :
-                                 <MapPin size={20} />}
+                                        <HarvestStatsGrid
+                                            mode="operational"
+                                            event={{
+                                                ...event,
+                                                totalNetWeightKg: filteredTotals.totalWeight,
+                                                totalGrossWeightKg: filteredTotals.totalGrossWeight,
+                                                totalBoxes: filteredTotals.totalBoxes,
+                                                finalNetYieldKg: undefined
+                                            }}
+                                            durationHours={durationHours}
+                                            entries={filteredEntries}
+                                            inventoryItems={inventoryItems}
+                                            machinery={machinery}
+                                            employees={employees}
+                                        />
+                                    </>
+                                )}
                             </div>
-                            <div>
-                                <p className="text-[10px] font-black uppercase tracking-widest text-white/60">{t('harvest.active_protocol')}</p>
-                                <p className="text-sm font-black uppercase tracking-tight">{HARVEST_METHODS.find(m => m.protocol === event.protocol)?.name || 'Standard'}</p>
+
+                            {/* Category 3: Unified Financial & OPEX Category (All Financial Items Together + Eye Show/Hide Button) */}
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-4">
+                                <div className="flex justify-between items-center border-b border-slate-200/80 pb-2">
+                                    <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest flex items-center gap-1.5">
+                                        <DollarSign size={13} className="text-emerald-700" />
+                                        {isKa ? 'ფინანსები და ხარჯები (OPEX)' : 'Financials & Costs (OPEX)'}
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={() => toggleSectionVisibility('financialSummary')}
+                                        className={`px-2.5 py-1 rounded-lg border text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${
+                                            isSectionVisible('financialSummary')
+                                                ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                                                : 'bg-slate-900 border-slate-800 text-white hover:bg-slate-800'
+                                        }`}
+                                        title={isSectionVisible('financialSummary') ? (isKa ? 'ფინანსების დამალვა' : 'Hide financials') : (isKa ? 'ფინანსების ჩვენება' : 'Show financials')}
+                                    >
+                                        {isSectionVisible('financialSummary') ? (
+                                            <>
+                                                <Eye size={13} />
+                                                <span>{isKa ? 'დამალვა' : 'Hide'}</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <EyeOff size={13} className="text-emerald-400" />
+                                                <span>{isKa ? 'ჩვენება' : 'Show'}</span>
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+
+                                {isSectionVisible('financialSummary') ? (
+                                    <>
+                                        {/* Financial KPI Summary Grid + Total OPEX */}
+                                        <HarvestStatsGrid
+                                            mode="financial"
+                                            event={{
+                                                ...event,
+                                                totalNetWeightKg: filteredTotals.totalWeight,
+                                                totalGrossWeightKg: filteredTotals.totalGrossWeight,
+                                                totalBoxes: filteredTotals.totalBoxes,
+                                                finalNetYieldKg: undefined
+                                            }}
+                                            durationHours={durationHours}
+                                            entries={filteredEntries}
+                                            inventoryItems={inventoryItems}
+                                            machinery={machinery}
+                                            employees={employees}
+                                        />
+
+                                        {/* 1. Daily Paid Harvest Card */}
+                                        <div className="bg-gradient-to-br from-indigo-900 to-slate-900 text-white p-4 rounded-2xl shadow-md border border-indigo-800/50 space-y-2">
+                                            <div className="flex justify-between items-center">
+                                                <h3 className="font-extrabold text-[11px] uppercase tracking-wider text-indigo-200">Daily Paid Harvest</h3>
+                                            </div>
+                                            <div className="text-2xl font-black text-white tracking-tight">
+                                                {formatCurrency(event.totalPickerCost || 0)}
+                                            </div>
+                                            <p className="text-[10px] text-indigo-300 font-semibold uppercase tracking-wider">
+                                                Total pay for hourly/daily/weight workers.
+                                            </p>
+                                        </div>
+                                        
+                                        {/* 2. Unified Action Buttons */}
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button
+                                                onClick={() => {
+                                                    setDailyHarvestModalTab('logistics');
+                                                    setShowDailyHarvestModal(true);
+                                                }}
+                                                className="bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-800 py-3 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors flex items-center justify-center gap-2 shadow-xs group cursor-pointer"
+                                                title="Open Logistics & Resources Transport"
+                                            >
+                                                <span className="text-base group-hover:scale-110 transition-transform">🚜</span>
+                                                Vehicles +
+                                            </button>
+                                            <button
+                                                onClick={() => setIsMaterialsModalOpen(true)}
+                                                className="bg-amber-50 border border-amber-200 hover:bg-amber-100 text-amber-800 py-3 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors flex items-center justify-center gap-2 shadow-xs group cursor-pointer"
+                                                title="Record materials from Stock Supplies"
+                                            >
+                                                <span className="text-base group-hover:scale-110 transition-transform">📦</span>
+                                                Materials +
+                                            </button>
+                                        </div>
+                                        
+                                        {/* 3. Packaging & Punet OPEX Settings Box */}
+                                        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/90 shadow-sm space-y-3">
+                                            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-sm">🍓</span>
+                                                    <label className="text-[10px] font-black text-slate-800 uppercase tracking-wide">
+                                                        PACKAGING & PUNET OPEX SETTINGS
+                                                    </label>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setBoxQtyInput(filteredTotals?.totalBoxes || 0);
+                                                            setPunetQtyInput((filteredTotals?.totalBoxes || 0) * (event.punetsPerBox || 12));
+                                                        }}
+                                                        className="text-[8px] font-extrabold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded border border-indigo-200 uppercase transition-colors"
+                                                        title={`Autofill from Scale Records (${filteredTotals?.totalBoxes || 0} boxes)`}
+                                                    >
+                                                        Scale Records ({filteredTotals?.totalBoxes || 0})
+                                                    </button>
+                                                    <button
+                                                        onClick={handleSyncPackagingQuantities}
+                                                        className="text-[9px] font-black text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded border border-emerald-200 uppercase transition-colors cursor-pointer"
+                                                    >
+                                                        SYNC TO STOCK
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-3 gap-2">
+                                                <div>
+                                                    <label className="text-[9px] font-extrabold text-slate-500 uppercase block mb-1">BOX QUANTITY</label>
+                                                    <input
+                                                        type="number"
+                                                        value={boxQtyInput === '' || isNaN(Number(boxQtyInput)) ? '' : boxQtyInput}
+                                                        onChange={e => setBoxQtyInput(e.target.value)}
+                                                        className="w-full p-1.5 text-xs font-black bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:border-indigo-500 outline-none"
+                                                    />
+                                                    <span className="text-[8px] font-bold text-slate-400 block mt-0.5 truncate">
+                                                        Synced: {renderSafeNumber(event.totalBoxes) || renderSafeNumber(filteredTotals?.totalBoxes) || '0'}
+                                                    </span>
+                                                </div>
+
+                                                <div>
+                                                    <label className="text-[9px] font-extrabold text-slate-500 uppercase block mb-1">PUNET QUANTITY</label>
+                                                    <input
+                                                        type="number"
+                                                        value={punetQtyInput === '' || isNaN(Number(punetQtyInput)) ? '' : punetQtyInput}
+                                                        onChange={e => setPunetQtyInput(e.target.value)}
+                                                        className="w-full p-1.5 text-xs font-black bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:border-indigo-500 outline-none"
+                                                    />
+                                                    <span className="text-[8px] font-bold text-slate-400 block mt-0.5 truncate">
+                                                        Synced: {renderSafeNumber(event.physicalPunets) || String((safeNumericVal(event.totalBoxes) || 0) * (safeNumericVal(event.punetsPerBox, 12)))}
+                                                    </span>
+                                                </div>
+
+                                                <div>
+                                                    <label className="text-[9px] font-extrabold text-slate-500 uppercase block mb-1">PUNETS / BOX</label>
+                                                    <input
+                                                        type="number"
+                                                        value={punetsPerBoxInput === '' || isNaN(Number(punetsPerBoxInput)) ? '' : punetsPerBoxInput}
+                                                        onChange={e => setPunetsPerBoxInput(e.target.value)}
+                                                        className="w-full p-1.5 text-xs font-black bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:bg-white focus:border-indigo-500 outline-none"
+                                                    />
+                                                    <span className="text-[8px] font-bold text-slate-400 block mt-0.5">Def: 12</span>
+                                                </div>
+                                            </div>
+
+                                            <button
+                                                onClick={handleSyncPackagingQuantities}
+                                                className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors shadow-xs flex items-center justify-center gap-1.5 active:scale-[0.99]"
+                                            >
+                                                <span>⚡</span>
+                                                SYNC NEW QUANTITIES
+                                            </button>
+                                        </div>
+
+                                        {/* Other custom items */}
+                                        <div className="border-t pt-2 border-slate-100">
+                                            <div className="flex justify-between items-center mb-1">
+                                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">{t('harvest.other_costs')}</label>
+                                                <button 
+                                                    onClick={() => {
+                                                        setIsAddingOpexItem(!isAddingOpexItem);
+                                                    }}
+                                                    className="text-[8px] font-black text-indigo-600 uppercase tracking-widest hover:underline text-right"
+                                                >
+                                                    {isAddingOpexItem ? (t('common.cancel') || 'Cancel') : t('harvest.add_item')}
+                                                </button>
+                                            </div>
+
+                                            {/* Inline input form if isAddingOpexItem is true */}
+                                            {isAddingOpexItem && (
+                                                <div className="bg-white p-2.5 rounded-xl border border-slate-200 space-y-2 mt-1 mb-2 shadow-sm">
+                                                    <div className="flex items-center gap-2">
+                                                        <input 
+                                                            type="text" 
+                                                            placeholder={t('harvest.cost_name')}
+                                                            className="flex-1 p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-indigo-500 font-sans"
+                                                            value={newOpexItemName}
+                                                            onChange={(e) => setNewOpexItemName(e.target.value)}
+                                                        />
+                                                        <input 
+                                                            type="number" 
+                                                            placeholder={t('harvest.cost_amount')}
+                                                            className="w-20 p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-indigo-500 font-sans"
+                                                            value={newOpexItemCost}
+                                                            onChange={(e) => setNewOpexItemCost(e.target.value)}
+                                                        />
+                                                    </div>
+                                                    <div className="flex gap-2 justify-end">
+                                                        <button 
+                                                            onClick={() => {
+                                                                setIsAddingOpexItem(false);
+                                                                setNewOpexItemName("");
+                                                                setNewOpexItemCost("");
+                                                            }}
+                                                            className="px-2.5 py-1 text-[10px] font-black uppercase text-slate-500 hover:bg-slate-100 rounded-lg transition-all"
+                                                        >
+                                                            {t('common.cancel') || 'Cancel'}
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => {
+                                                                const cost = parseFloat(newOpexItemCost);
+                                                                if (newOpexItemName.trim() && !isNaN(cost) && cost >= 0) {
+                                                                    const currentItems = event.otherOpexItems || [];
+                                                                    const updatedItems = [...currentItems, { id: `item-${Date.now()}`, name: newOpexItemName.trim(), cost }];
+                                                                    const updatedEvent = { ...event, otherOpexItems: updatedItems };
+                                                                    onSetHarvestEvents((harvestEvents || []).map(e => e.id === event.id ? updatedEvent : e));
+                                                                    setIsAddingOpexItem(false);
+                                                                    setNewOpexItemName("");
+                                                                    setNewOpexItemCost("");
+                                                                } else {
+                                                                    toast.error("Please enter a valid item name and amount.");
+                                                                }
+                                                            }}
+                                                            className="px-2.5 py-1 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 rounded-lg transition-all shadow-md active:scale-95"
+                                                        >
+                                                            {t('common.save') || 'Save'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            <div className="space-y-1">
+                                                {(event.otherOpexItems || []).map((item) => (
+                                                    <div key={item.id} className="flex justify-between items-center bg-white p-1.5 rounded-xl border border-slate-100 text-[10px]">
+                                                        <span className="font-bold text-slate-600">{renderSafeString(item.name)}</span>
+                                                        <div className="flex items-center gap-1.5 bg-white">
+                                                            <span className="font-black text-slate-800">
+                                                                {currency === 'GEL' ? `GEL ${safeNumericVal(item.cost).toFixed(2)}` : `$${safeNumericVal(item.cost).toFixed(2)}`}
+                                                            </span>
+                                                            <button 
+                                                                onClick={() => {
+                                                                    const updatedItems = (event.otherOpexItems || []).filter(i => i.id !== item.id);
+                                                                    const updatedEvent = { ...event, otherOpexItems: updatedItems };
+                                                                    onSetHarvestEvents((harvestEvents || []).map(e => e.id === event.id ? updatedEvent : e));
+                                                                }}
+                                                                className="text-red-500 hover:text-red-700 font-extrabold text-xs"
+                                                            >
+                                                                ×
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <LogisticsTransportWidget 
+                                            event={event} 
+                                            harvestEvents={harvestEvents || []} 
+                                            onSetHarvestEvents={onSetHarvestEvents || (() => {})} 
+                                            machinery={machinery || []} 
+                                            onSetMachinery={onSetMachinery}
+                                            inventoryItems={inventoryItems || []} 
+                                            onSetInventoryItems={onSetInventoryItems} 
+                                            employees={employees || []}
+                                            isCollapsedSummary={true}
+                                            onOpenLogisticsModal={() => {
+                                                setDailyHarvestModalTab('logistics');
+                                                setShowDailyHarvestModal(true);
+                                            }}
+                                        />
+                                    </>
+                                ) : (
+                                    <div className="py-3 px-4 bg-white/80 rounded-xl border border-dashed border-slate-300 flex items-center justify-between text-xs text-slate-500 font-semibold">
+                                        <span>{isKa ? 'ფინანსური მაჩვენებლები დამალულია' : 'Financial figures are hidden'}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleSectionVisibility('financialSummary')}
+                                            className="text-[10px] font-black uppercase tracking-wider text-indigo-600 hover:underline cursor-pointer"
+                                        >
+                                            {isKa ? 'ჩვენება' : 'Show'}
+                                        </button>
+                                    </div>
+                                )}
                             </div>
-                        </div>
-                    </div>
 
-                    <HarvestLocalSyncPanel 
-                        event={event} 
-                        onPushToCloud={handlePushToCloud} 
-                        onSyncToLAN={handleSyncToLAN} 
-                        isLocalMode={true} 
-                        isSimulationMode={isSimulationMode}
-                        onToggleSimulation={toggleSimulationMode}
-                        simulatedCount={simulatedEntries.length}
-                        onCommitSimulation={handleCommitSimulation}
-                    />
+                            {/* Category 4: Yield by Variety */}
+                            <YieldByVarietyWidget 
+                                yields={filteredTotals.yieldByVariety} 
+                                totalWeight={filteredTotals.totalWeight} 
+                                isContentVisible={isSectionVisible('yieldByVariety')}
+                                onToggleVisibility={() => toggleSectionVisibility('yieldByVariety')}
+                            />
 
-                    <OperationLogWidget 
-                        entries={filteredEntries}
-                        employees={employees} 
-                        onDetailedViewClick={() => setIsOperationLogOpen(true)}
-                        onUpdateEntry={handleUpdateEntry}
-                        onDeleteEntry={handleDeleteEntry}
-                    />
+                            {/* Category 5: Active Protocol & Date Filter */}
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3">
+                                <div className="flex justify-between items-center border-b border-slate-200/70 pb-2">
+                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                        {isKa ? 'პროტოკოლი და თარიღის ფილტრი' : 'Protocol & Date Filter'}
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={() => toggleSectionVisibility('sessionControls')}
+                                        className="p-1.5 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-600 transition-colors cursor-pointer"
+                                        title={isSectionVisible('sessionControls') ? (isKa ? 'დამალვა' : 'Hide category') : (isKa ? 'ჩვენება' : 'Show category')}
+                                    >
+                                        {isSectionVisible('sessionControls') ? <Eye size={13} /> : <EyeOff size={13} className="text-slate-400" />}
+                                    </button>
+                                </div>
+
+                                {isSectionVisible('sessionControls') && (
+                                    <>
+
+                                        <div className="bg-indigo-600 rounded-2xl p-4 shadow-lg text-white">
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <div className="p-2 bg-white/20 rounded-lg">
+                                                    {event.protocol === 1 ? <QrCode size={20} /> :
+                                                     event.protocol === 2 ? <Fingerprint size={20} /> :
+                                                     event.protocol === 3 ? <RefreshCcw size={20} /> :
+                                                     event.protocol === 4 ? <Boxes size={20} /> :
+                                                     event.protocol === 5 ? <Scale size={20} /> :
+                                                     <MapPin size={20} />}
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-white/70">{t('harvest.active_protocol')}</p>
+                                                    <p className="text-sm font-black uppercase tracking-tight">{HARVEST_METHODS.find(m => m.protocol === event.protocol)?.name || 'Standard'}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="pt-2 border-t border-slate-200">
+                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-1">{t('harvest.filter_logs_by_date')}</label>
+                                            <div className="flex gap-2">
+                                                <input 
+                                                    type="date" 
+                                                    className="flex-grow p-1.5 bg-white border border-slate-200 rounded font-bold text-[10px] outline-none"
+                                                    value={visibleLogsDate || ''}
+                                                    onChange={(e) => setVisibleLogsDate(e.target.value || null)}
+                                                />
+                                                {visibleLogsDate && (
+                                                    <button 
+                                                        onClick={() => setVisibleLogsDate(null)}
+                                                        className="text-[8px] font-black text-blue-600 uppercase tracking-widest hover:underline"
+                                                    >
+                                                        {t('harvest.clear')}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+
+                            {/* Category 6: System Topology & Sync */}
+                            <HarvestLocalSyncPanel 
+                                event={event} 
+                                onPushToCloud={handlePushToCloud} 
+                                onSyncToLAN={handleSyncToLAN} 
+                                isLocalMode={true} 
+                                isSimulationMode={isSimulationMode}
+                                onToggleSimulation={toggleSimulationMode}
+                                simulatedCount={simulatedEntries.length}
+                                onCommitSimulation={handleCommitSimulation}
+                                isContentVisible={isSectionVisible('syncTopology')}
+                                onToggleVisibility={() => toggleSectionVisibility('syncTopology')}
+                            />
+
+                            {/* Category 7: Operation Log */}
+                            <OperationLogWidget 
+                                entries={filteredEntries}
+                                employees={employees} 
+                                onDetailedViewClick={() => setIsOperationLogOpen(true)}
+                                onUpdateEntry={handleUpdateEntry}
+                                onDeleteEntry={handleDeleteEntry}
+                                isContentVisible={isSectionVisible('operationLog')}
+                                onToggleVisibility={() => toggleSectionVisibility('operationLog')}
+                            />
                         </>
                     )}
                 </div>

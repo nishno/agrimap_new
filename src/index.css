@@ -30,47 +30,78 @@ input, textarea, select {
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
-/* Dark background inputs: letters MUST be crisp bright and 100% visible */
-.dark input,
-.dark textarea,
-.dark select,
-input[class*="bg-slate-9"],
-input[class*="bg-slate-8"],
-input[class*="bg-slate-7"],
-input[class*="bg-zinc-9"],
-input[class*="bg-zinc-8"],
-input[class*="bg-neutral-9"],
-input[class*="bg-black"],
-input[class*="bg-gray-9"],
-input[class*="bg-gray-8"],
-textarea[class*="bg-slate-9"],
-textarea[class*="bg-slate-8"],
-textarea[class*="bg-black"],
-select[class*="bg-slate-9"],
-select[class*="bg-slate-8"],
-select[class*="bg-black"] {
-  color: #f8fafc !important;
-  -webkit-text-fill-color: #f8fafc !important;
+/* Light-surface container defaults: only apply dark ink when NOT inside dark cards and NOT light-text/translucent */
+:is(.bg-white, .bg-slate-50, .bg-indigo-50, .modal-content, [role="dialog"])
+  :is(input, textarea, select):not([type="button"]):not([type="submit"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([class*="bg-slate-9"]):not([class*="bg-slate-8"]):not([class*="bg-slate-7"]):not([class*="bg-zinc-9"]):not([class*="bg-gray-9"]):not([class*="bg-black"]):not([class*="bg-indigo-9"]):not([class*="bg-emerald-9"]):not([class*="bg-white/"]):not([class*="bg-amber-500/"]):not(.bg-transparent):not([class*="text-white"]):not([class*="text-emerald-4"]):not([class*="text-emerald-3"]):not([class*="text-amber-4"]):not([class*="text-amber-5"]):not([class*="text-sky-4"]):not([class*="text-blue-4"]):not([class*="text-indigo-3"]) {
+  color: #0f172a;
+  -webkit-text-fill-color: currentColor;
 }
 
-/* Light background inputs: text MUST be crisp dark */
-input.bg-white,
-input[class*="bg-white"],
-input[class*="bg-slate-50"],
-input[class*="bg-slate-100"],
-input[class*="bg-gray-50"],
-input[class*="bg-gray-100"],
-textarea.bg-white,
-textarea[class*="bg-white"],
-select.bg-white,
-select[class*="bg-white"],
-.bg-white input,
-.bg-slate-50 input,
-.bg-indigo-50 input,
-.modal-content input,
-[role="dialog"] input:not([class*="bg-slate-9"]):not([class*="bg-slate-8"]):not([class*="bg-black"]),
-[role="dialog"] textarea:not([class*="bg-slate-9"]):not([class*="bg-slate-8"]):not([class*="bg-black"]),
-[role="dialog"] select:not([class*="bg-slate-9"]):not([class*="bg-slate-8"]):not([class*="bg-black"]) {
+/* Dark containers & dark/translucent inputs: letters MUST ALWAYS remain bright and respect Tailwind text-* utilities */
+:is(
+  .dark,
+  .bg-slate-900,
+  .bg-slate-950,
+  .bg-slate-800,
+  .bg-zinc-900,
+  .bg-zinc-950,
+  .bg-gray-900,
+  .bg-neutral-900,
+  .bg-black,
+  .bg-indigo-900,
+  .bg-indigo-950,
+  .bg-emerald-900,
+  .bg-emerald-950,
+  .bg-red-900,
+  [class*="from-slate-9"],
+  [class*="from-indigo-9"],
+  [class*="to-slate-9"],
+  [class*="bg-slate-900/"],
+  [class*="bg-slate-950/"]
+) :is(input, textarea, select):not([type="button"]):not([type="submit"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(.bg-white):not([class*="bg-slate-50"]):not([class*="bg-slate-100"]):not([class*="bg-gray-50"]):not([class*="bg-gray-100"]),
+:is(
+  input[class*="bg-slate-9"],
+  input[class*="bg-slate-8"],
+  input[class*="bg-slate-7"],
+  input[class*="bg-zinc-9"],
+  input[class*="bg-zinc-8"],
+  input[class*="bg-neutral-9"],
+  input[class*="bg-black"],
+  input[class*="bg-gray-9"],
+  input[class*="bg-gray-8"],
+  input[class*="bg-indigo-9"],
+  input[class*="bg-white/10"],
+  input[class*="bg-white/15"],
+  input[class*="bg-white/20"],
+  input[class*="bg-white/5"],
+  textarea[class*="bg-slate-9"],
+  textarea[class*="bg-slate-8"],
+  textarea[class*="bg-black"],
+  textarea[class*="bg-white/"],
+  select[class*="bg-slate-9"],
+  select[class*="bg-slate-8"],
+  select[class*="bg-black"],
+  select[class*="bg-white/"]
+) {
+  color: #f8fafc;
+  -webkit-text-fill-color: currentColor !important;
+  caret-color: #f8fafc;
+}
+
+/* Explicit light-background inputs (even when rendered inside dark modals/containers): crisp dark text */
+:is(
+  input.bg-white,
+  input[class*="bg-slate-50"],
+  input[class*="bg-slate-100"],
+  input[class*="bg-gray-50"],
+  input[class*="bg-gray-100"],
+  textarea.bg-white,
+  textarea[class*="bg-slate-50"],
+  textarea[class*="bg-slate-100"],
+  select.bg-white,
+  select[class*="bg-slate-50"],
+  select[class*="bg-slate-100"]
+):not([class*="bg-white/"]) {
   color: #0f172a !important;
   -webkit-text-fill-color: #0f172a !important;
 }
@@ -79,6 +110,12 @@ input::placeholder,
 textarea::placeholder {
   color: #94a3b8 !important;
   -webkit-text-fill-color: #94a3b8 !important;
+  opacity: 0.75;
+}
+
+:is(.bg-slate-900, .bg-slate-950, .bg-slate-800, .bg-indigo-950, .bg-zinc-900, .bg-black) :is(input, textarea)::placeholder {
+  color: #64748b !important;
+  -webkit-text-fill-color: #64748b !important;
   opacity: 0.85;
 }
 

@@ -891,6 +891,8 @@ export const writeBatch = (db: any): any => {
 
 let lastNetworkState: boolean | null = null;
 
+export const isFirestoreNetworkDisabled = (): boolean => lastNetworkState === false;
+
 export const setConnectionState = async (healthy: boolean): Promise<void> => {
     if (!USE_FIREBASE) return;
     const isManualOffline = typeof localStorage !== 'undefined' && localStorage.getItem('agrimap-manual-offline') === 'true';
@@ -919,7 +921,25 @@ export const setConnectionState = async (healthy: boolean): Promise<void> => {
     }
 };
 
-export const testFirestoreConnection = async (timeoutMs = 2500): Promise<boolean> => {
+const probeEndpoint = async (url: string, timeoutMs: number): Promise<boolean> => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        await fetch(url, {
+            method: 'GET',
+            mode: 'no-cors',
+            signal: controller.signal,
+            cache: 'no-store'
+        });
+        return true;
+    } catch {
+        return false;
+    } finally {
+        clearTimeout(timeoutId);
+    }
+};
+
+export const testFirestoreConnection = async (timeoutMs = 4000): Promise<boolean> => {
     if (!USE_FIREBASE) return true;
     
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -930,23 +950,12 @@ export const testFirestoreConnection = async (timeoutMs = 2500): Promise<boolean
         return false;
     }
 
-    try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-        // Ping a reliable public endpoint to verify actual cloud/internet connectivity (not local server)
-        await fetch('https://www.gstatic.com/generate_204', {
-            method: 'GET',
-            mode: 'no-cors',
-            signal: controller.signal,
-            cache: 'no-store'
-        });
-
-        clearTimeout(timeoutId);
+    if (await probeEndpoint('https://www.gstatic.com/generate_204', timeoutMs)) {
         return true;
-    } catch (error) {
-        return false;
     }
+
+    // Fallback probe directly to Firestore endpoint in case generate_204 is blocked by proxy/extension
+    return await probeEndpoint('https://firestore.googleapis.com/', timeoutMs);
 };
 
 export const resetFirestorePersistence = async () => {

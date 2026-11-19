@@ -7,9 +7,16 @@ import {
 } from 'lucide-react';
 import type { 
     User, ForumPost, PlantationFeature, Membership, 
-    Organization, Employee, Role 
+    Organization, Employee, Role, Alert 
 } from '../types';
 import type { MapComponentProps } from './MapComponent';
+import { useLanguage } from '../contexts/LanguageContext';
+import {
+    getTicketResolutionState,
+    isCompanyJoinTicketPost,
+    resolveCompanyTicketOrJoin,
+    resolveTicketTargetOrgId
+} from '../utils/companyTicketActions';
 
 const fileToDataUrl = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -153,6 +160,9 @@ export interface TeamHubManagerProps {
     roles?: Role[];
     plantationFeatures?: PlantationFeature[];
     mapProps?: any;
+    organizations?: Organization[];
+    alerts?: Alert[];
+    onSetAlerts?: React.Dispatch<React.SetStateAction<Alert[]>> | ((alerts: Alert[]) => void);
     onOpenPopUp?: () => void;
     isPopUp?: boolean;
     onClose?: () => void;
@@ -173,17 +183,24 @@ export const TeamHubManager: React.FC<TeamHubManagerProps> = ({
     users = [],
     onSetUsers,
     roles = [],
+    organizations = [],
+    alerts = [],
+    onSetAlerts,
     mapProps,
     onOpenPopUp,
     isPopUp = false,
     onClose
 }) => {
+    const { language } = useLanguage();
+    const isKa = language === 'ka';
     const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
     const [showUserSearch, setShowUserSearch] = useState(false);
     const [userSearchTerm, setUserSearchTerm] = useState('');
     const [mode, setMode] = useState<'dm' | 'group'>('dm');
     const [groupName, setGroupName] = useState('');
     const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
+    const [selectedRolesByMsg, setSelectedRolesByMsg] = useState<Record<string, string>>({});
+    const [processingMsgId, setProcessingMsgId] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     // Group posts into conversations
@@ -205,6 +222,17 @@ export const TeamHubManager: React.FC<TeamHubManagerProps> = ({
                     }
                 }
             } else if (post.channelId) {
+                const targetOrg = resolveTicketTargetOrgId({ post, organizations, memberships });
+                const isTargetedToMe = post.recipientId === currentUser.id || post.authorId === currentUser.id;
+                const isOrgMatch =
+                    !activeOrgId ||
+                    activeOrgId === 'ALL' ||
+                    !post.organizationId ||
+                    post.organizationId === 'personal' ||
+                    post.organizationId === activeOrgId ||
+                    targetOrg === activeOrgId;
+                if (!isTargetedToMe && !isOrgMatch) return;
+
                 if (!convos[post.channelId] || new Date(post.timestamp) > new Date(convos[post.channelId].timestamp)) {
                     convos[post.channelId] = post;
                 }
@@ -212,7 +240,7 @@ export const TeamHubManager: React.FC<TeamHubManagerProps> = ({
         });
         
         return Object.values(convos).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    }, [forumPosts, currentUser]);
+    }, [forumPosts, currentUser, activeOrgId, organizations, memberships]);
 
     // Select first conversation if none selected
     useEffect(() => {
@@ -459,6 +487,14 @@ export const TeamHubManager: React.FC<TeamHubManagerProps> = ({
                         const otherUserId = convo.isDirectMessage ? (convo.authorId === currentUser.id ? convo.recipientId : convo.authorId) : undefined;
                         const name = otherUserId ? getUserName(otherUserId!) : (convo.title || convo.channelId || 'Group');
                         const isActive = activeConversationId === convo.id;
+                        const hasPendingTicket = forumPosts.some(p => {
+                            const sameThread = convo.isDirectMessage
+                                ? p.isDirectMessage && ((p.authorId === currentUser.id && p.recipientId === otherUserId) || (p.recipientId === currentUser.id && p.authorId === otherUserId))
+                                : p.channelId === convo.channelId;
+                            if (!sameThread || p.authorId === currentUser.id || !isCompanyJoinTicketPost(p)) return false;
+                            const tOrg = resolveTicketTargetOrgId({ post: p, activeOrgId, organizations, memberships });
+                            return getTicketResolutionState(p, memberships, tOrg) === 'pending';
+                        });
                         return (
                             <button 
                                 key={convo.id} 
@@ -467,9 +503,16 @@ export const TeamHubManager: React.FC<TeamHubManagerProps> = ({
                                 className={`w-full text-left p-4 sm:p-5 transition-all cursor-pointer ${isActive ? 'bg-white shadow-inner border-l-4 border-l-blue-600' : 'hover:bg-white/80'}`}
                             >
                                 <div className="flex items-center justify-between gap-2 mb-1">
-                                    <p className={`font-black text-xs uppercase tracking-tight truncate ${isActive ? 'text-blue-600' : 'text-slate-800'}`}>
-                                        {name}
-                                    </p>
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                        <p className={`font-black text-xs uppercase tracking-tight truncate ${isActive ? 'text-blue-600' : 'text-slate-800'}`}>
+                                            {name}
+                                        </p>
+                                        {hasPendingTicket && (
+                                            <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200 text-[8px] font-black uppercase shrink-0">
+                                                {isKa ? 'მოთხოვნა' : 'PENDING'}
+                                            </span>
+                                        )}
+                                    </div>
                                     <span className="text-[8px] font-bold text-slate-400 shrink-0">
                                         {new Date(convo.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                     </span>
@@ -544,89 +587,192 @@ export const TeamHubManager: React.FC<TeamHubManagerProps> = ({
                                                 <audio controls src={msg.attachment.payload as string} className="w-full h-8 mb-2 opacity-90" />
                                             )}
                                             
-                                            {msg.title === 'Join Request' && !memberships.some(m => m.userId === msg.authorId && m.organizationId === activeOrgId) && !isMe && (
-                                                <div className="mb-4 p-4 bg-blue-50 rounded-2xl border border-blue-100 text-left">
-                                                    <p className="text-[10px] font-black text-blue-800 uppercase mb-3">Professional Connection Request</p>
-                                                    <div className="mb-3">
-                                                        <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">Grant Connection Role:</label>
-                                                        <select 
-                                                            id={`role-select-${msg.id}`}
-                                                            className="w-full p-2 bg-white border border-slate-200 text-xs rounded-xl font-bold text-slate-700 outline-none"
-                                                            defaultValue="Employee"
-                                                        >
-                                                            <option value="Employee">Employee / Staff</option>
-                                                            <option value="Admin">Administrator</option>
-                                                            <option value="Field Manager">Field Manager</option>
-                                                        </select>
+                                            {isCompanyJoinTicketPost(msg) && (() => {
+                                                const targetOrgId = resolveTicketTargetOrgId({
+                                                    post: msg,
+                                                    activeOrgId,
+                                                    organizations,
+                                                    memberships
+                                                });
+                                                const resolutionState = getTicketResolutionState(msg, memberships, targetOrgId);
+                                                const targetOrg = organizations.find(o => o.id === targetOrgId);
+                                                const availableRoles = Array.from(
+                                                    new Set([
+                                                        'Employee',
+                                                        'Field Manager',
+                                                        'Admin',
+                                                        'Agronomist',
+                                                        'Accountant',
+                                                        ...(roles || []).map(r => r.name).filter(Boolean)
+                                                    ])
+                                                );
+                                                const chosenRole = selectedRolesByMsg[msg.id] || 'Employee';
+                                                const isBusy = processingMsgId === msg.id;
+
+                                                if (isMe) {
+                                                    return (
+                                                        <div className="mb-3 px-3 py-2 rounded-xl bg-white/10 border border-white/15 flex items-center justify-between gap-2">
+                                                            <span className="text-[9px] font-black uppercase tracking-widest text-amber-300">
+                                                                {isKa ? 'კომპანიაში დამატების მოთხოვნა' : 'Company Join Ticket'}
+                                                            </span>
+                                                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${
+                                                                resolutionState === 'approved'
+                                                                    ? 'bg-emerald-500/20 text-emerald-300'
+                                                                    : resolutionState === 'declined'
+                                                                        ? 'bg-rose-500/20 text-rose-300'
+                                                                        : 'bg-amber-500/20 text-amber-200'
+                                                            }`}>
+                                                                {resolutionState === 'approved'
+                                                                    ? (isKa ? 'დამტკიცებულია' : 'Approved')
+                                                                    : resolutionState === 'declined'
+                                                                        ? (isKa ? 'უარყოფილია' : 'Declined')
+                                                                        : (isKa ? 'მოლოდინში' : 'Pending')}
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                }
+
+                                                if (resolutionState === 'approved') {
+                                                    return (
+                                                        <div className="mb-3 px-3.5 py-2.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center gap-2 text-emerald-700">
+                                                            <Check size={14} className="shrink-0" />
+                                                            <span className="text-[10px] font-black uppercase tracking-wider">
+                                                                {isKa ? 'მოთხოვნა დამტკიცებულია • კომპანიაში დამატებულია' : 'Approved • Added to Company'}
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                }
+
+                                                if (resolutionState === 'declined') {
+                                                    return (
+                                                        <div className="mb-3 px-3.5 py-2.5 rounded-2xl bg-rose-50 border border-rose-200 flex items-center gap-2 text-rose-700">
+                                                            <X size={14} className="shrink-0" />
+                                                            <span className="text-[10px] font-black uppercase tracking-wider">
+                                                                {isKa ? 'მოთხოვნა უარყოფილია' : 'Request Declined'}
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                }
+
+                                                return (
+                                                    <div className="mb-4 p-4 bg-blue-50/90 rounded-2xl border border-blue-200 text-left space-y-3">
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <p className="text-[10px] font-black text-blue-900 uppercase tracking-wider">
+                                                                {isKa ? 'კომპანიაში დამატების მოთხოვნა / ტიკეტი' : 'Company Join / Ticket Request'}
+                                                            </p>
+                                                            {targetOrg && (
+                                                                <span className="px-2 py-0.5 rounded-md bg-white border border-blue-200 text-[9px] font-black text-blue-700 truncate max-w-[140px]">
+                                                                    {targetOrg.name}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[9px] font-black uppercase text-slate-500 block mb-1">
+                                                                {isKa ? 'მინიჭებული როლი:' : 'Grant Connection Role:'}
+                                                            </label>
+                                                            <select
+                                                                value={chosenRole}
+                                                                onChange={(e) =>
+                                                                    setSelectedRolesByMsg(prev => ({ ...prev, [msg.id]: e.target.value }))
+                                                                }
+                                                                disabled={isBusy}
+                                                                className="w-full p-2 bg-white border border-slate-200 text-xs rounded-xl font-bold text-slate-700 outline-none"
+                                                            >
+                                                                {availableRoles.map(rName => (
+                                                                    <option key={rName} value={rName}>{rName}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <button
+                                                                type="button"
+                                                                disabled={isBusy}
+                                                                onClick={async () => {
+                                                                    if (!targetOrgId) {
+                                                                        toast.error(isKa ? 'აირჩიეთ კომპანია დასამატებლად' : 'Please select an active company first.');
+                                                                        return;
+                                                                    }
+                                                                    setProcessingMsgId(msg.id);
+                                                                    try {
+                                                                        await resolveCompanyTicketOrJoin({
+                                                                            decision: 'approve',
+                                                                            userId: msg.authorId,
+                                                                            userName: authorName,
+                                                                            orgId: targetOrgId,
+                                                                            orgName: targetOrg?.name || msg.ticketOrgName,
+                                                                            membershipId: msg.ticketMembershipId,
+                                                                            selectedRole: chosenRole,
+                                                                            postId: msg.id,
+                                                                            currentUser,
+                                                                            memberships,
+                                                                            onSetMemberships,
+                                                                            employees,
+                                                                            onSetEmployees,
+                                                                            users,
+                                                                            allUsers,
+                                                                            onSetUsers,
+                                                                            roles,
+                                                                            organizations,
+                                                                            forumPosts,
+                                                                            onAddPost,
+                                                                            onUpdatePost,
+                                                                            alerts,
+                                                                            onSetAlerts,
+                                                                            isKa
+                                                                        });
+                                                                    } finally {
+                                                                        setProcessingMsgId(null);
+                                                                    }
+                                                                }}
+                                                                className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                                                            >
+                                                                <Check size={14} />
+                                                                <span>{isKa ? 'მიღება' : 'Approve'}</span>
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                disabled={isBusy}
+                                                                onClick={async () => {
+                                                                    setProcessingMsgId(msg.id);
+                                                                    try {
+                                                                        await resolveCompanyTicketOrJoin({
+                                                                            decision: 'decline',
+                                                                            userId: msg.authorId,
+                                                                            userName: authorName,
+                                                                            orgId: targetOrgId,
+                                                                            orgName: targetOrg?.name || msg.ticketOrgName,
+                                                                            membershipId: msg.ticketMembershipId,
+                                                                            postId: msg.id,
+                                                                            currentUser,
+                                                                            memberships,
+                                                                            onSetMemberships,
+                                                                            employees,
+                                                                            onSetEmployees,
+                                                                            users,
+                                                                            allUsers,
+                                                                            onSetUsers,
+                                                                            roles,
+                                                                            organizations,
+                                                                            forumPosts,
+                                                                            onAddPost,
+                                                                            onUpdatePost,
+                                                                            alerts,
+                                                                            onSetAlerts,
+                                                                            isKa
+                                                                        });
+                                                                    } finally {
+                                                                        setProcessingMsgId(null);
+                                                                    }
+                                                                }}
+                                                                className="py-2.5 px-3 bg-white hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 disabled:opacity-50 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                                                            >
+                                                                <X size={14} />
+                                                                <span>{isKa ? 'უარყოფა' : 'Decline'}</span>
+                                                            </button>
+                                                        </div>
                                                     </div>
-                                                    <button 
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const selectEl = document.getElementById(`role-select-${msg.id}`) as HTMLSelectElement;
-                                                            const selectedRole = selectEl ? selectEl.value : 'Employee';
-                                                            const permissionLevel = selectedRole === 'Admin' ? 'admin' : selectedRole === 'Field Manager' ? 'write' : 'read';
-
-                                                            if (activeOrgId && onSetMemberships) {
-                                                                const newMem: Membership = {
-                                                                    id: `${msg.authorId}_${activeOrgId}`,
-                                                                    userId: msg.authorId,
-                                                                    organizationId: activeOrgId,
-                                                                    role: selectedRole as any,
-                                                                    status: 'active',
-                                                                    joinedAt: new Date().toISOString(),
-                                                                    permissionLevel: permissionLevel
-                                                                };
-                                                                onSetMemberships([...memberships, newMem]);
-
-                                                                const requestingUser = users?.find(u => u.id === msg.authorId) || allUsers.find(u => u.id === msg.authorId);
-                                                                if (onSetEmployees && employees) {
-                                                                    const roleId = roles?.find(r => r.name === selectedRole)?.id || roles?.[0]?.id || '';
-                                                                    const newEmp: Employee = {
-                                                                        id: `emp-${msg.authorId}-${activeOrgId}`,
-                                                                        name: requestingUser?.name || 'Authorized Partner',
-                                                                        email: requestingUser?.email || '',
-                                                                        phone: requestingUser?.phone || '',
-                                                                        idNumber: requestingUser?.personalNumber || '',
-                                                                        roleId: roleId,
-                                                                        paymentType: 'hourly',
-                                                                        paymentRate: 0,
-                                                                        barcode: `BC-${Date.now()}`,
-                                                                        employeeType: 'Permanent',
-                                                                        accountType: 'Bank Account',
-                                                                        status: 'active',
-                                                                        joinedAt: new Date().toISOString(),
-                                                                        organizationId: activeOrgId,
-                                                                        isGlobalUser: true
-                                                                    };
-                                                                    onSetEmployees([...employees, newEmp]);
-                                                                }
-
-                                                                if (requestingUser && onSetUsers && users) {
-                                                                    const updatedUser = {
-                                                                        ...requestingUser,
-                                                                        roles: [selectedRole as any, ...(requestingUser.roles || []).filter(r => r !== selectedRole && r !== 'Guest')]
-                                                                    };
-                                                                    onSetUsers(users.map(u => u.id === requestingUser.id ? updatedUser : u));
-                                                                }
-
-                                                                onAddPost({
-                                                                    content: `Welcome to the team! Your request to join as ${selectedRole} has been accepted.`,
-                                                                    channelId: 'internal',
-                                                                    hubType: 'internal',
-                                                                    isDirectMessage: true,
-                                                                    recipientId: msg.authorId,
-                                                                    replies: []
-                                                                });
-
-                                                                toast.success(`User accepted as ${selectedRole}`);
-                                                            }
-                                                        }}
-                                                        className="w-full py-2 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                                                    >
-                                                        <Check size={14} /> Accept Request
-                                                    </button>
-                                                </div>
-                                            )}
+                                                );
+                                            })()}
                                             
                                             <p className="text-xs font-bold leading-relaxed">{msg.content}</p>
                                             <p className="text-[8px] font-bold opacity-40 mt-2 text-right">

@@ -4,7 +4,7 @@ import type { HarvestEvent, Employee, HarvestEntry, AssignedPicker, InventoryIte
 import { ArrowDownTrayIcon, SearchIcon, PlusIcon, TrashIcon } from './Icons';
 import { useLanguage } from '../contexts/LanguageContext';
 import { toast } from 'sonner';
-import { Share2, History, Users, CheckCheck, QrCode, ShieldCheck } from 'lucide-react';
+import { Share2, History, Users, CheckCheck, QrCode, ShieldCheck, Printer, ChevronDown, ChevronUp, SlidersHorizontal, UploadCloud, Save, Scale } from 'lucide-react';
 import ExportExcelModal from './Harvesting/ExportExcelModal';
 import HarvestEventHistoryModal from './Harvesting/HarvestEventHistoryModal';
 import ShareHarvestEventModal from './Harvesting/ShareHarvestEventModal';
@@ -209,7 +209,8 @@ export const HarvestStatsGrid: React.FC<{
     employees: Employee[];
     machinery: Machinery[];
     inventoryItems: InventoryItem[];
-}> = ({ event, entries, durationHours, employees, machinery, inventoryItems }) => {
+    mode?: 'all' | 'operational' | 'financial';
+}> = ({ event, entries, durationHours, employees, machinery, inventoryItems, mode = 'all' }) => {
     
     const { formatCurrency, currency, t } = useLanguage();
 
@@ -343,45 +344,60 @@ export const HarvestStatsGrid: React.FC<{
         return `$${valStr}`;
     };
 
+    const showOperational = mode === 'all' || mode === 'operational';
+    const showFinancial = mode === 'all' || mode === 'financial';
+
     return (
         <div className="space-y-3">
             <div className="grid grid-cols-3 gap-3">
-                <StatsBox 
-                    label={t('harvest.total_weight_stat')} 
-                    value={`${formatCleanVal(event.finalNetYieldKg || event.totalNetWeightKg || 0)} kg`} 
-                    colorClass="text-gray-800 font-extrabold" 
-                    subValue={event.totalVerifiedWeightKg ? `${t('harvest.verified')}: ${formatCleanVal(event.totalVerifiedWeightKg)}kg` : undefined}
-                />
-                <StatsBox 
-                    label={t('harvest.total_boxes_stat')} 
-                    value={`${totalBoxesVal}/${totalPunetsVal}`} 
-                    colorClass="text-gray-800 font-extrabold" 
-                    subValue={t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka' ? 'ყუთი / პუნეტი' : 'Boxes / Punets'}
-                />
-                <StatsBox label={t('harvest.total_workers_stat')} value={`${(event.assignedPickers || []).length}`} colorClass="text-gray-800" />
-                <StatsBox label={t('harvest.picker_pay_labor')} value={formatNiceCurrency(laborCost)} colorClass="text-red-600" />
-                <StatsBox label={t('harvest.driver_others')} value={formatNiceCurrency(machineCost)} colorClass="text-red-600" />
-                <StatsBox 
-                    label={t('harvest.auto_packaging')} 
-                    value={formatNiceCurrency(packagingCost)} 
-                    colorClass="text-blue-600" 
-                    subValue={`${totalBoxesVal}/${totalPunetsVal} (${formatNiceCurrency(usedBoxesCost)} + ${formatNiceCurrency(usedPunetsCost)})`} 
-                />
+                {showOperational && (
+                    <>
+                        <StatsBox 
+                            label={t('harvest.total_weight_stat')} 
+                            value={`${formatCleanVal(event.finalNetYieldKg || event.totalNetWeightKg || 0)} kg`} 
+                            colorClass="text-gray-800 font-extrabold" 
+                            subValue={event.totalVerifiedWeightKg ? `${t('harvest.verified')}: ${formatCleanVal(event.totalVerifiedWeightKg)}kg` : undefined}
+                        />
+                        <StatsBox 
+                            label={t('harvest.total_boxes_stat')} 
+                            value={`${totalBoxesVal}/${totalPunetsVal}`} 
+                            colorClass="text-gray-800 font-extrabold" 
+                            subValue={t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka' ? 'ყუთი / პუნეტი' : 'Boxes / Punets'}
+                        />
+                        <StatsBox label={t('harvest.total_workers_stat')} value={`${(event.assignedPickers || []).length}`} colorClass="text-gray-800" />
+                    </>
+                )}
+                {showFinancial && (
+                    <>
+                        <StatsBox label={t('harvest.picker_pay_labor')} value={formatNiceCurrency(laborCost)} colorClass="text-red-600" />
+                        <StatsBox label={t('harvest.driver_others')} value={formatNiceCurrency(machineCost)} colorClass="text-red-600" />
+                        <StatsBox 
+                            label={t('harvest.auto_packaging')} 
+                            value={formatNiceCurrency(packagingCost)} 
+                            colorClass="text-blue-600" 
+                            subValue={`${totalBoxesVal}/${totalPunetsVal} (${formatNiceCurrency(usedBoxesCost)} + ${formatNiceCurrency(usedPunetsCost)})`} 
+                        />
+                    </>
+                )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-                <div className="bg-slate-900 rounded-xl p-3 border border-slate-800 text-white flex justify-between items-center">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('harvest.gross_weight_stat')}</p>
-                    <span className="text-[11px] font-black px-2 py-1 rounded bg-blue-500/20 text-blue-400">
-                        {formatCleanVal(event.totalGrossWeightKg || 0)} KG
-                    </span>
-                </div>
-                <div className="bg-red-900 rounded-xl p-3 border border-red-800 text-white flex justify-between items-center">
-                    <p className="text-[10px] font-black text-red-200 uppercase tracking-widest">{t('harvest.total_opex_stat')}</p>
-                    <span className="text-sm sm:text-base font-black text-red-100 truncate max-w-[120px]" title={formatNiceCurrency(totalCost)}>
-                        {formatNiceCurrency(totalCost)}
-                    </span>
-                </div>
+            <div className={`grid gap-3 ${showOperational && showFinancial ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                {showOperational && (
+                    <div className="bg-slate-900 rounded-xl p-3 border border-slate-800 text-white flex justify-between items-center">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('harvest.gross_weight_stat')}</p>
+                        <span className="text-[11px] font-black px-2 py-1 rounded bg-blue-500/20 text-blue-400">
+                            {formatCleanVal(event.totalGrossWeightKg || 0)} KG
+                        </span>
+                    </div>
+                )}
+                {showFinancial && (
+                    <div className="bg-red-900 rounded-xl p-3 border border-red-800 text-white flex justify-between items-center">
+                        <p className="text-[10px] font-black text-red-200 uppercase tracking-widest">{t('harvest.total_opex_stat')}</p>
+                        <span className="text-sm sm:text-base font-black text-red-100 truncate max-w-[140px]" title={formatNiceCurrency(totalCost)}>
+                            {formatNiceCurrency(totalCost)}
+                        </span>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -1228,6 +1244,9 @@ export const PickerStats: React.FC<{
     }, [currentEventSyncSig, event.id, event.standardBoxWeight, event.punetsPerBox, event.totalBoxes, event.physicalHalfBoxes, event.mergeHalfBoxes, event.physicalPunets, event.correctedWeight, event.leaveReconciliationAsIs, weighStationCounts.fullBoxes, weighStationCounts.halfBoxes, weighStationCounts.totalPunets]);
 
     const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
+    const [showSummaryCards, setShowSummaryCards] = useState<boolean>(true);
+    const [showFiltersBar, setShowFiltersBar] = useState<boolean>(false);
+    const [isMoreToolsOpen, setIsMoreToolsOpen] = useState<boolean>(false);
 
     // 🍓 Smart Crate & Punet Quantization Math (12 punets = 1 box, leftover = 1 half box, remaining containers returned to stock)
     const smartQuantization = useMemo(() => {
@@ -2168,379 +2187,394 @@ export const PickerStats: React.FC<{
 
     return (
         <div className="flex flex-col h-full bg-white min-h-0">
-             <style>{`.button-primary { padding: 0.5rem 1rem; background-color: #2563eb; color: white; border-radius: 0.5rem; font-weight: 600; } .button-secondary { padding: 0.5rem 1rem; background-color: #f1f5f9; color: #334155; border-radius: 0.5rem; font-weight: 600; }`}</style>
-            
-            {/* Yield Control Harvest Event Summary Banner */}
-            <div className="bg-slate-900 text-white p-3 sm:p-4 border-b border-slate-800 flex-shrink-0 shadow-sm">
-                <div className="flex flex-wrap items-center justify-between gap-3 mb-2.5 pb-2 border-b border-slate-800">
-                    <div className="flex items-center gap-2">
-                        <span className="text-lg">🍇</span>
-                        <h2 className="text-sm sm:text-base font-black text-white uppercase tracking-tight">
-                            {event.name}
-                        </h2>
-                        <span className="bg-indigo-950 text-indigo-300 border border-indigo-800 text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest">
-                            Yield Control Overview
-                        </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs font-black text-emerald-400 bg-emerald-950/80 px-3 py-1 rounded-xl border border-emerald-800/60 shadow-xs">
-                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">TOTAL EVENT OPEX:</span>
-                        <span className="text-sm font-black text-emerald-300">{formatNiceCurrency(totalCost)}</span>
-                    </div>
-                </div>
-
-                {/* Metric Cards Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 text-[10px]">
-                    {/* 1. Harvest NET */}
-                    <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700/60 shadow-2xs">
-                        <span className="text-slate-400 font-black uppercase block tracking-wider text-[8px]">HARVEST NET</span>
-                        <span className="text-xs sm:text-sm font-black text-white truncate block">{formatCleanVal(summaryNetKg)} kg</span>
-                    </div>
-
-                    {/* 2. Harvest GROSS */}
-                    <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700/60 shadow-2xs">
-                        <span className="text-slate-400 font-black uppercase block tracking-wider text-[8px]">HARVEST GROSS</span>
-                        <span className="text-xs sm:text-sm font-black text-slate-200 truncate block">{formatCleanVal(summaryGrossKg)} kg</span>
-                    </div>
-
-                    {/* 3. Pickers Pay / Labor */}
-                    <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700/60 shadow-2xs">
-                        <span className="text-indigo-300 font-black uppercase block tracking-wider text-[8px]">PICKERS LABOR</span>
-                        <span className="text-xs sm:text-sm font-black text-indigo-200 truncate block">{formatNiceCurrency(laborCost)}</span>
-                    </div>
-
-                    {/* 4. Boxes & Containers + Cost */}
-                    <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700/60 shadow-2xs">
-                        <span className="text-amber-300 font-black uppercase block tracking-wider text-[8px]">BOXES & PUNETS</span>
-                        <span className="text-xs sm:text-sm font-black text-amber-200 truncate block">{summaryTotalBoxes} box / {summaryTotalPunets} pnt</span>
-                        <span className="text-[8px] font-bold text-amber-400/80 block">{formatNiceCurrency(packagingCost)}</span>
-                    </div>
-
-                    {/* 5. Workers Breakdown */}
-                    <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700/60 shadow-2xs">
-                        <span className="text-slate-400 font-black uppercase block tracking-wider text-[8px]">WORKFORCE</span>
-                        <span className="text-xs font-black text-white block">{localPickers.length} workers</span>
-                        <span className="text-[8px] text-slate-400 font-bold block">{pickersCount} pick / {loadersCount} load / {othersCount} oth</span>
-                    </div>
-
-                    {/* 6. Drivers / Cars / Foremen */}
-                    <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700/60 shadow-2xs">
-                        <span className="text-cyan-300 font-black uppercase block tracking-wider text-[8px]">CARS & FOREMEN</span>
-                        <span className="text-xs font-black text-cyan-200 block">{vehiclesCarsCount} cars / {foremenCount} foremen</span>
-                        <span className="text-[8px] font-bold text-cyan-400/80 block">{formatNiceCurrency(machineCost)}</span>
-                    </div>
-
-                    {/* 7. Used Materials */}
-                    <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700/60 shadow-2xs">
-                        <span className="text-purple-300 font-black uppercase block tracking-wider text-[8px]">USED MATERIALS</span>
-                        <span className="text-xs sm:text-sm font-black text-purple-200 truncate block">{formatNiceCurrency(otherCosts)}</span>
-                    </div>
-
-                    {/* 8. Total OPEX */}
-                    <div className="bg-emerald-950/80 p-2 rounded-xl border border-emerald-800/80 shadow-2xs">
-                        <span className="text-emerald-400 font-black uppercase block tracking-wider text-[8px]">TOTAL OPEX</span>
-                        <span className="text-xs sm:text-sm font-black text-emerald-300 truncate block">{formatNiceCurrency(totalCost)}</span>
-                    </div>
-                </div>
-            </div>
-
-            <div className="p-3 sm:p-4 bg-white border-b border-slate-200 flex flex-wrap xl:flex-nowrap items-center justify-between gap-3 flex-shrink-0">
-                {/* Left Controls: Search, Sort, Yield Filter */}
-                <div className="flex flex-wrap items-center gap-2 sm:gap-3 flex-grow max-w-3xl">
-                    {/* Search Input Box */}
-                    <div className="relative flex-1 min-w-[220px] sm:min-w-[260px] max-w-sm">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-indigo-500">
-                            <SearchIcon className="h-4 w-4" />
+            <div className="flex-1 overflow-y-auto min-h-0 bg-white">
+                {/* 1. Print-Preview Style Harvest Summary Section */}
+                <div className="bg-white border-b border-slate-200 px-3 sm:px-5 py-3 sm:py-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b-2 border-slate-900">
+                        <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                <h2 className="text-sm sm:text-base font-black text-slate-900 uppercase tracking-tight truncate">
+                                    {event.name}
+                                </h2>
+                                <span className="text-xs text-slate-400" aria-hidden="true">·</span>
+                                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                                    {isKa ? 'მოსავლისა და OPEX მიმოხილვა' : 'Yield & OPEX Overview'}
+                                </span>
+                            </div>
                         </div>
-                        <input
-                            type="text"
-                            placeholder={isKa ? 'ძებნა მუშაკის სახელით, ID-ით...' : 'Search workers by name, ID, code or role...'}
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="block w-full pl-9 pr-7 py-2 bg-slate-50/90 hover:bg-white focus:bg-white border border-slate-200 hover:border-slate-300 focus:border-indigo-500 rounded-2xl font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 text-xs transition-all shadow-2xs"
-                        />
-                        {searchQuery && (
+                        <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex items-center gap-1.5 text-xs font-black text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-300 tabular-nums">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                                    {isKa ? 'OPEX:' : 'OPEX:'}
+                                </span>
+                                <span className="text-xs sm:text-sm font-black">{formatNiceCurrency(totalCost)}</span>
+                            </div>
                             <button
                                 type="button"
-                                onClick={() => setSearchQuery('')}
-                                className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
+                                onClick={() => setShowSummaryCards(prev => !prev)}
+                                className="h-7 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors border border-slate-200 whitespace-nowrap"
+                                title={showSummaryCards ? (isKa ? 'შეჯამების დამალვა' : 'Collapse summary') : (isKa ? 'შეჯამების ჩვენება' : 'Show summary')}
                             >
-                                ✕
+                                {showSummaryCards ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                                <span className="hidden sm:inline">{showSummaryCards ? (isKa ? 'დამალვა' : 'Hide Summary') : (isKa ? 'შეჯამება' : 'Summary')}</span>
                             </button>
-                        )}
+                        </div>
                     </div>
 
-                    {/* Sort By Dropdown */}
-                    <div className="flex items-center gap-1.5 bg-slate-100/80 p-1 px-2.5 rounded-2xl border border-slate-200/80">
-                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">{isKa ? 'სორტირება:' : 'SORT:'}</span>
-                        <select
-                            value={sortBy}
-                            onChange={(e) => setSortBy(e.target.value as any)}
-                            className="text-[10px] font-black uppercase tracking-wider bg-white border border-slate-200 rounded-xl py-1 px-2 text-slate-800 outline-none cursor-pointer focus:ring-1 focus:ring-indigo-500"
-                        >
-                            <option value="alphabet">{isKa ? 'ანბანით (სახელი)' : 'NAME / ALPHABET'}</option>
-                            <option value="data">{isKa ? 'რეგ. თარიღით' : 'REG DATE'}</option>
-                            <option value="role">{isKa ? 'როლით' : 'ROLE'}</option>
-                            <option value="payment_model">{isKa ? 'ანაზღაურების ტიპით' : 'PAYMENT TYPE'}</option>
-                            <option value="rate">{isKa ? 'ტარიფით' : 'RATE'}</option>
-                            <option value="number">{isKa ? 'წონით (KG)' : 'NET KG'}</option>
-                            <option value="last_modified">{isKa ? 'ბოლო ცვლილებით' : 'LAST MODIFIED'}</option>
-                        </select>
-                        <button
-                            type="button"
-                            onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-                            className="px-2 py-1 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-[10px] font-bold border border-slate-200 shadow-2xs cursor-pointer transition-all"
-                            title={sortOrder === 'asc' ? (isKa ? 'ზრდადობით' : 'Ascending') : (isKa ? 'კლებადობით' : 'Descending')}
-                        >
-                            {sortOrder === 'asc' ? '↑ Asc' : '↓ Desc'}
-                        </button>
-                    </div>
+                    {showSummaryCards && (
+                        <div className="mt-3 space-y-2.5">
+                            {/* Primary 4 KPI Cards (Matches Print Report Preview 1:1) */}
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+                                <div className="p-2.5 sm:p-3 bg-slate-50 rounded-xl border border-slate-200">
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase block tracking-wider">
+                                        {isKa ? 'წმინდა წონა (NET)' : 'Total Net Yield'}
+                                    </span>
+                                    <span className="text-base sm:text-xl font-black text-emerald-700 tabular-nums block mt-0.5">
+                                        {formatCleanVal(summaryNetKg)} kg
+                                    </span>
+                                </div>
+                                <div className="p-2.5 sm:p-3 bg-slate-50 rounded-xl border border-slate-200">
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase block tracking-wider">
+                                        {isKa ? 'ბრუტო წონა (GROSS)' : 'Total Gross Weight'}
+                                    </span>
+                                    <span className="text-base sm:text-xl font-black text-slate-800 tabular-nums block mt-0.5">
+                                        {formatCleanVal(summaryGrossKg)} kg
+                                    </span>
+                                </div>
+                                <div className="p-2.5 sm:p-3 bg-slate-50 rounded-xl border border-slate-200">
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase block tracking-wider">
+                                        {isKa ? 'ყუთები / პუნეტები · პერსონალი' : 'Boxes & Workforce'}
+                                    </span>
+                                    <span className="text-sm sm:text-base font-black text-slate-900 tabular-nums block mt-0.5 truncate">
+                                        {summaryTotalBoxes} bx · {summaryTotalPunets} pnt
+                                    </span>
+                                    <span className="text-[10px] font-semibold text-slate-500 block">
+                                        {localPickers.length} {isKa ? 'მუშაკი' : 'workers'} ({pickersCount} / {loadersCount} / {othersCount})
+                                    </span>
+                                </div>
+                                <div className="p-2.5 sm:p-3 bg-emerald-50 rounded-xl border border-emerald-300">
+                                    <span className="text-[10px] font-black text-emerald-800 uppercase block tracking-wider">
+                                        {isKa ? 'სულ OPEX (TOTAL OPEX)' : 'TOTAL EVENT OPEX'}
+                                    </span>
+                                    <span className="text-base sm:text-xl font-black text-emerald-800 tabular-nums block mt-0.5">
+                                        {formatNiceCurrency(totalCost)}
+                                    </span>
+                                </div>
+                            </div>
 
-                    {/* Role Filter Dropdown */}
-                    <div className="flex items-center gap-1.5 bg-slate-100/80 p-1 px-2.5 rounded-2xl border border-slate-200/80">
-                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">{isKa ? 'როლი:' : 'ROLE:'}</span>
-                        <select
-                            value={roleFilter}
-                            onChange={(e) => setRoleFilter(e.target.value)}
-                            className="text-[10px] font-black uppercase tracking-wider bg-white border border-slate-200 rounded-xl py-1 px-2 text-slate-800 outline-none cursor-pointer focus:ring-1 focus:ring-indigo-500"
-                        >
-                            <option value="all">{isKa ? 'ყველა როლი' : 'ALL ROLES'}</option>
-                            {availableWorkerRoles.map(r => (
-                                <option key={r} value={r}>{r.toUpperCase()}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    {/* Payment Model Filter Dropdown */}
-                    <div className="flex items-center gap-1.5 bg-slate-100/80 p-1 px-2.5 rounded-2xl border border-slate-200/80">
-                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">{isKa ? 'ტიპი:' : 'PAYMENT:'}</span>
-                        <select
-                            value={paymentTypeFilter}
-                            onChange={(e) => setPaymentTypeFilter(e.target.value)}
-                            className="text-[10px] font-black uppercase tracking-wider bg-white border border-slate-200 rounded-xl py-1 px-2 text-slate-800 outline-none cursor-pointer focus:ring-1 focus:ring-indigo-500"
-                        >
-                            <option value="all">{isKa ? 'ყველა ტიპი' : 'ALL TYPES'}</option>
-                            <option value="per_weight">{isKa ? 'წონით (PER KG)' : 'PER WEIGHT'}</option>
-                            <option value="hourly">{isKa ? 'საათობრივი' : 'HOURLY'}</option>
-                            <option value="daily">{isKa ? 'დღიური' : 'DAILY'}</option>
-                            <option value="combined">{isKa ? 'კომბინირებული' : 'COMBINED'}</option>
-                            <option value="salary">{isKa ? 'ფიქსირებული/ხელფასი' : 'SALARY'}</option>
-                        </select>
-                    </div>
-
-                    {/* Yield Filter Box */}
-                    <div className="flex items-center gap-1.5 bg-slate-100/80 p-1 px-2.5 rounded-2xl border border-slate-200/80">
-                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">{isKa ? 'მოსავალი:' : 'YIELD:'}</span>
-                        <select
-                            value={showZeroHarvestOnly}
-                            onChange={(e) => setShowZeroHarvestOnly(e.target.value as any)}
-                            className="text-[10px] font-black uppercase tracking-wider bg-white border border-slate-200 rounded-xl py-1 px-3 text-slate-800 outline-none cursor-pointer focus:ring-1 focus:ring-indigo-500"
-                        >
-                            <option value="all">{isKa ? 'ყველა მუშა' : 'ALL WORKERS'}</option>
-                            <option value="zero">{isKa ? 'ნულოვანი (0 კგ)' : 'ZERO HARVEST (0 KG)'}</option>
-                            <option value="non-zero">{isKa ? 'მოსავლით (> 0 კგ)' : 'WITH HARVEST (> 0 KG)'}</option>
-                        </select>
-                    </div>
-                </div>
-
-                {/* Right Controls: Two Symmetrical Rows of Actions */}
-                <div className="flex flex-col gap-2 items-stretch sm:items-end justify-center">
-                    {/* Top Row: Add Worker, Export to Excel, Save Adjustments */}
-                    <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
-                        {selectedPickers.size > 0 && (
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (window.confirm(isKa ? `ნამდვილად გსურთ არჩეული ${selectedPickers.size} მუშის წაშლა?` : `Are you sure you want to remove ${selectedPickers.size} selected workers?`)) {
-                                        const updated = localPickers.filter(p => !selectedPickers.has(p.employeeId));
-                                        setLocalPickers(updated);
-                                        syncPickersToParent(updated);
-                                        setSelectedPickers(new Set());
-                                    }
-                                }}
-                                className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-600 rounded-2xl font-black text-xs tracking-wide flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-xs border border-red-200"
-                            >
-                                <TrashIcon className="h-4 w-4" /> {isKa ? `წაშლა (${selectedPickers.size})` : `Delete (${selectedPickers.size})`}
-                            </button>
-                        )}
-                        <button 
-                            type="button" 
-                            onClick={() => {
-                                setAddMode('existing');
-                                setSelectedEmpIds([]);
-                                setNewWorkerName('');
-                                setNewWorkerId('');
-                                setChosenModel('per_weight');
-                                setChosenRate(6.2);
-                                setIsAddWorkerOpen(true);
-                            }} 
-                            className="px-4 py-2 bg-[#00A86B] hover:bg-[#00915c] text-white rounded-2xl font-black text-xs tracking-wide flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-xs"
-                        >
-                            <PlusIcon className="h-4 w-4 stroke-[3]"/> {t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka' ? '+ მუშის დამატება' : '+ Add Worker'}
-                        </button>
-                        
-                        {viewMode === 'payroll' && (
-                            <button 
-                                type="button"
-                                onClick={() => onSwitchTab?.('management')}
-                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-extrabold text-xs tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-xs"
-                            >
-                                ⚙️ {isKa ? 'მენეჯმენტი და სხვა ინსტრუმენტები →' : 'Management & Tools →'}
-                            </button>
-                        )}
-
-                        <button 
-                            onClick={handleExport} 
-                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                        >
-                            <ArrowDownTrayIcon className="h-4 w-4"/> {t('adv.export_excel') || 'Export to Excel'}
-                        </button>
-                        <button 
-                            onClick={() => handleSave(false)} 
-                            className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-2xl font-extrabold text-xs transition-all shadow-xs cursor-pointer"
-                        >
-                            {isKa ? 'შენახვა (ლოკალურად)' : 'Save (Offline)'}
-                        </button>
-                        <button 
-                            onClick={() => handleSave(true)} 
-                            className="px-4 py-2 bg-[#1D63ED] hover:bg-[#1552cd] text-white rounded-2xl font-extrabold text-xs transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
-                        >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-                            {isKa ? 'ატვირთვა (Update All)' : 'Sync to Cloud (Update All)'}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => handleTogglePayrollApproval(!event.payrollApproved)}
-                            className={`px-4 py-2 rounded-2xl font-black text-xs tracking-wide flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-xs ${
-                                event.payrollApproved 
-                                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200' 
-                                    : 'bg-gradient-to-r from-emerald-600 to-indigo-600 hover:from-emerald-700 hover:to-indigo-700 text-white shadow-indigo-200 animate-pulse'
-                            }`}
-                            title={isKa ? "ხელფასის დამტკიცება და HR ID ბარათებთან სინქრონიზაცია" : "Approve & Seal Harvest Payroll to HR Cards"}
-                        >
-                            {event.payrollApproved ? (
-                                <>
-                                    <CheckCheck className="h-4 w-4 text-emerald-200" />
-                                    <span>{isKa ? '✓ ხელფასი დამტკიცებულია' : '✓ Payroll Approved'}</span>
-                                </>
-                            ) : (
-                                <>
-                                    <ShieldCheck className="h-4 w-4 text-emerald-300" />
-                                    <span>{isKa ? 'ხელფასის დამტკიცება (HR სინქრონი)' : 'Approve Payroll & Sync to HR'}</span>
-                                </>
-                            )}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setIsBoxQrOpen(true)}
-                            className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-xs tracking-wide flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-xs"
-                            title={isKa ? "მოსავლის ყუთების უნიკალური QR კოდების გენერირება" : "Generate Unique Non-duplicate Box QR codes"}
-                        >
-                            <QrCode className="h-4 w-4 text-emerald-400" />
-                            <span>{isKa ? 'ყუთების QR' : 'Box QRs'}</span>
-                        </button>
-                    </div>
-
-                    {/* Active Users Collaboration Bar */}
-                    {(viewMode === 'management' || viewMode === 'statistics' || viewMode === 'all') && (
-                        <div className="w-full mb-1">
-                            <ActiveUsersPresenceBar harvestId={event.id} activeViewName="Yield & Payroll Controls" />
+                            {/* OPEX Breakdown Row (Matches Print Report Preview) */}
+                            <div className="p-2.5 bg-slate-100 rounded-xl border border-slate-200 grid grid-cols-2 lg:grid-cols-4 gap-2 text-xs tabular-nums">
+                                <div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase block">{isKa ? 'მუშახელის ანაზღაურება:' : 'Labor Payroll:'}</span>
+                                    <span className="font-extrabold text-slate-900">{formatNiceCurrency(laborCost)}</span>
+                                </div>
+                                <div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase block">{isKa ? 'ტრანსპორტი / მანქანები:' : 'Cars & Foremen:'}</span>
+                                    <span className="font-extrabold text-slate-900">{formatNiceCurrency(machineCost)} <span className="text-[10px] font-semibold text-slate-500">({vehiclesCarsCount}/{foremenCount})</span></span>
+                                </div>
+                                <div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase block">{isKa ? 'ტარა (ყუთები/პუნეტები):' : 'Packaging:'}</span>
+                                    <span className="font-extrabold text-slate-900">{formatNiceCurrency(packagingCost)}</span>
+                                </div>
+                                <div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase block">{isKa ? 'მასალები და სხვა:' : 'Materials & Other:'}</span>
+                                    <span className="font-extrabold text-slate-900">{formatNiceCurrency(otherCosts)}</span>
+                                </div>
+                            </div>
                         </div>
                     )}
+                </div>
 
-                    {/* Bottom Row: Reweigh, Share, History, Print Report, SHOW / HIDE FIELDS */}
-                    <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
-                        {(viewMode === 'payroll' || viewMode === 'management' || viewMode === 'statistics' || viewMode === 'all') && (
-                            <>
+                {/* 2. Clean Print-Preview Style Toolbar (Compact, Restrained Palette, Mobile/Tablet Compatible) */}
+                <div className="px-3 sm:px-5 py-2.5 bg-slate-50 border-b border-slate-200 space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        {/* Search + Filter Toggle */}
+                        <div className="flex items-center gap-2 flex-1 min-w-[200px] max-w-md">
+                            <div className="relative flex-1 min-w-0">
+                                <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400">
+                                    <SearchIcon className="h-3.5 w-3.5" />
+                                </div>
+                                <input
+                                    type="text"
+                                    placeholder={isKa ? 'ძებნა სახელით, ID-ით...' : 'Search workers, ID, role...'}
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="block w-full h-8 pl-8 pr-7 bg-white border border-slate-200 focus:border-emerald-600 rounded-lg font-medium text-slate-800 placeholder-slate-400 focus:outline-none text-xs transition-colors"
+                                />
+                                {searchQuery && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSearchQuery('')}
+                                        className="absolute inset-y-0 right-0 pr-2 flex items-center text-slate-400 hover:text-slate-700 text-xs font-bold cursor-pointer"
+                                    >
+                                        ✕
+                                    </button>
+                                )}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowFiltersBar(prev => !prev)}
+                                className={`h-8 px-2.5 rounded-lg border text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap shrink-0 ${
+                                    showFiltersBar || roleFilter !== 'all' || paymentTypeFilter !== 'all' || showZeroHarvestOnly !== 'all'
+                                        ? 'bg-slate-900 text-white border-slate-900'
+                                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                                }`}
+                            >
+                                <SlidersHorizontal size={13} />
+                                <span>{isKa ? 'ფილტრი' : 'Filters'}</span>
+                            </button>
+                        </div>
+
+                        {/* Restrained Action Bar (Print Preview Colors: Slate-900, White/Slate-200, Emerald-700) */}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            {selectedPickers.size > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (window.confirm(isKa ? `ნამდვილად გსურთ არჩეული ${selectedPickers.size} მუშის წაშლა?` : `Are you sure you want to remove ${selectedPickers.size} selected workers?`)) {
+                                            const updated = localPickers.filter(p => !selectedPickers.has(p.employeeId));
+                                            setLocalPickers(updated);
+                                            syncPickersToParent(updated);
+                                            setSelectedPickers(new Set());
+                                        }
+                                    }}
+                                    className="h-8 px-2.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-colors border border-red-200 whitespace-nowrap"
+                                >
+                                    <TrashIcon className="h-3.5 w-3.5" />
+                                    <span>{isKa ? `წაშლა (${selectedPickers.size})` : `Delete (${selectedPickers.size})`}</span>
+                                </button>
+                            )}
+
+                            <button 
+                                type="button" 
+                                onClick={() => {
+                                    setAddMode('existing');
+                                    setSelectedEmpIds([]);
+                                    setNewWorkerName('');
+                                    setNewWorkerId('');
+                                    setChosenModel('per_weight');
+                                    setChosenRate(6.2);
+                                    setIsAddWorkerOpen(true);
+                                }} 
+                                className="h-8 px-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-colors whitespace-nowrap shrink-0"
+                            >
+                                <PlusIcon className="h-3.5 w-3.5 stroke-[2.5]"/>
+                                <span>{isKa ? 'მუშის დამატება' : 'Add Worker'}</span>
+                            </button>
+
+                            <button 
+                                type="button"
+                                onClick={() => handleSave(true)} 
+                                className="h-8 px-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold text-[11px] flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap shrink-0"
+                            >
+                                <UploadCloud size={13} />
+                                <span>{isKa ? 'სინქრონიზაცია' : 'Sync Cloud'}</span>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => handleTogglePayrollApproval(!event.payrollApproved)}
+                                className={`h-8 px-2.5 rounded-lg font-bold text-[11px] flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap shrink-0 border ${
+                                    event.payrollApproved 
+                                        ? 'bg-emerald-700 hover:bg-emerald-800 text-white border-emerald-700' 
+                                        : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
+                                }`}
+                                title={isKa ? "ხელფასის დამტკიცება და HR ID ბარათებთან სინქრონიზაცია" : "Approve & Seal Harvest Payroll to HR Cards"}
+                            >
+                                {event.payrollApproved ? <CheckCheck size={13} /> : <ShieldCheck size={13} />}
+                                <span>{event.payrollApproved ? (isKa ? 'დამტკიცებულია' : 'Payroll Approved') : (isKa ? 'ხელფასის დამტკიცება' : 'Approve Payroll')}</span>
+                            </button>
+
+                            <button 
+                                type="button"
+                                onClick={() => setIsPrintModalOpen(true)} 
+                                className="h-8 px-2.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-lg font-bold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                                title={isKa ? 'აუდიტის რეპორტის დაბეჭდვა / PDF' : 'Print / Save Audit Report PDF'}
+                            >
+                                <Printer size={13} />
+                                <span>{isKa ? 'ბეჭდვა / PDF' : 'Print Report'}</span>
+                            </button>
+
+                            {(viewMode === 'payroll' || viewMode === 'management' || viewMode === 'statistics' || viewMode === 'all') && (
                                 <button 
                                     type="button"
                                     onClick={() => setIsReweighOpen(true)}
-                                    className="px-4 py-2 bg-[#5850EC] hover:bg-[#473fdb] text-white rounded-2xl font-extrabold text-xs tracking-wide flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-xs active:scale-95"
+                                    className="h-8 px-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-colors whitespace-nowrap shrink-0"
                                 >
-                                    ⚖️ {t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka' ? 'აწონვა' : 'Reweigh'}
+                                    <Scale size={13} />
+                                    <span>{isKa ? 'გადაწონვა' : 'Reweigh'}</span>
                                 </button>
-                                <button 
-                                    onClick={() => setIsShareModalOpen(true)} 
-                                    className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-2xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                                >
-                                    <Share2 className="h-4 w-4"/> {t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka' ? 'გაზიარება' : 'Share'}
-                                </button>
-                                <button 
-                                    onClick={() => setIsHistoryModalOpen(true)} 
-                                    className="px-3.5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-2xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                                >
-                                    <History className="h-4 w-4"/> {t('language') === 'ka' || localStorage.getItem('agri-app-lang') === 'ka' ? 'ისტორია' : 'History'}
-                                </button>
-                            </>
-                        )}
-                        <button 
-                            type="button"
-                            onClick={() => setIsPrintModalOpen(true)} 
-                            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-extrabold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95"
-                            title={isKa ? 'აუდიტის რეპორტის დაბეჭდვა / PDF' : 'Print / Save Audit Report PDF'}
-                        >
-                            🖨️ {isKa ? 'ბეჭდვა / PDF' : 'Print Report'}
-                        </button>
-                        
-                        {(viewMode === 'management' || viewMode === 'all') && (
+                            )}
+
+                            {/* Secondary Utility Actions Dropdown */}
                             <div className="relative">
                                 <button
                                     type="button"
-                                    onClick={() => setIsShowMenuOpen(!isShowMenuOpen)}
-                                    className="px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-2xl font-extrabold text-[10px] uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs"
+                                    onClick={() => setIsMoreToolsOpen(prev => !prev)}
+                                    className="h-8 px-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-colors whitespace-nowrap shrink-0"
                                 >
-                                    <span>{isKa ? 'ველების გამოჩენა' : 'SHOW / HIDE FIELDS'}</span>
-                                    <span className="text-[8px]">▼</span>
+                                    <span>{isKa ? 'სხვა ინსტრუმენტები' : 'Tools'}</span>
+                                    <ChevronDown size={12} />
                                 </button>
-                                {isShowMenuOpen && (
+                                {isMoreToolsOpen && (
                                     <>
-                                        <div className="fixed inset-0 z-40" onClick={() => setIsShowMenuOpen(false)} />
-                                        <div className="absolute right-0 mt-1.5 w-56 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-2 text-xs space-y-1">
-                                            <div className="text-[9px] font-black uppercase text-slate-400 px-2 py-1 border-b border-slate-100">
-                                                {isKa ? 'პანელების გამოჩენა' : 'Visibility Settings'}
-                                            </div>
-                                            <label className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl cursor-pointer">
-                                                <span className="font-bold text-slate-700 flex items-center gap-1.5 text-xs">
-                                                    📦 {isKa ? 'ბარათები' : 'Yield Cards'}
-                                                </span>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={showReconciliationCards}
-                                                    onChange={(e) => setShowReconciliationCards(e.target.checked)}
-                                                    className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4 cursor-pointer accent-indigo-600"
-                                                />
-                                            </label>
-                                            <label className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl cursor-pointer">
-                                                <span className="font-bold text-slate-700 flex items-center gap-1.5 text-xs">
-                                                    🍇 {isKa ? 'ჯიშების ცხრილი' : 'Variety Table'}
-                                                </span>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={showVarietyTable}
-                                                    onChange={(e) => setShowVarietyTable(e.target.checked)}
-                                                    className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4 cursor-pointer accent-indigo-600"
-                                                />
-                                            </label>
-                                            <label className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl cursor-pointer">
-                                                <span className="font-bold text-slate-700 flex items-center gap-1.5 text-xs">
-                                                    ⚖️ {isKa ? 'სტატუსის ბარი' : 'Status Bar'}
-                                                </span>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={showReconciliationStatus}
-                                                    onChange={(e) => setShowReconciliationStatus(e.target.checked)}
-                                                    className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4 cursor-pointer accent-indigo-600"
-                                                />
-                                            </label>
+                                        <div className="fixed inset-0 z-40" onClick={() => setIsMoreToolsOpen(false)} />
+                                        <div className="absolute right-0 mt-1.5 w-52 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-1.5 text-xs space-y-0.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => { handleExport(); setIsMoreToolsOpen(false); }}
+                                                className="w-full text-left px-2.5 py-2 hover:bg-slate-50 rounded-lg font-semibold text-slate-700 flex items-center gap-2 cursor-pointer"
+                                            >
+                                                <ArrowDownTrayIcon className="h-3.5 w-3.5 text-slate-500" />
+                                                <span>{t('adv.export_excel') || 'Export to Excel'}</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => { handleSave(false); setIsMoreToolsOpen(false); }}
+                                                className="w-full text-left px-2.5 py-2 hover:bg-slate-50 rounded-lg font-semibold text-slate-700 flex items-center gap-2 cursor-pointer"
+                                            >
+                                                <Save size={13} className="text-slate-500" />
+                                                <span>{isKa ? 'შენახვა (ლოკალურად)' : 'Save (Offline)'}</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => { setIsBoxQrOpen(true); setIsMoreToolsOpen(false); }}
+                                                className="w-full text-left px-2.5 py-2 hover:bg-slate-50 rounded-lg font-semibold text-slate-700 flex items-center gap-2 cursor-pointer"
+                                            >
+                                                <QrCode size={13} className="text-slate-500" />
+                                                <span>{isKa ? 'ყუთების QR' : 'Box QRs'}</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => { setIsShareModalOpen(true); setIsMoreToolsOpen(false); }}
+                                                className="w-full text-left px-2.5 py-2 hover:bg-slate-50 rounded-lg font-semibold text-slate-700 flex items-center gap-2 cursor-pointer"
+                                            >
+                                                <Share2 size={13} className="text-slate-500" />
+                                                <span>{isKa ? 'გაზიარება' : 'Share'}</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => { setIsHistoryModalOpen(true); setIsMoreToolsOpen(false); }}
+                                                className="w-full text-left px-2.5 py-2 hover:bg-slate-50 rounded-lg font-semibold text-slate-700 flex items-center gap-2 cursor-pointer"
+                                            >
+                                                <History size={13} className="text-slate-500" />
+                                                <span>{isKa ? 'ისტორია' : 'History'}</span>
+                                            </button>
+                                            {viewMode === 'payroll' && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { onSwitchTab?.('management'); setIsMoreToolsOpen(false); }}
+                                                    className="w-full text-left px-2.5 py-2 hover:bg-slate-50 rounded-lg font-semibold text-emerald-700 flex items-center gap-2 cursor-pointer border-t border-slate-100 mt-1 pt-2"
+                                                >
+                                                    <span>{isKa ? 'მენეჯმენტი და ინსტრუმენტები →' : 'Management & Tools →'}</span>
+                                                </button>
+                                            )}
+                                            {(viewMode === 'management' || viewMode === 'all') && (
+                                                <div className="border-t border-slate-100 mt-1 pt-1.5 px-2 space-y-1">
+                                                    <div className="text-[9px] font-black uppercase text-slate-400">
+                                                        {isKa ? 'პანელების გამოჩენა' : 'Visibility'}
+                                                    </div>
+                                                    <label className="flex items-center justify-between py-1 cursor-pointer">
+                                                        <span className="font-semibold text-slate-700">{isKa ? 'ბარათები' : 'Yield Cards'}</span>
+                                                        <input type="checkbox" checked={showReconciliationCards} onChange={(e) => setShowReconciliationCards(e.target.checked)} className="h-3.5 w-3.5 accent-emerald-700 cursor-pointer" />
+                                                    </label>
+                                                    <label className="flex items-center justify-between py-1 cursor-pointer">
+                                                        <span className="font-semibold text-slate-700">{isKa ? 'ჯიშების ცხრილი' : 'Variety Table'}</span>
+                                                        <input type="checkbox" checked={showVarietyTable} onChange={(e) => setShowVarietyTable(e.target.checked)} className="h-3.5 w-3.5 accent-emerald-700 cursor-pointer" />
+                                                    </label>
+                                                    <label className="flex items-center justify-between py-1 cursor-pointer">
+                                                        <span className="font-semibold text-slate-700">{isKa ? 'სტატუსის ბარი' : 'Status Bar'}</span>
+                                                        <input type="checkbox" checked={showReconciliationStatus} onChange={(e) => setShowReconciliationStatus(e.target.checked)} className="h-3.5 w-3.5 accent-emerald-700 cursor-pointer" />
+                                                    </label>
+                                                </div>
+                                            )}
                                         </div>
                                     </>
                                 )}
                             </div>
-                        )}
+                        </div>
                     </div>
+
+                    {/* Active Users Collaboration Bar */}
+                    {(viewMode === 'management' || viewMode === 'statistics' || viewMode === 'all') && (
+                        <div className="w-full">
+                            <ActiveUsersPresenceBar harvestId={event.id} activeViewName="Yield & Payroll Controls" />
+                        </div>
+                    )}
+
+                    {/* Collapsible Sort & Filter Row */}
+                    {showFiltersBar && (
+                        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200/80">
+                            <div className="flex items-center gap-1.5 bg-white p-1 px-2 rounded-lg border border-slate-200">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase">{isKa ? 'სორტირება:' : 'Sort:'}</span>
+                                <select
+                                    value={sortBy}
+                                    onChange={(e) => setSortBy(e.target.value as any)}
+                                    className="text-[11px] font-bold bg-transparent text-slate-800 outline-none cursor-pointer"
+                                >
+                                    <option value="alphabet">{isKa ? 'ანბანით (სახელი)' : 'Name / Alphabet'}</option>
+                                    <option value="data">{isKa ? 'რეგ. თარიღით' : 'Reg Date'}</option>
+                                    <option value="role">{isKa ? 'როლით' : 'Role'}</option>
+                                    <option value="payment_model">{isKa ? 'ანაზღაურების ტიპით' : 'Payment Type'}</option>
+                                    <option value="rate">{isKa ? 'ტარიფით' : 'Rate'}</option>
+                                    <option value="number">{isKa ? 'წონით (KG)' : 'Net KG'}</option>
+                                    <option value="last_modified">{isKa ? 'ბოლო ცვლილებით' : 'Last Modified'}</option>
+                                </select>
+                                <button
+                                    type="button"
+                                    onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                                    className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-bold cursor-pointer"
+                                >
+                                    {sortOrder === 'asc' ? '↑' : '↓'}
+                                </button>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 bg-white p-1 px-2 rounded-lg border border-slate-200">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase">{isKa ? 'როლი:' : 'Role:'}</span>
+                                <select
+                                    value={roleFilter}
+                                    onChange={(e) => setRoleFilter(e.target.value)}
+                                    className="text-[11px] font-bold bg-transparent text-slate-800 outline-none cursor-pointer"
+                                >
+                                    <option value="all">{isKa ? 'ყველა როლი' : 'All Roles'}</option>
+                                    {availableWorkerRoles.map(r => (
+                                        <option key={r} value={r}>{r}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 bg-white p-1 px-2 rounded-lg border border-slate-200">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase">{isKa ? 'ტიპი:' : 'Payment:'}</span>
+                                <select
+                                    value={paymentTypeFilter}
+                                    onChange={(e) => setPaymentTypeFilter(e.target.value)}
+                                    className="text-[11px] font-bold bg-transparent text-slate-800 outline-none cursor-pointer"
+                                >
+                                    <option value="all">{isKa ? 'ყველა ტიპი' : 'All Types'}</option>
+                                    <option value="per_weight">{isKa ? 'წონით (KG)' : 'Per Weight'}</option>
+                                    <option value="hourly">{isKa ? 'საათობრივი' : 'Hourly'}</option>
+                                    <option value="daily">{isKa ? 'დღიური' : 'Daily'}</option>
+                                    <option value="combined">{isKa ? 'კომბინირებული' : 'Combined'}</option>
+                                    <option value="salary">{isKa ? 'ხელფასი' : 'Salary'}</option>
+                                </select>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 bg-white p-1 px-2 rounded-lg border border-slate-200">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase">{isKa ? 'მოსავალი:' : 'Yield:'}</span>
+                                <select
+                                    value={showZeroHarvestOnly}
+                                    onChange={(e) => setShowZeroHarvestOnly(e.target.value as any)}
+                                    className="text-[11px] font-bold bg-transparent text-slate-800 outline-none cursor-pointer"
+                                >
+                                    <option value="all">{isKa ? 'ყველა მუშა' : 'All Workers'}</option>
+                                    <option value="zero">{isKa ? 'ნულოვანი (0 კგ)' : 'Zero Harvest (0 KG)'}</option>
+                                    <option value="non-zero">{isKa ? 'მოსავლით (> 0 კგ)' : 'With Harvest (> 0 KG)'}</option>
+                                </select>
+                            </div>
+                        </div>
+                    )}
                 </div>
-            </div>
-            
-            <div className="flex-grow overflow-y-auto">
+
                 {/* 📦 Yield & Empty Crate Reconciliation Control Board */}
                 {(viewMode === 'management' || viewMode === 'all') && (
                 <div className="p-5 m-4 bg-slate-50 border-2 border-slate-100 rounded-2xl space-y-4">
@@ -3486,9 +3520,8 @@ export const PickerStats: React.FC<{
                                     <span>📜</span>
                                     <span>{isKa ? 'აუდიტის ისტორიის ლოგი (Audit Trail & Undo Engine)' : 'Real-Time Audit Trail Log & Rollback Engine'}</span>
                                 </h4>
-                                <span className="text-[10px] font-extrabold text-emerald-600 flex items-center gap-1">
-                                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                                    <span>Synchronized Across Windows</span>
+                                <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
+                                    {isKa ? 'სინქრონიზებულია' : 'Synchronized'}
                                 </span>
                             </div>
                             <div className="divide-y divide-slate-100 max-h-60 overflow-y-auto pr-1">
@@ -3516,17 +3549,17 @@ export const PickerStats: React.FC<{
                 {(viewMode === 'payroll' || viewMode === 'all') && (
                 <>
                 {selectedPickers.size > 0 && (
-                    <div className="bg-indigo-50/90 border-y border-indigo-200 p-3 px-6 flex flex-wrap items-center justify-between gap-3 animate-fadeIn shadow-xs">
-                        <div className="flex items-center gap-2 text-xs font-black text-indigo-950">
-                            <span>👥</span>
+                    <div className="bg-slate-100 border-y border-slate-300 px-3 sm:px-5 py-2.5 flex flex-wrap items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2 text-xs font-black text-slate-900">
+                            <Users size={14} className="text-emerald-700" />
                             <span>{isKa ? `არჩეულია ${selectedPickers.size} მუშა` : `${selectedPickers.size} workers selected`}</span>
                         </div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <div className="flex items-center gap-1.5 bg-white p-1 rounded-lg border border-indigo-100 shadow-2xs">
-                                <span className="text-[10px] font-black text-slate-400 uppercase px-1">{t('emp.salary_type') || 'Salary Type'}:</span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                            <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase px-1">{t('emp.salary_type') || 'Salary Type'}:</span>
                                 <select 
                                     id="bulk-payment-model"
-                                    className="text-xs font-bold p-1 border border-slate-200 rounded-md bg-white outline-none focus:ring-1 focus:ring-indigo-500"
+                                    className="text-xs font-bold p-1 border border-slate-200 rounded-md bg-white outline-none focus:ring-1 focus:ring-emerald-600"
                                     defaultValue="per_weight"
                                 >
                                     <option value="per_weight">{isKa ? 'კგ ტარიფი' : 'Per Weight'}</option>
@@ -3537,22 +3570,22 @@ export const PickerStats: React.FC<{
                                 </select>
                             </div>
 
-                            <div className="flex items-center gap-1.5 bg-white p-1 rounded-lg border border-indigo-100 shadow-2xs">
-                                <span className="text-[10px] font-black text-slate-400 uppercase px-1">{t('adv.col_rate') || 'Rate'}:</span>
+                            <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase px-1">{t('adv.col_rate') || 'Rate'}:</span>
                                 <input 
                                     id="bulk-rate-input"
                                     type="number" 
                                     step="0.01" 
-                                    placeholder="e.g. 6.20" 
-                                    className="w-20 text-xs font-bold p-1 border border-slate-200 rounded-md bg-white animate-none outline-none focus:ring-1 focus:ring-indigo-500"
+                                    placeholder="6.20" 
+                                    className="w-16 text-xs font-bold p-1 border border-slate-200 rounded-md bg-white outline-none focus:ring-1 focus:ring-emerald-600"
                                 />
                             </div>
 
-                            <div className="flex items-center gap-1.5 bg-white p-1 rounded-lg border border-indigo-100 shadow-2xs">
-                                <span className="text-[10px] font-black text-slate-400 uppercase px-1">{isKa ? 'როლი' : 'Role'}:</span>
+                            <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase px-1">{isKa ? 'როლი' : 'Role'}:</span>
                                 <select 
                                     id="bulk-role-select"
-                                    className="text-xs font-bold p-1 border border-slate-200 rounded-md bg-white outline-none focus:ring-1 focus:ring-indigo-500"
+                                    className="text-xs font-bold p-1 border border-slate-200 rounded-md bg-white outline-none focus:ring-1 focus:ring-emerald-600"
                                     defaultValue="Picker"
                                 >
                                     {['Picker', 'Loader', 'Weigher', 'Keeper', 'Driver', 'Supervisor', 'Field Worker', ...(roles || []).map(r => r.name)]
@@ -3593,13 +3626,13 @@ export const PickerStats: React.FC<{
                                     if (rateEl) rateEl.value = '';
                                     toast.success(isKa ? `განახლდა ${selectedPickers.size} მუშა!` : `Updated ${selectedPickers.size} workers!`);
                                 }}
-                                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs transition-all cursor-pointer active:scale-95"
+                                className="h-8 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
                             >
-                                {isKa ? 'განახლება' : 'Apply Bulk Change'}
+                                {isKa ? 'განახლება' : 'Apply'}
                             </button>
 
-                            {/* Quick Bulk Action Buttons */}
-                            <div className="flex items-center gap-1 border-l border-indigo-200/80 pl-2">
+                            {/* Restrained Quick Bulk Mode Actions */}
+                            <div className="flex items-center gap-1 border-l border-slate-300 pl-2 flex-wrap">
                                 <button
                                     onClick={() => {
                                         const updated = localPickers.map(p => {
@@ -3617,10 +3650,10 @@ export const PickerStats: React.FC<{
                                         syncPickersToParent(updated);
                                         toast.success(isKa ? `არჩეული ${selectedPickers.size} მუშა გადავიდა კომბინირებულ რეჟიმზე` : `Set ${selectedPickers.size} workers to Combined Mode`);
                                     }}
-                                    className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-extrabold shadow-xs transition-all cursor-pointer active:scale-95"
+                                    className="h-8 px-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
                                     title={isKa ? 'მონიშნული მუშების გადაყვანა კომბინირებულ რეჟიმზე' : 'Switch selected workers to Combined Mode'}
                                 >
-                                    ⚡ {isKa ? 'კომბინირებული' : 'Set Combined'}
+                                    {isKa ? 'კომბინირებული' : 'Combined'}
                                 </button>
 
                                 <button
@@ -3639,9 +3672,9 @@ export const PickerStats: React.FC<{
                                         syncPickersToParent(updated);
                                         toast.success(isKa ? `არჩეული ${selectedPickers.size} მუშა გადავიდა დღიურ რეჟიმზე` : `Set ${selectedPickers.size} workers to Daily Mode`);
                                     }}
-                                    className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-extrabold shadow-xs transition-all cursor-pointer active:scale-95"
+                                    className="h-8 px-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
                                 >
-                                    📅 {isKa ? 'დღიური' : 'Set Daily'}
+                                    {isKa ? 'დღიური' : 'Daily'}
                                 </button>
 
                                 <button
@@ -3660,19 +3693,19 @@ export const PickerStats: React.FC<{
                                         syncPickersToParent(updated);
                                         toast.success(isKa ? `არჩეული ${selectedPickers.size} მუშა გადავიდა კგ ტარიფზე` : `Set ${selectedPickers.size} workers to Per-Weight Mode`);
                                     }}
-                                    className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-extrabold shadow-xs transition-all cursor-pointer active:scale-95"
+                                    className="h-8 px-2.5 bg-white hover:bg-slate-50 text-emerald-700 border border-emerald-200 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
                                 >
-                                    ⚖️ {isKa ? 'კგ ტარიფი' : 'Set Per Weight'}
+                                    {isKa ? 'კგ ტარიფი' : 'Per Weight'}
                                 </button>
 
                                 <button
                                     onClick={() => {
                                         selectedPickers.forEach(empId => handleRestoreWorkerDefault(empId));
                                     }}
-                                    className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-extrabold shadow-xs transition-all cursor-pointer active:scale-95"
+                                    className="h-8 px-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
                                     title={isKa ? 'მონიშნული მუშების აღდგენა HR სტანდარტულ ტარიფზე/ტიპზე' : 'Restore standard defaults for selected workers'}
                                 >
-                                    🔄 {isKa ? 'აღდგენა' : 'Restore Default'}
+                                    {isKa ? 'აღდგენა' : 'Restore'}
                                 </button>
                             </div>
 
@@ -3694,27 +3727,26 @@ export const PickerStats: React.FC<{
                                             : 'Selected workers removed.'
                                     );
                                 }}
-                                className="px-3 py-1.5 bg-rose-650 hover:bg-rose-600 text-white rounded-lg text-xs font-bold shadow-xs transition-all cursor-pointer active:scale-95"
+                                className="h-8 px-2.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
                             >
                                 {isKa ? 'წაშლა' : 'Remove'}
                             </button>
 
                             <button
                                 onClick={() => setSelectedPickers(new Set())}
-                                className="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                                className="h-8 px-2.5 bg-white hover:bg-slate-200 text-slate-600 border border-slate-200 rounded-lg text-xs font-bold transition-colors cursor-pointer"
                                 title={isKa ? 'მონიშვნის გაუქმება' : 'Deselect All'}
                             >
-                                ✖️
+                                ✕
                             </button>
 
-                            <div className="flex items-center gap-2 border-l border-indigo-200/50 pl-3">
-                                <span className="text-[10px] font-black text-slate-400 uppercase">{isKa ? 'გუნდის შექმნა' : 'Create Team'}:</span>
+                            <div className="flex items-center gap-1.5 border-l border-slate-300 pl-2">
                                 <input 
                                     type="text" 
                                     placeholder={isKa ? 'გუნდის სახელი...' : 'Team name...'} 
                                     value={newTeamName}
                                     onChange={e => setNewTeamName(e.target.value)}
-                                    className="text-xs font-bold p-1.5 border border-slate-200 rounded-lg bg-white"
+                                    className="h-8 w-28 text-xs font-bold px-2 border border-slate-200 rounded-lg bg-white"
                                 />
                                 <button 
                                     onClick={() => {
@@ -3738,52 +3770,51 @@ export const PickerStats: React.FC<{
                                             toast.error('Unable to create team - missing handler');
                                         }
                                     }}
-                                    className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1"
+                                    className="h-8 px-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer flex items-center gap-1"
                                 >
-                                    <span>➕</span> {isKa ? 'შექმნა' : 'Create'}
+                                    <span>+ {isKa ? 'გუნდი' : 'Create Team'}</span>
                                 </button>
                             </div>
                         </div>
                     </div>
                 )}
 
-                {/* Excel-style Column Management Bar */}
-                <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 sm:p-3 bg-slate-100/90 border-b border-slate-200 text-xs flex-shrink-0">
-                    <div className="flex items-center gap-2 text-slate-700 font-extrabold text-[11px] sm:text-xs">
-                        <span>↔️</span>
-                        <span>{isKa ? 'სვეტების მართვა (Column Widths):' : 'Column Widths:'}</span>
-                        <span className="text-[10px] text-slate-400 font-normal hidden sm:inline">
-                            ({isKa ? 'გადაათრიეთ ხაზები სვეტის საზღვარზე သან გამოიყენეთ ღილაკები' : 'Drag header borders or use presets'})
+                {/* Column Widths Utility Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-5 py-2 bg-slate-100 border-y border-slate-200 text-xs">
+                    <div className="flex items-center gap-2 text-slate-700 font-bold text-[11px] uppercase tracking-wider">
+                        <span>{isKa ? `მუშაკების სია (${filteredPickers.length})` : `Workers List (${filteredPickers.length})`}</span>
+                        <span className="text-[10px] text-slate-400 font-normal hidden sm:inline normal-case">
+                            · {isKa ? 'გადაათრიეთ სვეტების საზღვრები ზომის შესაცვლელად' : 'Drag column borders to resize'}
                         </span>
                     </div>
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                         <button
                             type="button"
                             onClick={expandAllColumns}
-                            className="px-2.5 py-1 bg-white hover:bg-slate-50 text-indigo-700 font-extrabold border border-indigo-200 rounded-lg text-[10px] sm:text-xs flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95 transition-all"
+                            className="h-7 px-2.5 bg-white hover:bg-slate-50 text-slate-700 font-bold border border-slate-200 rounded-lg text-[10px] flex items-center gap-1 cursor-pointer transition-colors"
                             title="Expand all columns for maximum room"
                         >
-                            <span>↔️</span> {isKa ? 'გაფართოება (Expand All)' : 'Expand All'}
+                            <span>↔</span> {isKa ? 'გაფართოება' : 'Expand'}
                         </button>
                         <button
                             type="button"
                             onClick={autoFitValues}
-                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-lg text-[10px] sm:text-xs flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95 transition-all"
+                            className="h-7 px-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg text-[10px] flex items-center gap-1 cursor-pointer transition-colors"
                             title="Auto-fit Rate, Net, Gross & Earnings"
                         >
-                            <span>⚡</span> {isKa ? 'ციფრების გამოჩენა (Auto-Fit)' : 'Auto-Fit Digits'}
+                            <span>{isKa ? 'ავტო-მორგება' : 'Auto-Fit'}</span>
                         </button>
                         <button
                             type="button"
                             onClick={resetColumnWidths}
-                            className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-600 font-extrabold border border-slate-200 rounded-lg text-[10px] sm:text-xs flex items-center gap-1 cursor-pointer active:scale-95 transition-all"
+                            className="h-7 px-2.5 bg-white hover:bg-slate-50 text-slate-600 font-bold border border-slate-200 rounded-lg text-[10px] flex items-center gap-1 cursor-pointer transition-colors"
                         >
-                            <span>🔄</span> {isKa ? 'საწყისი (Reset)' : 'Reset'}
+                            <span>{isKa ? 'საწყისი' : 'Reset'}</span>
                         </button>
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-x-auto overflow-y-auto min-h-0 relative custom-scrollbar border border-slate-200 rounded-xl bg-white touch-pan-x">
+                <div className="overflow-x-auto overflow-y-auto max-h-[62vh] min-h-[340px] relative custom-scrollbar border-b border-slate-200 bg-white touch-pan-x">
                     <table 
                         className="border-collapse text-left" 
                         style={{ minWidth: `${Object.values(colWidths).reduce((a, b) => a + b, 0)}px`, width: '100%' }}
@@ -4107,10 +4138,10 @@ export const PickerStats: React.FC<{
                                                 </div>
                                             </div>
                                         </td>
-                                        <td style={{ width: `${colWidths.final}px` }} className="px-2.5 sm:px-3 py-2 text-right font-black text-sm sm:text-base text-red-600 whitespace-nowrap overflow-hidden">
+                                        <td style={{ width: `${colWidths.final}px` }} className="px-2.5 sm:px-3 py-2 text-right font-black text-sm sm:text-base text-slate-900 tabular-nums whitespace-nowrap overflow-hidden">
                                             <div className="flex items-center justify-end gap-1.5 w-full">
                                                 <div className="flex flex-col items-end">
-                                                    <span className="truncate">{formatCurrency(earnings)}</span>
+                                                    <span className="truncate text-emerald-800">{formatCurrency(earnings)}</span>
                                                     {isCombinedMode && (() => {
                                                         const totalNet = picker.manualNetWeight ?? scannedWeight;
                                                         const dKg = picker.combinedDailyKg ?? (totalNet >= 20 ? 20 : totalNet * 0.5);
@@ -4182,7 +4213,7 @@ export const PickerStats: React.FC<{
                                 <td style={{ width: `${colWidths.bonus}px` }} className="px-2 py-3 text-center">
                                     {formatCurrency(filteredPickers.reduce((sum, p) => sum + (p.bonus || 0), 0))}
                                 </td>
-                                <td style={{ width: `${colWidths.final}px` }} className="px-3 py-3 text-right text-xs sm:text-sm font-black text-amber-300">
+                                <td style={{ width: `${colWidths.final}px` }} className="px-3 py-3 text-right text-xs sm:text-sm font-black text-emerald-300 tabular-nums">
                                     {formatCurrency(filteredPickers.reduce((sum, p) => {
                                         const weight = entries.filter(e => e.employeeId === p.employeeId).reduce((s, e) => s + (e.netWeightKg || 0), 0);
                                         const hrs = p.manualHours ?? calculateNetDurationHours(event);

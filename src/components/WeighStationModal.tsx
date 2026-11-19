@@ -971,7 +971,7 @@ const OptimizedWeightInput: React.FC<{
                 value={localVal} 
                 onChange={handleInput}
                 onKeyDown={handleKeyDown}
-                className="w-48 py-2 text-7xl font-black text-center bg-transparent text-emerald-400 border-0 outline-none placeholder:text-slate-800 caret-white font-mono"
+                className="w-48 py-2 text-7xl font-black text-center bg-transparent text-emerald-400 border-0 outline-none placeholder:text-slate-500 caret-white font-mono"
                 placeholder={operatingMode === 'box' ? (defaultBoxWeightKg?.toString() || "0.00") : "0.00"}
                 required 
                 autoFocus
@@ -3277,7 +3277,7 @@ const WeighStationModal: React.FC<WeighStationModalProps> = React.memo(({
                                                                         }
                                                                     }}
                                                                     placeholder="0.00"
-                                                                    className="w-full bg-slate-950 text-emerald-400 text-4xl font-black rounded-2xl border-2 border-slate-800 p-4 focus:border-indigo-500 focus:bg-slate-950 outline-none transition-all placeholder:text-slate-800 font-mono"
+                                                                    className="w-full bg-slate-950 text-emerald-400 text-4xl font-black rounded-2xl border-2 border-slate-800 p-4 focus:border-indigo-500 focus:bg-slate-950 outline-none transition-all placeholder:text-slate-500 caret-white font-mono"
                                                                 />
                                                                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-black text-slate-500 font-sans">KG</span>
                                                             </div>
@@ -3302,7 +3302,7 @@ const WeighStationModal: React.FC<WeighStationModalProps> = React.memo(({
                                                                         }
                                                                     }}
                                                                     placeholder="10.00"
-                                                                    className="w-full bg-slate-950 text-amber-500 text-4xl font-black rounded-2xl border-2 border-slate-800 p-4 focus:border-indigo-500 focus:bg-slate-950 outline-none transition-all placeholder:text-slate-800 font-mono"
+                                                                    className="w-full bg-slate-950 text-amber-400 text-4xl font-black rounded-2xl border-2 border-slate-800 p-4 focus:border-indigo-500 focus:bg-slate-950 outline-none transition-all placeholder:text-slate-500 caret-white font-mono"
                                                                 />
                                                                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-black text-slate-500 font-sans">KG</span>
                                                             </div>
@@ -3563,13 +3563,13 @@ const WeighStationModal: React.FC<WeighStationModalProps> = React.memo(({
                                                             triggerSave();
                                                         }
                                                     }}
-                                                    className="w-16 bg-white/10 border border-white/20 rounded-lg text-white text-xs font-black text-center py-1 outline-none focus:border-blue-500 font-mono"
+                                                    className="w-16 bg-white/15 border border-white/25 rounded-lg text-white text-xs font-black text-center py-1 outline-none focus:border-blue-400 caret-white font-mono"
                                                 />
                                             </div>
                                         ) : (
                                             operatingMode === 'weigh' && calculatedBoxCount > 0 && (
                                                 <div className="absolute top-4 right-4 flex flex-col items-end gap-1 z-10" onClick={e => e.stopPropagation()}>
-                                                    <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{t('weigh.est_boxes')}</label>
+                                                    <label className="text-[8px] font-black text-slate-300 uppercase tracking-widest">{t('weigh.est_boxes')}</label>
                                                     <div className="relative flex items-center">
                                                         <input 
                                                             type="number"
@@ -3590,15 +3590,15 @@ const WeighStationModal: React.FC<WeighStationModalProps> = React.memo(({
                                                                     triggerSave();
                                                                 }
                                                             }}
-                                                            className={`w-20 bg-white/10 text-emerald-400 text-xs font-black text-center py-1.5 outline-none font-mono pr-6 transition-all rounded-lg border ${
+                                                            className={`w-20 bg-white/15 text-emerald-400 text-xs font-black text-center py-1.5 outline-none caret-white font-mono pr-6 transition-all rounded-lg border ${
                                                                 manualBoxCount !== null 
-                                                                    ? 'border-amber-500 bg-amber-500/10' 
-                                                                    : 'border-white/10 hover:border-emerald-500/40 focus:border-emerald-500/60'
+                                                                    ? 'border-amber-400 bg-amber-500/20 text-amber-300' 
+                                                                    : 'border-white/25 hover:border-emerald-400/60 focus:border-emerald-400'
                                                             }`}
                                                             min="1"
                                                         />
                                                         <span className={`absolute right-2 text-[9px] font-bold uppercase pointer-events-none ${
-                                                            manualBoxCount !== null ? 'text-amber-500' : 'text-emerald-500/60'
+                                                            manualBoxCount !== null ? 'text-amber-300' : 'text-emerald-300'
                                                         }`}>bx</span>
                                                     </div>
                                                 </div>
@@ -3606,7 +3606,7 @@ const WeighStationModal: React.FC<WeighStationModalProps> = React.memo(({
                                         )}
 
                                         <div className="flex flex-col items-center mt-6">
-                                            <label className="text-[10px] font-black text-white/30 uppercase tracking-[0.3em] mb-2">
+                                            <label className="text-[10px] font-black text-white/60 uppercase tracking-[0.3em] mb-2">
                                                 {operatingMode === 'box' 
                                                     ? t('weigh.weight_per_box') 
                                                     : (isReverseMode ? t('weigh.net_direct_scale') : t('weigh.gross_scale'))}

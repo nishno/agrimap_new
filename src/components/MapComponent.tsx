@@ -11,8 +11,7 @@ import { GripHorizontal, PenTool } from 'lucide-react';
 import { getSphericalPolygonArea, calculateLineLength } from '../services/geospatialService';
 import type { LiveMapShowcase } from './FloatingCommunicationHub';
 import { safeStorage } from '../services/storageService';
-import type { PlantationCamera } from './SystemManagement/HardwareLabs/CameraNvrLab';
-import type { DroneFlightMission } from './DroneFlightPathPlanner';
+import type { PlantationCamera, DroneFlightMission } from '../types/hardwareContract';
 import { computeFovConePolygon, computeBlindZonePolygon, computeBlindZoneDistanceM } from '../utils/cameraGeospatial';
 
 // Fix for default icon issue

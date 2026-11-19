@@ -21,6 +21,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
 const DEFAULT_PORT = 3000;
@@ -420,6 +421,131 @@ app.post('/api/gemini/call', async (req, res) => {
             modelUsed: 'autonomous-local-core'
         });
     }
+});
+
+// 4. Local Plantation Bridge Auth & Hardware Telemetry Gateway (Offline LAN Mode)
+const ALLOWED_LOCAL_HARDWARE_COLLECTIONS = new Set([
+    'deviceRegistry',
+    'plantationFeatures',
+    'systemNotifications',
+    'agronomistDiagnoses',
+    'liveTelemetry',
+    'soilTelemetry'
+]);
+const localBridgeLaunchCodes = new Map();
+const localHardwareSessions = new Map();
+
+function getLocalHardwareFile(orgId, collectionName) {
+    const dir = path.join(__dirname, 'agrimap_backup', 'hardware', String(orgId).replace(/[^a-zA-Z0-9_-]/g, '_'));
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+    return path.join(dir, `${collectionName}.json`);
+}
+
+function readLocalHardwareItems(orgId, collectionName) {
+    const file = getLocalHardwareFile(orgId, collectionName);
+    if (!fs.existsSync(file)) return [];
+    try {
+        const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function writeLocalHardwareItems(orgId, collectionName, items) {
+    const file = getLocalHardwareFile(orgId, collectionName);
+    fs.writeFileSync(file, JSON.stringify(items, null, 2), 'utf8');
+}
+
+app.post('/api/bridge/launch-code', (req, res) => {
+    const body = req.body || {};
+    const { launchCode, moduleId, orgId, userId } = body;
+    if (!launchCode || !moduleId || !orgId || !userId) {
+        return res.status(400).json({ ok: false, error: 'Missing launchCode, moduleId, orgId, or userId' });
+    }
+    const localSessionToken = `lst_${crypto.randomBytes(24).toString('hex')}`;
+    const expiresAtMs = Date.now() + 90000;
+    localHardwareSessions.set(localSessionToken, {
+        orgId: String(orgId),
+        userId: String(userId),
+        moduleId: String(moduleId),
+        expiresAtMs: Date.now() + 12 * 60 * 60 * 1000
+    });
+    localBridgeLaunchCodes.set(String(launchCode), {
+        payload: { ...body, localSessionToken },
+        localSessionToken,
+        expiresAtMs
+    });
+    res.json({ ok: true, localSessionToken, expiresAt: new Date(expiresAtMs).toISOString() });
+});
+
+app.post('/api/bridge/exchange', (req, res) => {
+    const { launchCode, moduleId } = req.body || {};
+    if (!launchCode) return res.status(400).json({ ok: false, error: 'Missing launchCode' });
+    const record = localBridgeLaunchCodes.get(String(launchCode));
+    if (!record) return res.status(401).json({ ok: false, error: 'Invalid or already consumed launchCode' });
+    localBridgeLaunchCodes.delete(String(launchCode));
+    if (Date.now() > record.expiresAtMs) return res.status(401).json({ ok: false, error: 'Launch code expired' });
+    if (moduleId && record.payload && record.payload.moduleId !== moduleId) {
+        return res.status(403).json({ ok: false, error: 'Module mismatch' });
+    }
+    res.json({ ok: true, payload: record.payload });
+});
+
+function verifyLocalHardwareBearer(req, res) {
+    const authHeader = String(req.headers.authorization || '');
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!token) {
+        res.status(401).json({ ok: false, error: 'Missing Bearer localSessionToken' });
+        return null;
+    }
+    const session = localHardwareSessions.get(token);
+    if (!session || Date.now() > session.expiresAtMs) {
+        res.status(401).json({ ok: false, error: 'Invalid or expired localSessionToken' });
+        return null;
+    }
+    return session;
+}
+
+app.get('/api/hardware/:collection', (req, res) => {
+    const session = verifyLocalHardwareBearer(req, res);
+    if (!session) return;
+    const colName = req.params.collection;
+    if (!ALLOWED_LOCAL_HARDWARE_COLLECTIONS.has(colName)) {
+        return res.status(403).json({ ok: false, error: `Collection "${colName}" is restricted` });
+    }
+    const items = readLocalHardwareItems(session.orgId, colName);
+    res.json({ ok: true, organizationId: session.orgId, collection: colName, items });
+});
+
+app.post('/api/hardware/:collection', (req, res) => {
+    const session = verifyLocalHardwareBearer(req, res);
+    if (!session) return;
+    const colName = req.params.collection;
+    if (!ALLOWED_LOCAL_HARDWARE_COLLECTIONS.has(colName)) {
+        return res.status(403).json({ ok: false, error: `Collection "${colName}" is restricted` });
+    }
+    const body = req.body || {};
+    const incoming = Array.isArray(body.items) ? body.items : [body];
+    const existing = readLocalHardwareItems(session.orgId, colName);
+    const byId = new Map(existing.map((it) => [String(it.id || it.deviceId), it]));
+    const saved = [];
+    for (const item of incoming) {
+        if (!item || typeof item !== 'object') continue;
+        const docId = String(item.id || item.deviceId || `${colName}_${Date.now()}`);
+        const stamped = {
+            ...item,
+            id: docId,
+            organizationId: session.orgId,
+            updatedAt: new Date().toISOString()
+        };
+        byId.set(docId, stamped);
+        saved.push(stamped);
+    }
+    writeLocalHardwareItems(session.orgId, colName, Array.from(byId.values()));
+    res.json({ ok: true, organizationId: session.orgId, collection: colName, savedCount: saved.length, items: saved });
 });
 
 // Global Error Handler

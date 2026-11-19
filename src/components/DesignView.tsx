@@ -24,19 +24,14 @@ import { offsetFeatures, calculateLineLength, generateTrenches, generateSeedling
 import { toGeoJSON, toKML } from '../services/fileService';
 import { safeStorage } from '../services/storageService';
 import PencilSketchOptionsModal from './PencilSketchOptionsModal';
-import DroneSimulationModal from './DroneSimulationModal';
 import { SpatialAnalysisModal } from '../new_engine/ui/SpatialAnalysisModal';
 import MapDisplayVisibilityControl, { DEFAULT_DISPLAY_PREFS, type DisplayToolsPreferences } from './MapDisplayVisibilityControl';
 import MapFeatureContextMenu from './MapFeatureContextMenu';
 import { TransparencyPopover } from './TransparencyPopover';
 import { useLanguage } from '../contexts/LanguageContext';
-import { CameraPlannerModal } from './SystemManagement/HardwareLabs/CameraPlannerModal';
-import { CameraLiveMonitorWindow } from './SystemManagement/HardwareLabs/CameraLiveMonitorWindow';
-import { AllCamerasWideModal } from './SystemManagement/HardwareLabs/AllCamerasWideModal';
-import { DroneFlightPathPlanner, type DroneFlightMission } from './DroneFlightPathPlanner';
-import type { PlantationCamera } from './SystemManagement/HardwareLabs/CameraNvrLab';
+import type { PlantationCamera, DroneFlightMission } from '../types/hardwareContract';
+import { launchExternalModule } from '../services/ExternalModuleBridge';
 import { MapElementPropertiesPanel } from './MapElementPropertiesPanel';
-import { NetworkCameraNvrManagerModal } from './NetworkCameraNvrManagerModal';
 import { TerrainSlopeSculptorModal } from './TerrainSlopeSculptorModal';
 import { FloatingOnlineWeatherBadge } from './SystemManagement/HardwareLabs/FloatingOnlineWeatherBadge';
 import { type CustomTerrainSlope, setActiveSlopesCache } from '../utils/demTerrainViewshed';
@@ -1227,10 +1222,34 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
         safeStorage.setItem('agrimap_display_tools_prefs', JSON.stringify(newPrefs));
     };
 
-    // Drone Flight Simulation Modal State
-    const [isDroneSimOpen, setIsDroneSimOpen] = useState(false);
-    // AI Spatial Analysis Modal State (Decoupled Worker Engine)
+    // AI Spatial Analysis Modal (Decoupled Worker Engine)
     const [isSpatialAnalysisOpen, setIsSpatialAnalysisOpen] = useState(false);
+
+    const openVisionExternal = (targetCameraId?: string) => {
+        launchExternalModule({
+            moduleId: 'vision',
+            orgId: props.activeOrg?.id || (props.mapProps as any)?.activeOrgId || 'personal',
+            userId: props.currentUser?.id || 'operator',
+            userName: props.currentUser?.name,
+            targetId: targetCameraId,
+            center: mapProps.center || [41.9023, 44.5],
+            plantationFeatures: allFeatures,
+            cameras,
+        });
+    };
+
+    const openDroneExternal = (sectorId?: string) => {
+        launchExternalModule({
+            moduleId: 'drone',
+            orgId: props.activeOrg?.id || (props.mapProps as any)?.activeOrgId || 'personal',
+            userId: props.currentUser?.id || 'operator',
+            userName: props.currentUser?.name,
+            sectorId,
+            center: mapProps.center || [41.9023, 44.5],
+            plantationFeatures: allFeatures,
+            cameras,
+        });
+    };
 
     // Surveillance Cameras & Hardware State
     const [cameras, setCameras] = useState<PlantationCamera[]>(() => {
@@ -1320,15 +1339,9 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
         ];
     });
 
-    const [isCameraPlannerOpen, setIsCameraPlannerOpen] = useState(false);
-    const [cameraPlannerCoords, setCameraPlannerCoords] = useState<[number, number] | undefined>(undefined);
-    const [activeCameraForLiveView, setActiveCameraForLiveView] = useState<PlantationCamera | null>(null);
-    const [isAllCamerasWideOpen, setIsAllCamerasWideOpen] = useState(false);
-
     // Selected camera or drone mission for floating properties panel
     const [selectedCameraForProperties, setSelectedCameraForProperties] = useState<PlantationCamera | null>(null);
     const [selectedDroneMissionForProperties, setSelectedDroneMissionForProperties] = useState<DroneFlightMission | null>(null);
-    const [isNetworkNvrManagerOpen, setIsNetworkNvrManagerOpen] = useState(false);
 
     // 3D Area and Terrain Slope Sculptor State
     const [isTerrainSculptorOpen, setIsTerrainSculptorOpen] = useState(false);
@@ -1413,9 +1426,6 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
         if (selectedCameraForProperties?.id === camId) {
             setSelectedCameraForProperties(null);
         }
-        if (activeCameraForLiveView?.id === camId) {
-            setActiveCameraForLiveView(null);
-        }
     };
 
     // Import All Cameras from Online NVR / DVR
@@ -1472,7 +1482,6 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
         } catch (e) {}
     }, []);
 
-    const [isDroneMissionPlannerOpen, setIsDroneMissionPlannerOpen] = useState<boolean>(false);
     const [simulatedDronePos, setSimulatedDronePos] = useState<{ lat: number; lng: number; heading: number } | null>(null);
     const droneAnimTimerRef = useRef<any>(null);
 
@@ -2153,11 +2162,7 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
     // Handlers for Simulation & Draft Features
     const handleMapFeatureDrawn = (type: any, geometry: any, clickPos?: L.LatLng, metadata?: any) => {
         if (type === 'camera') {
-            const coords: [number, number] = Array.isArray(geometry) && typeof geometry[0] === 'number' 
-                ? [geometry[0], geometry[1]] 
-                : clickPos ? [clickPos.lat, clickPos.lng] : [mapProps.center?.[0] || 41.9023, mapProps.center?.[1] || 44.5];
-            setCameraPlannerCoords(coords);
-            setIsCameraPlannerOpen(true);
+            openVisionExternal();
             onSetActiveDrawingTool({ tool: null });
             return;
         }
@@ -2710,7 +2715,7 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                         onMapContextMenu={handleMapContextMenu}
                         cameras={cameras}
                         showCameras={displayPrefs.showCameras}
-                        onSelectCameraForLiveView={(cam) => setActiveCameraForLiveView(cam)}
+                        onSelectCameraForLiveView={(cam) => openVisionExternal(cam.id)}
                         onSelectCameraForProperties={(cam) => {
                             setSelectedCameraForProperties(cam);
                             setSelectedDroneMissionForProperties(null);
@@ -3618,14 +3623,14 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                                 {/* Drone Mission Simulation */}
                                 <button
                                     onClick={() => {
-                                        setIsDroneSimOpen(true);
+                                        openDroneExternal(selectedFeatureIds[0]);
                                         setIsMapToolsMenuOpen(false);
                                     }}
                                     className="flex items-center justify-between w-full px-3 py-2 rounded-xl text-xs font-bold hover:bg-slate-800/80 text-slate-200 transition-all text-left group cursor-pointer"
                                 >
                                     <div className="flex items-center gap-2">
                                         <Plane size={15} className="text-cyan-400 group-hover:scale-110 transition-transform" />
-                                        <span>{isKa ? 'დრონის სიმულაცია (პოპაპი)' : 'Drone Simulation Modal'}</span>
+                                        <span>{isKa ? 'დრონის 3D მისია (External)' : 'Drone 3D Mission Control'}</span>
                                     </div>
                                     <span className="text-[8px] font-mono px-1.5 py-0.5 bg-cyan-950/80 text-cyan-300 border border-cyan-700/50 rounded-md">UAV</span>
                                 </button>
@@ -3633,7 +3638,7 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                                 {/* Drone Real-Time Flight Path on Map (Outbound, Return & Circle Sector) */}
                                 <button
                                     onClick={() => {
-                                        setIsDroneMissionPlannerOpen(!isDroneMissionPlannerOpen);
+                                        openDroneExternal(selectedFeatureIds[0]);
                                         setIsMapToolsMenuOpen(false);
                                     }}
                                     className="flex items-center justify-between w-full px-3 py-2 rounded-xl text-xs font-bold hover:bg-slate-800/80 text-slate-200 transition-all text-left group cursor-pointer border border-cyan-500/20 bg-cyan-950/20"
@@ -3641,7 +3646,7 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                                     <div className="flex items-center gap-2">
                                         <Navigation size={15} className="text-cyan-400 group-hover:scale-110 transition-transform" />
                                         <div className="flex flex-col min-w-0">
-                                            <span className="leading-tight text-[11px] font-bold text-slate-100">{isKa ? 'დრონის ფრენის გეგმა (რუკაზე)' : 'Drone Flight Path (Map)'}</span>
+                                            <span className="leading-tight text-[11px] font-bold text-slate-100">{isKa ? 'დრონის ფრენის გეგმა' : 'Drone Flight Path Planner'}</span>
                                             <span className="text-[9px] text-cyan-400 font-semibold truncate max-w-[140px]">
                                                 {droneMission?.waypoints.length || 0} {isKa ? 'წერტილი' : 'Waypoints'}
                                             </span>
@@ -3655,8 +3660,7 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                                 {/* Camera Adding Tool on Map */}
                                 <button
                                     onClick={() => {
-                                        setCameraPlannerCoords(mapProps.center || [41.9023, 44.5]);
-                                        setIsCameraPlannerOpen(true);
+                                        openVisionExternal();
                                         setIsMapToolsMenuOpen(false);
                                     }}
                                     className="flex items-center justify-between w-full px-3 py-2 rounded-xl text-xs font-bold hover:bg-slate-800/80 text-slate-200 transition-all text-left group cursor-pointer border border-blue-500/20 bg-blue-950/20"
@@ -3664,7 +3668,7 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                                     <div className="flex items-center gap-2">
                                         <Camera size={15} className="text-blue-400 group-hover:scale-110 transition-transform shrink-0" />
                                         <div className="flex flex-col min-w-0">
-                                            <span className="leading-tight text-[11px] font-bold text-slate-100">{isKa ? 'კამერის დამატება & დაგეგმვა' : 'Add & Plan Camera'}</span>
+                                            <span className="leading-tight text-[11px] font-bold text-slate-100">{isKa ? 'კამერის დაგეგმვა & ხედვა' : 'Vision & Camera Planner'}</span>
                                             <span className="text-[9px] text-blue-400 font-semibold truncate max-w-[140px]">
                                                 {cameras.length} {isKa ? 'აქტიური კამერა' : 'Active Cameras'}
                                             </span>
@@ -3676,7 +3680,7 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                                 {/* All Cameras Wide Window Matrix Link */}
                                 <button
                                     onClick={() => {
-                                        setIsAllCamerasWideOpen(true);
+                                        openVisionExternal(cameras[0]?.id);
                                         setIsMapToolsMenuOpen(false);
                                     }}
                                     className="flex items-center justify-between w-full px-3 py-2 rounded-xl text-xs font-bold hover:bg-slate-800/80 text-slate-200 transition-all text-left group cursor-pointer"
@@ -3696,7 +3700,6 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                                                 setCameras([]);
                                                 safeStorage.removeItem('agrimap_plantation_cameras');
                                                 setSelectedCameraForProperties(null);
-                                                setActiveCameraForLiveView(null);
                                                 toast.success(isKa ? "ყველა კამერა წაიშალა რუკიდან" : "All cameras cleared from map");
                                                 setIsMapToolsMenuOpen(false);
                                             }
@@ -3714,7 +3717,7 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                                 {/* Local Network Scanner & Online NVR / DVR Hub */}
                                 <button
                                     onClick={() => {
-                                        setIsNetworkNvrManagerOpen(true);
+                                        openVisionExternal();
                                         setIsMapToolsMenuOpen(false);
                                     }}
                                     className="flex items-center justify-between w-full px-3 py-2 rounded-xl text-xs font-bold hover:bg-slate-800/80 text-slate-200 transition-all text-left group cursor-pointer border border-cyan-500/20 bg-cyan-950/20"
@@ -4205,28 +4208,12 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                 }}
                 onOpenDroneSimulation={(flightFeature) => {
                     setSelectedPencilSketch(null);
-                    setIsDroneSimOpen(true);
+                    openDroneExternal((flightFeature as any)?.parentId || selectedFeatureIds[0]);
                 }}
                 onKeepAsIs={(feat) => {
                     handleUpdateFeatureDesign(feat);
                     keptSketchIdsRef.current.add(feat.id);
                     setSelectedPencilSketch(null);
-                }}
-            />
-
-            {/* Drone Mission Simulation Modal */}
-            <DroneSimulationModal
-                isOpen={isDroneSimOpen}
-                onClose={() => setIsDroneSimOpen(false)}
-                plantationFeatures={allFeatures}
-                activeMapCenter={mapProps.center || [41.7151, 44.8271]}
-                onSaveFlightPathToDraft={(feature) => {
-                    setDraftFeatures(prev => {
-                        const next = [feature, ...prev];
-                        safeStorage.setItem('agrimap_draft_features', JSON.stringify(next));
-                        return next;
-                    });
-                    logMapPlannerAction("Drone Flight Plan Created", `Flight plan "${feature.name}" saved to simulation draft`);
                 }}
             />
 
@@ -4301,26 +4288,6 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                 onStartMapRegistration={props.onStartMapRegistration}
             />
 
-            {/* Camera Planner & Deployment Modal */}
-            <CameraPlannerModal
-                isOpen={isCameraPlannerOpen}
-                onClose={() => setIsCameraPlannerOpen(false)}
-                plantationCoords={cameraPlannerCoords}
-                onSaveCamera={handleSavePlannedCamera}
-                onSaveBatchCameras={handleSaveBatchCameras}
-                plantationFeatures={allFeatures}
-                currentMapCameras={cameras}
-                onDeleteCameraFromMap={handleDeleteCamera}
-                onClearAllCameras={() => {
-                    setCameras([]);
-                    safeStorage.removeItem('agrimap_plantation_cameras');
-                    setSelectedCameraForProperties(null);
-                    setActiveCameraForLiveView(null);
-                    toast.success(isKa ? "ყველა კამერა წაიშალა რუკიდან" : "All cameras cleared from map");
-                }}
-                onOpenAllCamerasWide={() => setIsAllCamerasWideOpen(true)}
-            />
-
             {/* 3D Terrain & Slope Sculptor Modal (Falloff Engine) */}
             {isTerrainSculptorOpen && (
                 <TerrainSlopeSculptorModal
@@ -4336,41 +4303,6 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                 />
             )}
 
-            {/* Small Live Monitoring Window for clicked camera with Wide View link */}
-            {activeCameraForLiveView && (
-                <CameraLiveMonitorWindow
-                    camera={activeCameraForLiveView}
-                    onClose={() => setActiveCameraForLiveView(null)}
-                    onOpenAllCamerasWide={() => setIsAllCamerasWideOpen(true)}
-                />
-            )}
-
-            {/* All Cameras Wide Matrix Grid Window */}
-            <AllCamerasWideModal
-                isOpen={isAllCamerasWideOpen}
-                onClose={() => setIsAllCamerasWideOpen(false)}
-                cameras={cameras}
-                onSelectCameraForDetail={(cam) => setActiveCameraForLiveView(cam)}
-                onOpenAddCameraModal={() => {
-                    setCameraPlannerCoords(mapProps.center || [41.9023, 44.5]);
-                    setIsCameraPlannerOpen(true);
-                }}
-            />
-
-            {/* Drone Flight Path Planner on Real-Time Map */}
-            {droneMission && (
-                <DroneFlightPathPlanner
-                    isOpen={isDroneMissionPlannerOpen}
-                    onClose={() => setIsDroneMissionPlannerOpen(false)}
-                    mission={droneMission}
-                    onChangeMission={handleUpdateDroneMission}
-                    plantationFeatures={allFeatures}
-                    onStartSimulation={handleStartDroneSimulation}
-                    activeDrawingTool={activeDrawingTool}
-                    onSetActiveDrawingTool={onSetActiveDrawingTool}
-                />
-            )}
-
             {/* Floating Properties Panel for Selected Camera or Drone Flight Path */}
             {(selectedCameraForProperties || selectedDroneMissionForProperties) && (
                 <MapElementPropertiesPanel
@@ -4378,7 +4310,7 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                     onUpdateCamera={handleSavePlannedCamera}
                     onDeleteCamera={handleDeleteCamera}
                     onCopyCamera={handleCopyCamera}
-                    onOpenLiveView={(cam) => setActiveCameraForLiveView(cam)}
+                    onOpenLiveView={(cam) => openVisionExternal(cam.id)}
                     selectedDroneMission={selectedDroneMissionForProperties}
                     onUpdateDroneMission={handleUpdateDroneMission}
                     onDeleteDroneMission={handleDeleteDroneMission}
@@ -4388,23 +4320,6 @@ const DesignView: React.FC<DesignViewProps> = (props) => {
                         setSelectedCameraForProperties(null);
                         setSelectedDroneMissionForProperties(null);
                     }}
-                    isKa={isKa}
-                />
-            )}
-
-            {/* Local Network Scanner & Online NVR / DVR Manager Modal */}
-            {isNetworkNvrManagerOpen && (
-                <NetworkCameraNvrManagerModal
-                    isOpen={isNetworkNvrManagerOpen}
-                    onClose={() => setIsNetworkNvrManagerOpen(false)}
-                    plantationCoords={mapProps.center || [41.9023, 44.5]}
-                    plantationFeatures={allFeatures}
-                    onImportAllCameras={handleImportAllCamerasFromNvr}
-                    onSelectCameraForDetail={(cam) => {
-                        setActiveCameraForLiveView(cam);
-                        setIsNetworkNvrManagerOpen(false);
-                    }}
-                    currentCameras={cameras}
                     isKa={isKa}
                 />
             )}

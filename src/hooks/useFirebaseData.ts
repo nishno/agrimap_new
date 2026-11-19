@@ -11,6 +11,11 @@ import {
     Note, Checkpoint, SystemLog, SubscriptionRequest, Crop, StockTransaction, HarvestedProduce,
     isValidCoordinate
 } from '../types';
+import type {
+    DeviceRegistryRecord,
+    SystemNotificationRecord,
+    AgronomistDiagnosisRecord,
+} from '../types/hardwareContract';
 import { handleFirestoreError } from '../lib/firebaseUtils';
 import { safeStorage } from '../services/storageService';
 import { USE_FIREBASE } from '../config';
@@ -313,6 +318,9 @@ export const useFirebaseData = (
     const [cropVarieties, setCropVarieties] = useState<string[]>([]);
     const [crops, setCrops] = useState<Crop[]>([]);
     const [allUsers, setAllUsers] = useState<User[]>([]);
+    const [deviceRegistry, setDeviceRegistry] = useState<DeviceRegistryRecord[]>([]);
+    const [systemNotifications, setSystemNotifications] = useState<SystemNotificationRecord[]>([]);
+    const [agronomistDiagnoses, setAgronomistDiagnoses] = useState<AgronomistDiagnosisRecord[]>([]);
 
     const membershipIdsHash = memberships.map(m => m.id).sort().join(',');
 
@@ -1228,6 +1236,9 @@ export const useFirebaseData = (
         setupListener('alerts', setAlerts);
         setupListener('purchaseOrders', setPurchaseOrders);
         setupListener('suppliers', setSuppliers);
+        setupListener('deviceRegistry', setDeviceRegistry);
+        setupListener('systemNotifications', setSystemNotifications);
+        setupListener('agronomistDiagnoses', setAgronomistDiagnoses);
         
         unsubscribes.push(unsubscribeGlobalChats);
         unsubscribes.push(unsubscribePersonalAlerts);
@@ -1330,6 +1341,12 @@ export const useFirebaseData = (
         cropVarieties: Array.isArray(cropVarieties) ? cropVarieties : [],
         setCropVarieties,
         crops: sanitizeCollection(crops),
-        setCrops
+        setCrops,
+        deviceRegistry: sanitizeCollection(deviceRegistry),
+        setDeviceRegistry,
+        systemNotifications: sanitizeCollection(systemNotifications),
+        setSystemNotifications,
+        agronomistDiagnoses: sanitizeCollection(agronomistDiagnoses),
+        setAgronomistDiagnoses
     };
 };

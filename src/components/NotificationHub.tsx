@@ -3,6 +3,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XCircleIcon, BellIcon, AtSignIcon, HashIcon, CheckIcon, TrashIcon } from './Icons';
 import { Alert, User } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface NotificationHubProps {
     isOpen: boolean;
@@ -15,6 +16,8 @@ interface NotificationHubProps {
 }
 
 export const NotificationHub: React.FC<NotificationHubProps> = ({ isOpen, onClose, alerts, onClearAll, onMarkAsRead, onAlertClick, currentUser }) => {
+    const { language } = useLanguage();
+    const isKa = language === 'ka';
     return (
         <AnimatePresence>
             {isOpen && (
@@ -98,24 +101,52 @@ export const NotificationHub: React.FC<NotificationHubProps> = ({ isOpen, onClos
                                                 <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-4 block">
                                                     {new Date(alert.timestamp).toLocaleTimeString()} • {new Date(alert.timestamp).toLocaleDateString()}
                                                 </span>
-                                                {alert.actions && alert.actions.length > 0 && (
-                                                    <div className="mt-4 flex gap-2">
-                                                        {alert.actions.map((action, i) => (
-                                                            <button
-                                                                key={i}
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    if (onAlertClick) {
-                                                                        onAlertClick({ ...alert, metadata: { ...alert.metadata, _clickedAction: action } });
-                                                                    }
-                                                                }}
-                                                                className="px-4 py-2 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-indigo-700 transition-colors"
-                                                            >
-                                                                {action.label}
-                                                            </button>
-                                                        ))}
+                                                {alert.metadata?.resolvedStatus === 'approved' || alert.metadata?.resolvedStatus === 'declined' ? (
+                                                    <div className="mt-3">
+                                                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider border ${
+                                                            alert.metadata.resolvedStatus === 'approved'
+                                                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                                : 'bg-rose-50 text-rose-700 border-rose-200'
+                                                        }`}>
+                                                            {alert.metadata.resolvedStatus === 'approved'
+                                                                ? (isKa ? '✓ დადასტურებულია' : '✓ Approved')
+                                                                : (isKa ? '✕ უარყოფილია' : '✕ Declined')}
+                                                        </span>
                                                     </div>
-                                                )}
+                                                ) : alert.actions && alert.actions.length > 0 ? (
+                                                    <div className="mt-4 flex flex-wrap gap-2">
+                                                        {alert.actions.map((action, i) => {
+                                                            const isDecline = action.actionType === 'decline_join';
+                                                            const isApprove = action.actionType === 'approve_join';
+                                                            const localizedLabel = isApprove && isKa
+                                                                ? 'დადასტურება'
+                                                                : isDecline && isKa
+                                                                    ? 'უარყოფა'
+                                                                    : action.label;
+                                                            return (
+                                                                <button
+                                                                    key={i}
+                                                                    type="button"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        if (onAlertClick) {
+                                                                            onAlertClick({ ...alert, metadata: { ...alert.metadata, _clickedAction: action } });
+                                                                        }
+                                                                    }}
+                                                                    className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors cursor-pointer ${
+                                                                        isDecline
+                                                                            ? 'bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-600 hover:text-white'
+                                                                            : isApprove
+                                                                                ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                                                                : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                                                                    }`}
+                                                                >
+                                                                    {localizedLabel}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                ) : null}
                                             </div>
                                         </div>
                                         <button 

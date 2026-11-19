@@ -143,9 +143,10 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({
                   timestamp: new Date().toISOString(),
                   isRead: false,
                   createdBy: currentUser.id,
-                  metadata: { membershipId, userId: currentUser.id },
+                  metadata: { membershipId, userId: currentUser.id, orgId: selectedOrgToJoin.id },
                   actions: [
-                      { label: 'Approve', actionType: 'approve_join', actionData: { membershipId, userId: currentUser.id } }
+                      { label: 'Approve', actionType: 'approve_join', actionData: { membershipId, userId: currentUser.id, orgId: selectedOrgToJoin.id } },
+                      { label: 'Decline', actionType: 'decline_join', actionData: { membershipId, userId: currentUser.id, orgId: selectedOrgToJoin.id } }
                   ]
               });
           } else {
@@ -182,9 +183,10 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({
                   timestamp: new Date().toISOString(),
                   isRead: false,
                   createdBy: currentUser.id,
-                  metadata: { membershipId, userId: currentUser.id },
+                  metadata: { membershipId, userId: currentUser.id, orgId: selectedOrgToJoin.id },
                   actions: [
-                      { label: 'Approve', actionType: 'approve_join', actionData: { membershipId, userId: currentUser.id } }
+                      { label: 'Approve', actionType: 'approve_join', actionData: { membershipId, userId: currentUser.id, orgId: selectedOrgToJoin.id } },
+                      { label: 'Decline', actionType: 'decline_join', actionData: { membershipId, userId: currentUser.id, orgId: selectedOrgToJoin.id } }
                   ]
               };
               const savedAlerts = safeStorage.safeParse(localStorage.getItem('mock_alerts'), []);
@@ -202,6 +204,11 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({
                   channelId: 'general',
                   isDirectMessage: false,
                   organizationId: selectedOrgToJoin.id,
+                  ticketType: 'company_join',
+                  ticketStatus: 'pending',
+                  ticketOrgId: selectedOrgToJoin.id,
+                  ticketOrgName: selectedOrgToJoin.name,
+                  ticketMembershipId: membershipId,
                   replies: []
               });
           }
@@ -379,6 +386,11 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({
               channelId: 'general',
               isDirectMessage: false,
               organizationId: selectedOrgToJoin.id,
+              ticketType: 'company_join',
+              ticketStatus: 'pending',
+              ticketOrgId: selectedOrgToJoin.id,
+              ticketOrgName: selectedOrgToJoin.name,
+              ticketMembershipId: `${user.id}_${selectedOrgToJoin.id}`,
               replies: []
             });
             toast.success((t('reg.handshake_success') || "Handshake initiated with {orgName}.").replace('{orgName}', selectedOrgToJoin.name));

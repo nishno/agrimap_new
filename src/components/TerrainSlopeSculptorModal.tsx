@@ -18,8 +18,7 @@ import {
 } from '../utils/demTerrainViewshed';
 import { safeStorage } from '../services/storageService';
 import type { PlantationFeature } from '../types';
-import type { DroneFlightMission } from './DroneFlightPathPlanner';
-import type { PlantationCamera } from './SystemManagement/HardwareLabs/CameraNvrLab';
+import type { DroneFlightMission, PlantationCamera } from '../types/hardwareContract';
 
 interface TerrainSlopeSculptorModalProps {
     isOpen: boolean;

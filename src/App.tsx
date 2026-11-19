@@ -33,17 +33,21 @@ import { generateAgriBusinessAnalysis, analyzePlantDisease, generateDocumentComp
 import DataStateAuditor from './components/SystemManagement/DataStateAuditor';
 import { SyncConflictModal } from './components/SystemManagement/SyncConflictModal';
 import HardwareLabs from './components/SystemManagement/HardwareLabs';
-import { HardwareTestingSandboxMap } from './components/SystemManagement/HardwareLabs/HardwareTestingSandboxMap';
+import { ExternalModuleModal } from './components/ExternalModuleModal';
+import { ExternalBridgeSettingsModal } from './components/ExternalBridgeSettingsModal';
+import { launchExternalModule, openExternalBridgeSettings, type PreparedBridgeSession } from './services/ExternalModuleBridge';
+import type { DeviceRegistryRecord, ExternalModuleId, ExternalTelemetryReturn } from './types/hardwareContract';
 import { FloatingLabsSwitcher } from './components/SystemManagement/FloatingLabsSwitcher';
 import RootAdminView from './components/RootAdminView';
 import { MapComponentProps } from './components/MapComponent';
 import { safeStorage } from './services/storageService';
 import { initGlobalHardwareScannerListener } from './utils/hardwareScannerBus';
+import { resolveCompanyTicketOrJoin } from './utils/companyTicketActions';
 import { checkModuleAccess, User, Organization, Membership, AppMode, SystemLog, InventoryItem, InventoryTransaction, HarvestEvent, HarvestEntry, Pallet, HarvestLog, Account, Transaction, Role, Employee, DailyLogEntry, WorkAssignment, Machinery, EmployeeGroup, ForumPost, Listing, Bid, Review, Alert, Project, ProjectData, PlantationFeature, Layer, AreaPlantationFeature, NutritionPlan, PlanExecution, DashboardWidget, ActiveDrawingTool, FeatureType, LinePlantationFeature, SeedlingPlantationFeature, VarietyRule, AiReport, SoilAnalysisResult, UploadedDocument, PlantDiseaseAnalysis, SoilData, AnalysisResult, GroundingSource, AssistantMessage, NotePlantationFeature, Permission, ALL_PERMISSIONS, Supplier, PurchaseOrder, OperationalLog, Note, UserRole, OrganizationTicket, WorkExperience, Crop, isValidCoordinate, LocalServerConfig, MaterialUsed, AssignedVehicle, StockTransaction, HarvestedProduce } from './types';
 import { useLanguage } from './contexts/LanguageContext';
 import { Toaster, toast } from 'sonner';
 import { db, auth, doc, getDocFromServer, onSnapshot, collection, query, where, setDoc, updateDoc, deleteDoc, addDoc, getDocs, writeBatch, enableNetwork, disableNetwork, getSyncQueueSize, clearSyncQueue, testFirestoreConnection, resetFirestorePersistence, setConnectionState, trackModification } from './firebase';
-import { syncManager } from './services/SyncManager';
+import { syncManager, CLOUD_SYNC_TOAST_ID } from './services/SyncManager';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { getMainPlantation, resolvePlantationCenter, CANONICAL_AGROBARI_CENTER } from './utils/plantationHelper';
 import FieldManagerModal from './components/FieldManagerModal';
@@ -298,17 +302,69 @@ const App: React.FC = () => {
     });
 
     const handleAddDevice = (device: any) => {
+        const orgId = device.organizationId || activeOrgId || 'personal';
+        const normalizedDevice = { ...device, organizationId: orgId };
+        let wasRemoved = false;
         setHardwareDevices(prev => {
-            const exists = prev.find(d => d.id === device.id && d.organizationId === device.organizationId);
+            const exists = prev.find(d => d.id === device.id && d.organizationId === orgId);
             let updated;
             if (exists) {
-                updated = prev.filter(d => !(d.id === device.id && d.organizationId === device.organizationId));
+                wasRemoved = true;
+                updated = prev.filter(d => !(d.id === device.id && d.organizationId === orgId));
             } else {
-                updated = [...prev, device];
+                updated = [...prev, normalizedDevice];
             }
             localStorage.setItem('hardware_devices', JSON.stringify(updated));
             return updated;
         });
+
+        // Keep Core deviceRegistry synchronized for external hardware apps
+        setDeviceRegistry(prev => {
+            if (wasRemoved) {
+                return prev.filter(d => d.id !== device.id);
+            }
+            const record: DeviceRegistryRecord = {
+                id: device.id,
+                organizationId: orgId,
+                type: (device.type || 'SCANNER').toUpperCase() as any,
+                name: device.name || device.id,
+                model: device.model,
+                connectionType: device.connectionType,
+                connectionInfo: device.connectionInfo,
+                ipAddress: device.ipAddress,
+                streamUrl: device.streamUrl,
+                rtspPort: device.rtspPort,
+                fovConfig: device.fovConfig,
+                coords: device.coords,
+                status: (device.status || 'ONLINE').toUpperCase() as any,
+                lastPing: new Date().toISOString(),
+                sectorId: device.sectorId,
+                assignedWorkerId: device.assignedWorkerId,
+                assignedMachineryId: device.assignedMachineryId,
+                updatedAt: new Date().toISOString(),
+            };
+            const idx = prev.findIndex(d => d.id === device.id);
+            if (idx >= 0) {
+                const next = [...prev];
+                next[idx] = { ...next[idx], ...record };
+                return next;
+            }
+            return [record, ...prev];
+        });
+
+        if (USE_FIREBASE && auth.currentUser && currentUser?.id !== 'root-system') {
+            if (wasRemoved) {
+                deleteDoc(doc(db, 'deviceRegistry', device.id)).catch(() => {});
+            } else {
+                setDoc(doc(db, 'deviceRegistry', device.id), sanitizeObject({
+                    ...normalizedDevice,
+                    type: (device.type || 'SCANNER').toUpperCase(),
+                    status: (device.status || 'ONLINE').toUpperCase(),
+                    lastPing: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                }), { merge: true }).catch(() => {});
+            }
+        }
     };
 
     useEffect(() => {
@@ -383,7 +439,7 @@ const App: React.FC = () => {
             
             console.info(`[Headless Sync] Triggering silent queue push with delay backoff ${currentDelay}ms...`);
             try {
-                const success = await syncManager.pushAllToCloud();
+                const success = await syncManager.pushAllToCloud({ silent: true });
                 if (success) {
                     setIsHeadlessSyncing(false);
                     setIsManualOffline(false);
@@ -487,11 +543,11 @@ const App: React.FC = () => {
         try {
             // First flush any memory-dirty items that are waiting for debounce/manual triggers
             await flushSyncQueue();
-            const success = await syncManager.pushAllToCloud();
+            const success = await syncManager.pushAllToCloud({ forceOnline: true, includeErrored: true });
             if (success) {
                 setIsManualOffline(false);
                 localStorage.setItem('agrimap-manual-offline', 'false');
-                await enableNetwork(db);
+                await setConnectionState(true);
             }
         } catch (error) {
             console.error("Push failed:", error);
@@ -580,7 +636,13 @@ const App: React.FC = () => {
         setSubscriptionRequests,
         discoverableOrganizations,
         cropVarieties,
-        setCropVarieties
+        setCropVarieties,
+        deviceRegistry,
+        setDeviceRegistry,
+        systemNotifications,
+        setSystemNotifications,
+        agronomistDiagnoses,
+        setAgronomistDiagnoses
     } = useFirebaseData(currentUser, isAuthReady, activeOrgId, isRoot, isConnectionHealthy);
 
     const [historyStack, setHistoryStack] = useState<PlantationFeature[][]>([]);
@@ -874,6 +936,109 @@ const App: React.FC = () => {
     const [aiConsoleTab, setAiConsoleTab] = useState<'diagnostics' | 'billing' | 'keys' | 'engine'>('diagnostics');
     const [aiConsoleNotice, setAiConsoleNotice] = useState<any>(null);
     const [aiConsoleReason, setAiConsoleReason] = useState<string | undefined>(undefined);
+    const [activeExternalSession, setActiveExternalSession] = useState<PreparedBridgeSession | null>(null);
+    const [bridgeSettingsModal, setBridgeSettingsModal] = useState<{ isOpen: boolean; moduleId?: ExternalModuleId }>({ isOpen: false });
+    const [readDiagnosisIds, setReadDiagnosisIds] = useState<string[]>(() => safeStorage.safeParse(localStorage.getItem('agrimap_read_diagnoses'), []));
+
+    useEffect(() => {
+        const onOpenExternalModule = (e: Event) => {
+            const detail = (e as CustomEvent<PreparedBridgeSession>).detail;
+            if (detail) setActiveExternalSession(detail);
+        };
+        const onOpenBridgeSettings = (e: Event) => {
+            const detail = (e as CustomEvent<{ moduleId?: ExternalModuleId }>).detail;
+            setBridgeSettingsModal({ isOpen: true, moduleId: detail?.moduleId });
+        };
+        const onExternalTelemetryReturn = (e: Event) => {
+            const msg = (e as CustomEvent<ExternalTelemetryReturn>).detail;
+            if (!msg) return;
+            const p = msg.payload || {};
+
+            if (msg.type === 'NOTIFICATION') {
+                const notifId = p.id || `sysnotif-${Date.now()}`;
+                setSystemNotifications(prev => {
+                    if (prev.some(n => n.id === notifId)) return prev;
+                    return [{
+                        id: notifId,
+                        organizationId: msg.organizationId,
+                        sourceApp: msg.sourceApp,
+                        severity: p.severity || 'warning',
+                        title: p.title || `${msg.sourceApp.toUpperCase()} Alert`,
+                        message: p.message || 'Hardware telemetry notification received',
+                        sectorId: p.sectorId,
+                        deviceId: p.deviceId,
+                        coords: p.coords,
+                        isRead: false,
+                        createdAt: msg.timestamp || new Date().toISOString(),
+                    }, ...prev];
+                });
+                toast.warning(p.title || 'External Hardware Alert', { description: p.message });
+            } else if (msg.type === 'DIAGNOSIS') {
+                const diagId = p.id || `diag-${Date.now()}`;
+                setAgronomistDiagnoses(prev => {
+                    if (prev.some(d => d.id === diagId)) return prev;
+                    return [{
+                        id: diagId,
+                        organizationId: msg.organizationId,
+                        sectorId: p.sectorId,
+                        seedlingId: p.seedlingId,
+                        droneId: p.droneId,
+                        title: p.title || 'Drone Agronomist Diagnosis',
+                        diagnosis: p.diagnosis || 'Field inspection result received',
+                        healthStatus: p.healthStatus || 'SUSPICIOUS',
+                        confidence: p.confidence,
+                        photoRef: p.photoRef,
+                        coords: p.coords,
+                        recommendedAction: p.recommendedAction,
+                        createdAt: msg.timestamp || new Date().toISOString(),
+                    }, ...prev];
+                });
+                if (p.seedlingId && p.healthStatus) {
+                    const mappedCondition: 'Good' | 'Suspicious' | 'Dried' = p.healthStatus === 'DRIED' ? 'Dried' : p.healthStatus === 'SUSPICIOUS' ? 'Suspicious' : 'Good';
+                    setPlantationFeatures(prev => prev.map(f =>
+                        f.id === p.seedlingId && f.type === 'seedling'
+                            ? { ...f, condition: mappedCondition, healthStatus: p.healthStatus }
+                            : f
+                    ));
+                }
+                toast.info(p.title || 'Agronomist Diagnosis Received', { description: p.diagnosis });
+            } else if (msg.type === 'SEEDLING_HEALTH' && p.seedlingId && p.healthStatus) {
+                const mappedCondition: 'Good' | 'Suspicious' | 'Dried' = p.healthStatus === 'DRIED' ? 'Dried' : p.healthStatus === 'SUSPICIOUS' ? 'Suspicious' : 'Good';
+                setPlantationFeatures(prev => prev.map(f =>
+                    f.id === p.seedlingId && f.type === 'seedling'
+                        ? { ...f, condition: mappedCondition, healthStatus: p.healthStatus }
+                        : f
+                ));
+            } else if (msg.type === 'DEVICE_STATUS' && p.id) {
+                setDeviceRegistry(prev => {
+                    const idx = prev.findIndex(d => d.id === p.id);
+                    if (idx >= 0) {
+                        const next = [...prev];
+                        next[idx] = { ...next[idx], ...p, lastPing: msg.timestamp || new Date().toISOString() };
+                        return next;
+                    }
+                    return [{
+                        id: p.id,
+                        organizationId: msg.organizationId,
+                        type: p.type || 'CAMERA',
+                        name: p.name || p.id,
+                        status: p.status || 'ONLINE',
+                        coords: p.coords,
+                        lastPing: msg.timestamp || new Date().toISOString(),
+                    }, ...prev];
+                });
+            }
+        };
+
+        window.addEventListener('agrimap:open-external-module', onOpenExternalModule);
+        window.addEventListener('agrimap:open-external-bridge-settings', onOpenBridgeSettings);
+        window.addEventListener('agrimap:external-telemetry-return', onExternalTelemetryReturn);
+        return () => {
+            window.removeEventListener('agrimap:open-external-module', onOpenExternalModule);
+            window.removeEventListener('agrimap:open-external-bridge-settings', onOpenBridgeSettings);
+            window.removeEventListener('agrimap:external-telemetry-return', onExternalTelemetryReturn);
+        };
+    }, [setAgronomistDiagnoses, setDeviceRegistry, setPlantationFeatures, setSystemNotifications]);
 
     useEffect(() => {
         const handleOpenAiConsole = (e: any) => {
@@ -1068,81 +1233,100 @@ const App: React.FC = () => {
 
     useEffect(() => {
         let failureCount = 0;
+        let hasShownOfflineWarning = false;
+        let hasShownLocalError = false;
+        let isChecking = false;
+
         const checkConnection = async () => {
-            const healthy = await testFirestoreConnection();
-            const isManualOffline = localStorage.getItem('agrimap-manual-offline') === 'true';
-            
-            // If it was unhealthy and now it's healthy, reset failure count
-            if (healthy && !isConnectionHealthy) {
-                if (!isManualOffline) {
-                    toast.success("Connection Restored: System Online.");
-                    // Re-enable network
-                    await setConnectionState(true);
+            if (isChecking) return;
+            isChecking = true;
+            try {
+                const isManualOfflineMode = localStorage.getItem('agrimap-manual-offline') === 'true';
+
+                // In intentional/manual offline mode, do not probe or spam "Cloud backend unreachable" warnings
+                if (isManualOfflineMode) {
+                    failureCount = 0;
+                    hasShownOfflineWarning = false;
+                    hasShownLocalError = false;
+                    await setConnectionState(false);
+                    setIsConnectionHealthy(false);
+                    setShowReSyncPrompt(false);
+                    return;
                 }
 
-                // Show re-sync trigger prompt if there are pending modifications in local storage
-                try {
-                    const syncQueue = JSON.parse(localStorage.getItem('agrimap-pending-sync') || '[]');
-                    const pending = syncQueue.filter((item: any) => item.status === 'pending');
-                    if (pending.length > 0) {
-                        setPendingOfflineCount(pending.length);
-                        setShowReSyncPrompt(true);
-                    }
-                } catch (e) {}
-            } else if (!healthy && (isConnectionHealthy || USE_FIREBASE)) {
-                // Instantly disable network listeners so Firestore stops firing Listen/channel RPC retries in the background
-                await setConnectionState(false);
-            }
-            
-            setIsConnectionHealthy(healthy);
-            
-            if (!healthy && USE_FIREBASE) {
-                failureCount++;
-                const savedConfig = localStorage.getItem('agrimap-local-config');
-                let isLocal = false;
-                try {
-                    if (savedConfig) isLocal = JSON.parse(savedConfig).isLocalMode;
-                } catch (e) {}
+                const healthy = await testFirestoreConnection();
 
-                // Trigger Smart Connection Disconnect Modal on network loss
-                const isAlreadyOffline = localStorage.getItem('agrimap-manual-offline') === 'true';
-                if (!isAlreadyOffline && failureCount >= 5) {
-                    setShowSmartDisconnectModal(true);
-                }
+                setIsConnectionHealthy(prevHealthy => {
+                    if (healthy && !prevHealthy) {
+                        toast.success("Connection Restored: System Online.", { id: 'sync-online-restored' });
+                        setConnectionState(true).catch(console.error);
 
-                if (isLocal && (failureCount >= 5 || !isConnectionHealthy)) {
-                    toast.error("Unstable Connection: Local Node or Cloud Backend unreachable.", {
-                        id: 'connection-error',
-                        duration: 10000,
-                        action: {
-                            label: "Emergency Cloud Mode",
-                            onClick: () => {
-                                localStorage.setItem('agrimap-local-config', JSON.stringify({ isLocalMode: false, serverIp: '127.0.0.1', autoDiscovery: true }));
-                                sessionStorage.setItem('agrimap-bypass-local-node', 'true');
-                                window.location.reload();
+                        try {
+                            const syncQueue = JSON.parse(localStorage.getItem('agrimap-pending-sync') || '[]');
+                            const pending = syncQueue.filter((item: any) => item.status === 'pending' && item.path !== 'users/guest' && !String(item.path || '').startsWith('users/guest/'));
+                            if (pending.length > 0) {
+                                setPendingOfflineCount(pending.length);
+                                setShowReSyncPrompt(true);
                             }
-                        }
-                    });
-                } else if (!isLocal && failureCount >= 6) {
-                    toast.warning("Syncing disabled: Cloud backend unreachable. Offline changes will be queued.", {
-                        id: 'sync-warning'
-                    });
+                        } catch (e) {}
+                    } else if (!healthy && (prevHealthy || USE_FIREBASE)) {
+                        setConnectionState(false).catch(console.error);
+                    }
+                    return healthy;
+                });
+
+                if (healthy) {
+                    failureCount = 0;
+                    hasShownOfflineWarning = false;
+                    hasShownLocalError = false;
+                    setConnectionState(true).catch(console.error);
+                } else if (USE_FIREBASE) {
+                    failureCount++;
+                    setShowReSyncPrompt(false);
+
+                    const savedConfig = localStorage.getItem('agrimap-local-config');
+                    let isLocal = false;
+                    try {
+                        if (savedConfig) isLocal = JSON.parse(savedConfig).isLocalMode;
+                    } catch (e) {}
+
+                    if (failureCount >= 5) {
+                        setShowSmartDisconnectModal(true);
+                    }
+
+                    if (isLocal && failureCount >= 5 && !hasShownLocalError) {
+                        hasShownLocalError = true;
+                        toast.error("Unstable Connection: Local Node or Cloud Backend unreachable.", {
+                            id: 'connection-error',
+                            duration: 10000,
+                            action: {
+                                label: "Emergency Cloud Mode",
+                                onClick: () => {
+                                    localStorage.setItem('agrimap-local-config', JSON.stringify({ isLocalMode: false, serverIp: '127.0.0.1', autoDiscovery: true }));
+                                    sessionStorage.setItem('agrimap-bypass-local-node', 'true');
+                                    window.location.reload();
+                                }
+                            }
+                        });
+                    } else if (!isLocal && failureCount >= 6 && !hasShownOfflineWarning) {
+                        hasShownOfflineWarning = true;
+                        toast.warning("Syncing disabled: Cloud backend unreachable. Offline changes will be queued.", {
+                            id: 'sync-warning'
+                        });
+                    }
                 }
-            } else {
-                failureCount = 0;
+            } finally {
+                isChecking = false;
             }
         };
 
         checkConnection();
-        const interval = setInterval(checkConnection, 15000); // Check every 15s for more responsiveness
-        
-        window.addEventListener('agrimap-sync-queue-updated', checkConnection);
+        const interval = setInterval(checkConnection, 15000);
 
         return () => {
             clearInterval(interval);
-            window.removeEventListener('agrimap-sync-queue-updated', checkConnection);
         };
-    }, [isConnectionHealthy]);
+    }, []);
 
     const handleFullReset = async () => {
         if (!isRoot) {
@@ -1716,7 +1900,7 @@ const App: React.FC = () => {
     }, [activeOrgId]);
 
     const userMemberships = useMemo(() => {
-        const filtered = memberships.filter(m => m.userId === currentUser?.id);
+        const filtered = memberships.filter(m => m.userId === currentUser?.id && (m.status === 'active' || !m.status));
         return Array.from(new Map(filtered.map(m => [m.id, m])).values());
     }, [memberships, currentUser]);
 
@@ -1724,8 +1908,8 @@ const App: React.FC = () => {
     
     const organizationTickets = useMemo(() => {
         if (!currentUser) return [];
-        // Filtering by membership is strictly required by the user even for admins
-        const userMems = memberships.filter(m => m.userId === currentUser.id);
+        // Filtering by active membership is strictly required by the user even for admins
+        const userMems = memberships.filter(m => m.userId === currentUser.id && (m.status === 'active' || !m.status));
         
         return userMems.reduce((acc, m) => {
             const org = organizations.find(o => o.id === m.organizationId);
@@ -2165,7 +2349,15 @@ const App: React.FC = () => {
     const [pendingSyncCount, setPendingSyncCount] = useState(getSyncQueueSize());
 
     useEffect(() => {
-        const updateSyncCount = () => setPendingSyncCount(getSyncQueueSize());
+        const updateSyncCount = () => {
+            setPendingSyncCount(getSyncQueueSize());
+            try {
+                const syncQueue = JSON.parse(localStorage.getItem('agrimap-pending-sync') || '[]');
+                const pendingCount = syncQueue.filter((item: any) => item.status === 'pending' && item.path !== 'users/guest' && !String(item.path || '').startsWith('users/guest/')).length;
+                setPendingOfflineCount(pendingCount);
+            } catch {}
+        };
+        updateSyncCount();
         window.addEventListener('agrimap-sync-queue-updated', updateSyncCount);
         return () => window.removeEventListener('agrimap-sync-queue-updated', updateSyncCount);
     }, []);
@@ -3922,6 +4114,27 @@ const App: React.FC = () => {
     };
 
     const handleMarkAlertAsRead = async (alertId: string) => {
+        const isSysNotif = systemNotifications.some(n => n.id === alertId);
+        if (isSysNotif) {
+            setSystemNotifications(prev => prev.map(n => n.id === alertId ? { ...n, isRead: true } : n));
+            if (USE_FIREBASE && auth.currentUser && currentUser?.id !== 'root-system') {
+                try {
+                    await updateDoc(doc(db, 'systemNotifications', alertId), { isRead: true });
+                } catch (error) {
+                    handleFirestoreError(error, 'update' as any, `systemNotifications/${alertId}`);
+                }
+            }
+            return;
+        }
+        const isDiag = agronomistDiagnoses.some(d => d.id === alertId);
+        if (isDiag) {
+            setReadDiagnosisIds(prev => {
+                const next = prev.includes(alertId) ? prev : [...prev, alertId];
+                localStorage.setItem('agrimap_read_diagnoses', JSON.stringify(next));
+                return next;
+            });
+            return;
+        }
         if (!USE_FIREBASE) {
             setAlerts(prev => prev.map(a => a.id === alertId ? { ...a, isRead: true } : a));
             return;
@@ -3934,6 +4147,12 @@ const App: React.FC = () => {
     };
 
     const handleClearAllAlerts = async () => {
+        setSystemNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+        if (agronomistDiagnoses.length > 0) {
+            const allDiagIds = agronomistDiagnoses.map(d => d.id);
+            setReadDiagnosisIds(allDiagIds);
+            localStorage.setItem('agrimap_read_diagnoses', JSON.stringify(allDiagIds));
+        }
         if (!USE_FIREBASE) {
             setAlerts([]);
             return;
@@ -3951,13 +4170,13 @@ const App: React.FC = () => {
     };
 
     const handleSetAlerts = async (newAlerts: Alert[]) => {
-        if (!activeOrgId) return;
+        if (!activeOrgId && !newAlerts.some(a => a.organizationId || a.recipientId)) return;
         if (USE_FIREBASE && auth.currentUser && currentUser?.id !== 'root-system') {
             try {
                 const batch = writeBatch(db);
                 newAlerts.forEach(a => {
                     const id = a.id || `alert-${Date.now()}-${Math.random()}`;
-                    batch.set(doc(db, 'alerts', id), { ...a, id, organizationId: activeOrgId });
+                    batch.set(doc(db, 'alerts', id), sanitizeObject({ ...a, id, organizationId: a.organizationId || activeOrgId || 'personal' }));
                 });
                 await batch.commit();
             } catch (error) {
@@ -3969,7 +4188,7 @@ const App: React.FC = () => {
                 const itemsToSave: Alert[] = [];
                 newAlerts.forEach(item => {
                     const id = item.id || `alert-${Date.now()}-${Math.random()}`;
-                    const newItem = { ...item, id, organizationId: activeOrgId || 'personal' };
+                    const newItem = { ...item, id, organizationId: item.organizationId || activeOrgId || 'personal' };
                     const idx = newItems.findIndex(i => i.id === item.id);
                     if (idx >= 0) newItems[idx] = newItem;
                     else newItems.push(newItem);
@@ -4302,13 +4521,13 @@ const App: React.FC = () => {
             channelId: post.channelId || 'general',
             ...post,
             id,
-            authorId: currentUser?.id || 'anon',
-            authorName: currentUser?.name || 'Anon',
-            timestamp: now,
+            authorId: post.authorId || currentUser?.id || 'anon',
+            authorName: post.authorName || currentUser?.name || 'Anon',
+            timestamp: post.timestamp || now,
             createdAt: now, // Add for compatibility
-            organizationId: activeOrgId || 'personal',
-            replies: [],
-            readBy: [currentUser?.id || 'anon']
+            organizationId: post.organizationId || activeOrgId || 'personal',
+            replies: post.replies || [],
+            readBy: post.readBy || [currentUser?.id || 'anon']
         } as ForumPost;
 
         // Keyword detection for Marketplace
@@ -5519,9 +5738,10 @@ const App: React.FC = () => {
                         type: 'info',
                         timestamp: new Date().toISOString(),
                         isRead: false,
-                        metadata: { membershipId: membershipId, userId: user.id },
+                        metadata: { membershipId: membershipId, userId: user.id, orgId: orgToJoin.id },
                         actions: [
-                            { label: 'Approve', actionType: 'approve_join', actionData: { membershipId, userId: user.id } }
+                            { label: 'Approve', actionType: 'approve_join', actionData: { membershipId, userId: user.id, orgId: orgToJoin.id } },
+                            { label: 'Decline', actionType: 'decline_join', actionData: { membershipId, userId: user.id, orgId: orgToJoin.id } }
                         ]
                     });
                 }
@@ -5602,9 +5822,10 @@ const App: React.FC = () => {
                         timestamp: new Date().toISOString(),
                         isRead: false,
                         createdBy: user.id,
-                        metadata: { membershipId: membershipId, userId: user.id },
+                        metadata: { membershipId: membershipId, userId: user.id, orgId: orgToJoin.id },
                         actions: [
-                            { label: 'Approve', actionType: 'approve_join', actionData: { membershipId, userId: user.id } }
+                            { label: 'Approve', actionType: 'approve_join', actionData: { membershipId, userId: user.id, orgId: orgToJoin.id } },
+                            { label: 'Decline', actionType: 'decline_join', actionData: { membershipId, userId: user.id, orgId: orgToJoin.id } }
                         ]
                     };
                     const savedAlerts = safeStorage.safeParse(localStorage.getItem('mock_alerts'), []);
@@ -5624,6 +5845,11 @@ const App: React.FC = () => {
                         channelId: 'general',
                         isDirectMessage: false,
                         organizationId: orgToJoin.id,
+                        ticketType: 'company_join' as const,
+                        ticketStatus: 'pending' as const,
+                        ticketOrgId: orgToJoin.id,
+                        ticketOrgName: orgToJoin.name,
+                        ticketMembershipId: membershipId,
                         replies: []
                     };
                     const savedPosts = safeStorage.safeParse(localStorage.getItem('mock_forumPosts'), []);
@@ -5767,8 +5993,60 @@ const App: React.FC = () => {
         };
     }, [currentUser?.id, currentUser?.isGuest]);
 
+    const mergedHardwareAndCoreAlerts = useMemo<Alert[]>(() => {
+        const hardwareAlerts: Alert[] = systemNotifications.map(n => ({
+            id: n.id,
+            organizationId: n.organizationId,
+            title: `[${n.sourceApp.toUpperCase()}] ${n.title}`,
+            content: n.message,
+            type: n.severity === 'critical' ? 'error' : n.severity === 'warning' ? 'warning' : 'info',
+            timestamp: n.createdAt,
+            isRead: n.isRead,
+            metadata: {
+                _sourceCollection: 'systemNotifications',
+                _sourceApp: n.sourceApp,
+                sectorId: n.sectorId,
+                deviceId: n.deviceId,
+                coords: n.coords,
+            },
+        }));
+
+        const diagnosisAlerts: Alert[] = agronomistDiagnoses.map(d => ({
+            id: d.id,
+            organizationId: d.organizationId,
+            title: `[DRONE DIAGNOSIS] ${d.title}`,
+            content: `${d.diagnosis}${d.recommendedAction ? ` — Action: ${d.recommendedAction}` : ''}`,
+            type: d.healthStatus === 'DRIED' ? 'error' : d.healthStatus === 'SUSPICIOUS' ? 'warning' : 'info',
+            timestamp: d.createdAt,
+            isRead: readDiagnosisIds.includes(d.id),
+            metadata: {
+                _sourceCollection: 'agronomistDiagnoses',
+                _sourceApp: 'drone',
+                sectorId: d.sectorId,
+                seedlingId: d.seedlingId,
+                coords: d.coords,
+                healthStatus: d.healthStatus,
+            },
+        }));
+
+        return [...hardwareAlerts, ...diagnosisAlerts, ...(alerts || [])].sort(
+            (a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()
+        );
+    }, [alerts, systemNotifications, agronomistDiagnoses, readDiagnosisIds]);
+
+    const mergedDeviceRegistry = useMemo(() => {
+        const byId = new Map<string, any>();
+        hardwareDevices
+            .filter(d => !activeOrgId || activeOrgId === 'ALL' || d.organizationId === activeOrgId)
+            .forEach(d => byId.set(d.id, d));
+        deviceRegistry
+            .filter(d => !activeOrgId || activeOrgId === 'ALL' || d.organizationId === activeOrgId)
+            .forEach(d => byId.set(d.id, { ...(byId.get(d.id) || {}), ...d }));
+        return Array.from(byId.values());
+    }, [hardwareDevices, deviceRegistry, activeOrgId]);
+
     const notificationsCount = useMemo(() => {
-        const unreadAlerts = alerts.filter(a => !a.isRead).length;
+        const unreadAlerts = mergedHardwareAndCoreAlerts.filter(a => !a.isRead).length;
         const unreadDMs = forumPosts.filter(p => 
             p.isDirectMessage && 
             p.recipientId === currentUser?.id && 
@@ -5784,7 +6062,7 @@ const App: React.FC = () => {
         ).length;
 
         return unreadAlerts + unreadDMs + unreadMentions;
-    }, [alerts, forumPosts, currentUser]);
+    }, [mergedHardwareAndCoreAlerts, forumPosts, currentUser]);
 
     const handlePushOfflineData = async () => {
         if (!USE_FIREBASE || isManualOffline || !currentUser || currentUser.id === 'root-system') return;
@@ -6237,7 +6515,7 @@ const App: React.FC = () => {
                     machinery={machinery || []} 
                     crops={crops} 
                     cropVarieties={cropVarieties}
-                    hardwareDevices={hardwareDevices.filter(d => d.organizationId === activeOrgId)}
+                    hardwareDevices={mergedDeviceRegistry}
                     isManualOffline={isManualOffline}
                     onToggleOffline={handleToggleOffline}
                     onSetAppMode={setAppMode}
@@ -6336,6 +6614,13 @@ const App: React.FC = () => {
                     setAlerts={setAlerts}
                     onSetAiTab={setAiTab}
                     onMarkPostAsRead={handleMarkPostAsRead}
+                    activeOrgId={activeOrgId}
+                    memberships={memberships}
+                    onSetMemberships={handleSetMemberships}
+                    onSetEmployees={handleSetEmployees}
+                    onSetUsers={handleSetUsers}
+                    roles={roles || []}
+                    onUpdatePost={handleUpdatePost}
                 />
             );
             case 'stock': 
@@ -6398,6 +6683,8 @@ const App: React.FC = () => {
                     harvestEntries={harvestEntries || []}
                     dailyLogs={dailyLogs || []}
                     onSetDailyLogs={handleSetDailyLogs}
+                    alerts={alerts || []}
+                    onSetAlerts={setAlerts}
                 />
             );
             case 'personalization': return <PersonalizationView onSetThemeSettings={() => {}} />;
@@ -6554,18 +6841,96 @@ const App: React.FC = () => {
             case 'labs':
                 if (labTab === 'devices_map') {
                     return (
-                        <main className="flex-1 relative w-full h-full overflow-hidden flex flex-col" style={{ backgroundColor: 'var(--bg-canvas, #FAFBF8)', color: 'var(--text-main, #163022)' }}>
-                            {/* Floating Top Labs Switcher Bar (Movable & Minimizable) */}
+                        <main className="flex-1 relative w-full h-full overflow-y-auto flex flex-col p-6 md:p-10" style={{ backgroundColor: 'var(--bg-canvas, #FAFBF8)', color: 'var(--text-main, #163022)' }}>
                             <FloatingLabsSwitcher 
                                 labTab={labTab} 
                                 onSelectLabTab={(tab: string) => setLabTab(tab as any)} 
                             />
+                            <div className="max-w-4xl mx-auto w-full mt-12 rounded-2xl border border-[#D8E3D4] bg-white p-6 md:p-8 shadow-sm space-y-6">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#E5ECE2] pb-5">
+                                    <div>
+                                        <span className="text-[11px] font-mono uppercase tracking-wider text-emerald-700">Decoupled Hardware Bridge</span>
+                                        <h2 className="text-2xl font-black tracking-tight text-[#163022] mt-1">External Field &amp; Fleet Telemetry Apps</h2>
+                                        <p className="text-sm text-[#4A6753] mt-1">
+                                            Heavy GPS tracking, NVR video codecs, and 3D Drone mission engines run autonomously outside Core for zero-lag tablet operation.
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <button
+                                            type="button"
+                                            onClick={() => openExternalBridgeSettings()}
+                                            className="px-3.5 py-2 rounded-xl border border-[#CFDCCB] bg-[#FAFBF8] hover:bg-slate-100 text-xs font-bold text-[#244130] cursor-pointer"
+                                        >
+                                            Configure Endpoints
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setLabTab('hardware')}
+                                            className="px-3.5 py-2 rounded-xl bg-[#163022] hover:bg-[#244130] text-xs font-bold text-white cursor-pointer"
+                                        >
+                                            Back to Core Hardware
+                                        </button>
+                                    </div>
+                                </div>
 
-                            <HardwareTestingSandboxMap 
-                                plantationFeatures={currentOrgFeatures}
-                                mapCenter={mapProps.center || [41.9023, 44.5]}
-                                onSwitchTab={() => setLabTab('hardware')}
-                            />
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <button
+                                        type="button"
+                                        onClick={() => launchExternalModule({
+                                            moduleId: 'gps_iot',
+                                            orgId: activeOrgId || 'personal',
+                                            userId: currentUser?.id || 'operator',
+                                            userName: currentUser?.name,
+                                            center: mapProps.center || [41.9023, 44.5],
+                                            plantationFeatures: currentOrgFeatures,
+                                            employees: employees || [],
+                                            machinery: machinery || [],
+                                            devices: mergedDeviceRegistry,
+                                        })}
+                                        className="text-left p-5 rounded-xl border border-[#CFDCCB] bg-[#FAFBF8] hover:border-amber-500 transition-colors cursor-pointer space-y-2"
+                                    >
+                                        <div className="text-xs font-mono uppercase tracking-wider text-amber-700">GPS &amp; IoT Hub</div>
+                                        <div className="text-base font-bold text-[#163022]">Live Fleet, Soil &amp; Weather</div>
+                                        <p className="text-xs text-[#4A6753]">Open autonomous worker GPS, machinery telemetry, and soil pH/EC hub.</p>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => launchExternalModule({
+                                            moduleId: 'vision',
+                                            orgId: activeOrgId || 'personal',
+                                            userId: currentUser?.id || 'operator',
+                                            userName: currentUser?.name,
+                                            center: mapProps.center || [41.9023, 44.5],
+                                            plantationFeatures: currentOrgFeatures,
+                                            devices: mergedDeviceRegistry,
+                                        })}
+                                        className="text-left p-5 rounded-xl border border-[#CFDCCB] bg-[#FAFBF8] hover:border-sky-500 transition-colors cursor-pointer space-y-2"
+                                    >
+                                        <div className="text-xs font-mono uppercase tracking-wider text-sky-700">Vision &amp; NVR</div>
+                                        <div className="text-base font-bold text-[#163022]">Cameras &amp; RTSP Streams</div>
+                                        <p className="text-xs text-[#4A6753]">Open multi-channel camera wall, PTZ controls, and sector motion alerts.</p>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => launchExternalModule({
+                                            moduleId: 'drone',
+                                            orgId: activeOrgId || 'personal',
+                                            userId: currentUser?.id || 'operator',
+                                            userName: currentUser?.name,
+                                            center: mapProps.center || [41.9023, 44.5],
+                                            plantationFeatures: currentOrgFeatures,
+                                            devices: mergedDeviceRegistry,
+                                        })}
+                                        className="text-left p-5 rounded-xl border border-[#CFDCCB] bg-[#FAFBF8] hover:border-emerald-500 transition-colors cursor-pointer space-y-2"
+                                    >
+                                        <div className="text-xs font-mono uppercase tracking-wider text-emerald-700">Drone 3D App</div>
+                                        <div className="text-base font-bold text-[#163022]">3D Flight &amp; Seedling Scan</div>
+                                        <p className="text-xs text-[#4A6753]">Open 3D mission planner, waypoint execution, and dried-seedling diagnosis.</p>
+                                    </button>
+                                </div>
+                            </div>
                         </main>
                     );
                 }
@@ -6581,18 +6946,28 @@ const App: React.FC = () => {
                                         </span>
                                     </div>
                                     <p className="text-[#4A6753] font-bold uppercase tracking-widest text-[10px] mt-1">
-                                        Custom design themes, hardware peripheral device lists, low-level drivers, and next-generation engines.
+                                        Custom design themes, hardware peripheral device lists, low-level drivers, and external hardware bridges.
                                     </p>
                                 </div>
 
                                 {/* Labs Tab Switcher */}
                                 <div className="flex flex-wrap items-center p-1.5 rounded-2xl bg-[#FAFBF8] border border-[#D8E3D4] shadow-sm gap-1.5">
                                     <button
-                                        onClick={() => setLabTab('devices_map')}
+                                        onClick={() => launchExternalModule({
+                                            moduleId: 'gps_iot',
+                                            orgId: activeOrgId || 'personal',
+                                            userId: currentUser?.id || 'operator',
+                                            userName: currentUser?.name,
+                                            center: mapProps.center || [41.9023, 44.5],
+                                            plantationFeatures: currentOrgFeatures,
+                                            employees: employees || [],
+                                            machinery: machinery || [],
+                                            devices: mergedDeviceRegistry,
+                                        })}
                                         data-active="false"
                                         className="px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer bg-white text-[#244130] border border-[#CFDCCB] hover:bg-blue-600 hover:text-white hover:border-blue-700 shadow-2xs"
                                     >
-                                        🗺️ Devices Map
+                                        🗺️ GPS &amp; IoT Fleet
                                     </button>
                                     <button
                                         onClick={() => setLabTab('hardware')}
@@ -6646,12 +7021,22 @@ const App: React.FC = () => {
                                     employees={employees || []} 
                                     organizationId={activeOrgId || undefined}
                                     onAddDevice={handleAddDevice}
-                                    installedDevices={hardwareDevices.filter(d => d.organizationId === activeOrgId)}
+                                    installedDevices={mergedDeviceRegistry}
                                     plantationFeatures={currentOrgFeatures}
                                     mapCenter={mapProps.center || [41.9023, 44.5]}
                                     fullScreenMap={false}
                                     initialTab={hardwareSubTab as any}
-                                    onOpenDevicesMap={() => setLabTab('devices_map')}
+                                    onOpenDevicesMap={() => launchExternalModule({
+                                        moduleId: 'gps_iot',
+                                        orgId: activeOrgId || 'personal',
+                                        userId: currentUser?.id || 'operator',
+                                        userName: currentUser?.name,
+                                        center: mapProps.center || [41.9023, 44.5],
+                                        plantationFeatures: currentOrgFeatures,
+                                        employees: employees || [],
+                                        machinery: machinery || [],
+                                        devices: mergedDeviceRegistry,
+                                    })}
                                     onSelectLabTab={(tab: string) => setLabTab(tab as any)}
                                 />
                             )}
@@ -6689,6 +7074,7 @@ const App: React.FC = () => {
                     dailyLogs={dailyLogs || []} 
                     onSetDailyLogs={handleSetDailyLogs}
                     employees={employees || []}
+                    machinery={machinery || []}
                     listings={listings || []} 
                     nutritionPlans={nutritionPlans || []}
                     dashboardLayout={dashboardLayout} 
@@ -6806,7 +7192,13 @@ const App: React.FC = () => {
         cropVarieties,
         setCropVarieties,
         crops,
-        setCrops
+        setCrops,
+        deviceRegistry,
+        setDeviceRegistry,
+        systemNotifications,
+        setSystemNotifications,
+        agronomistDiagnoses,
+        setAgronomistDiagnoses
     };
 
     return (
@@ -6836,7 +7228,7 @@ const App: React.FC = () => {
                     onOpenTicketManager={() => setIsTicketManagerOpen(true)}
                     currentUserRole={memberships.find(m => m.organizationId === activeOrgId)?.role}
                     onOpenNotifications={() => setIsNotificationHubOpen(true)}
-                    notificationsCount={alerts.filter(a => !a.isRead).length}
+                    notificationsCount={notificationsCount}
                     isManualOffline={isManualOffline}
                     onToggleOffline={handleToggleOffline}
                     isCloudQuotaExceeded={isQuotaExceeded}
@@ -6999,58 +7391,79 @@ const App: React.FC = () => {
             <NotificationHub 
                 isOpen={isNotificationHubOpen}
                 onClose={() => setIsNotificationHubOpen(false)}
-                alerts={alerts}
+                alerts={mergedHardwareAndCoreAlerts}
                 onClearAll={handleClearAllAlerts}
                 onMarkAsRead={handleMarkAlertAsRead}
                 onAlertClick={async (alert) => {
+                    const clickedAction = alert.metadata?._clickedAction;
+                    if (clickedAction?.actionType === 'approve_join' || clickedAction?.actionType === 'decline_join') {
+                        const actionData = clickedAction.actionData || {};
+                        const decision = clickedAction.actionType === 'approve_join' ? 'approve' : 'decline';
+                        const targetMembershipId = actionData.membershipId || alert.metadata?.membershipId;
+                        const existingMem = memberships.find(m => m.id === targetMembershipId);
+                        const targetOrgId =
+                            actionData.orgId ||
+                            alert.metadata?.orgId ||
+                            existingMem?.organizationId ||
+                            (alert.organizationId && alert.organizationId !== 'personal' ? alert.organizationId : activeOrgId);
+                        const targetUserId = actionData.userId || alert.metadata?.userId || existingMem?.userId || alert.createdBy;
+
+                        if (!targetUserId) {
+                            toast.error(language === 'ka' ? 'მომხმარებლის ID ვერ მოიძებნა' : 'Requester user ID not found for this notification.');
+                            return;
+                        }
+                        if (decision === 'approve' && (!targetOrgId || targetOrgId === 'ALL' || targetOrgId === 'personal')) {
+                            toast.error(language === 'ka' ? 'აირჩიეთ კომპანია დასამატებლად' : 'Please select an active company first.');
+                            return;
+                        }
+
+                        await resolveCompanyTicketOrJoin({
+                            decision,
+                            userId: targetUserId,
+                            userName: actionData.userName || alert.metadata?.userName,
+                            orgId: targetOrgId,
+                            orgName: actionData.orgName || alert.metadata?.orgName,
+                            membershipId: targetMembershipId,
+                            selectedRole: actionData.role || 'Employee',
+                            postId: actionData.postId || alert.metadata?.postId,
+                            alertId: alert.id,
+                            currentUser,
+                            memberships,
+                            onSetMemberships: handleSetMemberships,
+                            employees,
+                            onSetEmployees: handleSetEmployees,
+                            users,
+                            allUsers,
+                            onSetUsers: handleSetUsers,
+                            roles,
+                            organizations,
+                            forumPosts,
+                            onAddPost: handleAddPost,
+                            onUpdatePost: handleUpdatePost,
+                            alerts,
+                            onSetAlerts: setAlerts,
+                            isKa: language === 'ka'
+                        });
+                        return;
+                    }
+
                     handleMarkAlertAsRead(alert.id);
                     setIsNotificationHubOpen(false);
                     
-                    if (alert.metadata?._clickedAction?.actionType === 'approve_join') {
-                        const { membershipId } = alert.metadata._clickedAction.actionData;
-                        if (USE_FIREBASE) {
-                            try {
-                                await updateDoc(doc(db, 'memberships', membershipId), { status: 'active' });
-                                toast.success("Partner Request Approved!");
-                            } catch (e) {
-                                console.error(e);
-                                toast.error("Failed to approve partner.");
-                            }
-                        } else {
-                            try {
-                                const savedMemberships = safeStorage.safeParse(localStorage.getItem('mock_memberships'), []);
-                                const updatedMemberships = savedMemberships.map((m: any) => m.id === membershipId ? { ...m, status: 'active' } : m);
-                                localStorage.setItem('mock_memberships', JSON.stringify(updatedMemberships));
-                                setMemberships(updatedMemberships);
-                                
-                                const approvedMem = savedMemberships.find((m: any) => m.id === membershipId);
-                                if (approvedMem) {
-                                    const targetOrgId = approvedMem.organizationId;
-                                    const welcomePost = {
-                                        id: `welcome-post-${Date.now()}`,
-                                        title: "Welcome aboard!",
-                                        content: `Excited to announce that we are now fully connected as professional team members! Handshake status is live.`,
-                                        authorId: 'founder',
-                                        authorName: 'Organization Founder',
-                                        timestamp: new Date().toISOString(),
-                                        hubType: 'internal' as any,
-                                        channelId: 'general',
-                                        isDirectMessage: false,
-                                        organizationId: targetOrgId,
-                                        replies: []
-                                    };
-                                    const savedPosts = safeStorage.safeParse(localStorage.getItem('mock_forumPosts'), []);
-                                    const updatedPosts = [welcomePost, ...savedPosts];
-                                    localStorage.setItem('mock_forumPosts', JSON.stringify(updatedPosts));
-                                    setForumPosts(updatedPosts);
-                                }
-                                toast.success("Partner Request Approved offline!");
-                            } catch (err) {
-                                console.error(err);
-                                toast.error("Failed to approve partner offline.");
-                            }
+                    if (alert.metadata?._sourceApp) {
+                        const coords = alert.metadata.coords;
+                        if (coords && typeof coords.lat === 'number' && typeof coords.lng === 'number') {
+                            setMapCenter([coords.lat, coords.lng]);
+                            setMapZoom(18);
+                            setAppMode('design');
                         }
-                    } else if (alert.content?.includes('@') || alert.content?.includes('#')) {
+                        if (alert.metadata.sectorId) {
+                            setSelectedFeatureIds([alert.metadata.sectorId]);
+                        }
+                        return;
+                    }
+
+                    if (alert.content?.includes('@') || alert.content?.includes('#')) {
                         setAppMode('community');
                     } else if (alert.title?.toLowerCase().includes('partner') || alert.title?.toLowerCase().includes('analy')) {
                         setAppMode('ai');
@@ -7150,14 +7563,17 @@ const App: React.FC = () => {
                 onClose={() => setShowReSyncPrompt(false)}
                 pendingCount={pendingOfflineCount}
                 onConfirmSync={async () => {
+                    toast.loading("Uploading offline data...", { id: CLOUD_SYNC_TOAST_ID });
                     try {
-                        toast.loading("Uploading offline data...", { id: 'sync-prog' });
-                        await syncManager.pushAllToCloud();
-                        toast.success("Offline cache fully synchronized!", { id: 'sync-prog' });
-                        setShowReSyncPrompt(false);
-                        setPendingOfflineCount(0);
+                        const success = await syncManager.pushAllToCloud({ toastId: CLOUD_SYNC_TOAST_ID });
+                        if (success) {
+                            toast.success("Offline cache fully synchronized!", { id: CLOUD_SYNC_TOAST_ID, duration: 4000 });
+                            setShowReSyncPrompt(false);
+                            setPendingOfflineCount(0);
+                        } else {
+                            throw new Error("Sync failed");
+                        }
                     } catch (err) {
-                        toast.error("Upload failed.", { id: 'sync-prog' });
                         throw err;
                     }
                 }}
@@ -7249,6 +7665,16 @@ const App: React.FC = () => {
                     initialNotice={aiDiagnosticsNotice}
                 />
             )}
+            <ExternalModuleModal
+                session={activeExternalSession}
+                onClose={() => setActiveExternalSession(null)}
+                onUpdateSession={setActiveExternalSession}
+            />
+            <ExternalBridgeSettingsModal
+                isOpen={bridgeSettingsModal.isOpen}
+                focusModuleId={bridgeSettingsModal.moduleId}
+                onClose={() => setBridgeSettingsModal({ isOpen: false })}
+            />
         </div>
         </FirebaseDataProvider>
         </GlobalDataInterceptorProvider>

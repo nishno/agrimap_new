@@ -29,6 +29,9 @@ export const IntercomPopUpModal: React.FC<IntercomPopUpModalProps> = ({
     onSetUsers,
     roles = [],
     plantationFeatures = [],
+    organizations = [],
+    alerts = [],
+    onSetAlerts,
     mapProps
 }) => {
     const { t } = useLanguage();
@@ -124,6 +127,9 @@ export const IntercomPopUpModal: React.FC<IntercomPopUpModalProps> = ({
                         onSetUsers={onSetUsers}
                         roles={roles}
                         plantationFeatures={plantationFeatures}
+                        organizations={organizations}
+                        alerts={alerts}
+                        onSetAlerts={onSetAlerts}
                         mapProps={mapProps}
                         isPopUp={true}
                         onClose={onClose}

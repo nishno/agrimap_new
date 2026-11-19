@@ -155,7 +155,9 @@
         "name": { "type": "string" },
         "type": { "type": "string" },
         "layerId": { "type": "string" },
-        "organizationId": { "type": "string" }
+        "organizationId": { "type": "string" },
+        "condition": { "type": "string" },
+        "healthStatus": { "type": "string", "enum": ["HEALTHY", "SUSPICIOUS", "DRIED"] }
       },
       "required": ["id", "name", "type", "layerId"]
     },
@@ -184,6 +186,120 @@
         "organizationId": { "type": "string" }
       },
       "required": ["id", "name", "organizationId"]
+    },
+    "DeviceRegistry": {
+      "title": "Device Registry Entry",
+      "description": "Registered hardware peripheral or external Vision/Drone/GPS device",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "organizationId": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "enum": ["CAMERA", "DRONE", "GPS_TRACKER", "SOIL_SENSOR", "WEATHER_STATION", "PRINTER", "SCANNER", "SCALE"] },
+        "name": { "type": "string", "maxLength": 160 },
+        "model": { "type": "string", "maxLength": 160 },
+        "connectionType": { "type": "string", "maxLength": 40 },
+        "connectionInfo": { "type": "string", "maxLength": 240 },
+        "ipAddress": { "type": "string", "maxLength": 64 },
+        "streamUrl": { "type": "string", "maxLength": 512 },
+        "rtspPort": { "type": "number" },
+        "fovConfig": { "type": "object" },
+        "coords": { "type": "object" },
+        "status": { "type": "string", "enum": ["ONLINE", "OFFLINE", "STANDBY", "RECORDING"] },
+        "lastPing": { "type": "string", "format": "date-time" },
+        "sectorId": { "type": "string", "maxLength": 128 },
+        "assignedWorkerId": { "type": "string", "maxLength": 128 },
+        "assignedMachineryId": { "type": "string", "maxLength": 128 },
+        "metadata": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "organizationId", "type", "name", "status"]
+    },
+    "SystemNotification": {
+      "title": "System Notification",
+      "description": "Alert pushed from decoupled Vision, Drone, or GPS/IoT apps into Core NotificationHub",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "organizationId": { "type": "string", "maxLength": 128 },
+        "sourceApp": { "type": "string", "enum": ["vision", "drone", "gps_iot"] },
+        "severity": { "type": "string", "enum": ["info", "warning", "critical"] },
+        "title": { "type": "string", "maxLength": 180 },
+        "message": { "type": "string", "maxLength": 1000 },
+        "sectorId": { "type": "string", "maxLength": 128 },
+        "deviceId": { "type": "string", "maxLength": 128 },
+        "coords": { "type": "object" },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "organizationId", "sourceApp", "severity", "title", "message", "isRead", "createdAt"]
+    },
+    "AgronomistDiagnosis": {
+      "title": "Agronomist Diagnosis",
+      "description": "Drone photogrammetry or AI seedling health diagnosis written for Core Agronomist review",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "organizationId": { "type": "string", "maxLength": 128 },
+        "sectorId": { "type": "string", "maxLength": 128 },
+        "seedlingId": { "type": "string", "maxLength": 128 },
+        "droneId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 180 },
+        "diagnosis": { "type": "string", "maxLength": 1500 },
+        "healthStatus": { "type": "string", "enum": ["HEALTHY", "SUSPICIOUS", "DRIED"] },
+        "confidence": { "type": "number" },
+        "photoRef": { "type": "string", "maxLength": 512 },
+        "coords": { "type": "object" },
+        "recommendedAction": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "organizationId", "title", "diagnosis", "healthStatus", "createdAt"]
+    },
+    "LiveTelemetry": {
+      "title": "Live Telemetry",
+      "description": "Real-time GPS coordinates and battery status written by external GPS Hub",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "deviceId": { "type": "string", "maxLength": 128 },
+        "organizationId": { "type": "string", "maxLength": 128 },
+        "assetType": { "type": "string", "enum": ["worker", "machinery", "drone"] },
+        "workerId": { "type": "string", "maxLength": 128 },
+        "machineryId": { "type": "string", "maxLength": 128 },
+        "label": { "type": "string", "maxLength": 160 },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "speed": { "type": "number" },
+        "battery": { "type": "number" },
+        "headingDeg": { "type": "number" },
+        "sectorId": { "type": "string", "maxLength": 128 },
+        "trenchId": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["deviceId", "organizationId", "assetType", "lat", "lng", "speed", "battery", "updatedAt"]
+    },
+    "SoilTelemetry": {
+      "title": "Soil & Weather Telemetry",
+      "description": "Periodic soil pH, EC, moisture, temperature, and weather readings written by GPS & IoT Hub",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "organizationId": { "type": "string", "maxLength": 128 },
+        "sectorId": { "type": "string", "maxLength": 128 },
+        "deviceId": { "type": "string", "maxLength": 128 },
+        "soil_ph": { "type": "number" },
+        "soil_ec": { "type": "number" },
+        "moisture": { "type": "number" },
+        "temp_c": { "type": "number" },
+        "humidity_pct": { "type": "number" },
+        "wind_kmh": { "type": "number" },
+        "rain_mm": { "type": "number" },
+        "recordedAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "organizationId", "sectorId", "soil_ph", "soil_ec", "moisture", "temp_c", "recordedAt"]
     }
   },
   "firestore": {
@@ -234,6 +350,26 @@
     "/crops/{cropId}": {
       "schema": "Crop",
       "description": "Crop and variety definitions"
+    },
+    "/deviceRegistry/{docId}": {
+      "schema": "DeviceRegistry",
+      "description": "Hardware device registry shared between Core and external apps"
+    },
+    "/systemNotifications/{docId}": {
+      "schema": "SystemNotification",
+      "description": "External hardware alert feed listened to passively by Core NotificationHub"
+    },
+    "/agronomistDiagnoses/{docId}": {
+      "schema": "AgronomistDiagnosis",
+      "description": "Drone seedling diagnosis records reviewed in Core Agronomist tools"
+    },
+    "/liveTelemetry/{deviceId}": {
+      "schema": "LiveTelemetry",
+      "description": "Real-time GPS tracker coordinates isolated from Core bundle listeners"
+    },
+    "/soilTelemetry/{docId}": {
+      "schema": "SoilTelemetry",
+      "description": "Soil probe and weather station telemetry records"
     }
   }
 }

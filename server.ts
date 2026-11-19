@@ -3,6 +3,7 @@ import cors from 'cors';
 import path from 'path';
 import http from 'http';
 import fs from 'fs';
+import crypto from 'crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
@@ -890,6 +891,178 @@ function synthesizeServerAutonomousResponse(contents: any, config?: any, upstrea
     res.json({ status: 'success', synced: true, total: serverGodAiKnowledge.recordsCount });
   });
 
+  // 6c. External Hardware Bridge & Autonomous Local LAN Auth Endpoints
+  const ALLOWED_HARDWARE_COLLECTIONS = new Set([
+    'deviceRegistry',
+    'plantationFeatures',
+    'systemNotifications',
+    'agronomistDiagnoses',
+    'liveTelemetry',
+    'soilTelemetry',
+  ]);
+
+  const bridgeLaunchCodes = new Map<string, {
+    payload: any;
+    localSessionToken: string;
+    expiresAtMs: number;
+  }>();
+
+  const localHardwareSessions = new Map<string, {
+    orgId: string;
+    userId: string;
+    moduleId: string;
+    expiresAtMs: number;
+  }>();
+
+  const localHardwareStore = new Map<string, Map<string, any>>();
+
+  const getHardwareCollectionMap = (orgId: string, collectionName: string) => {
+    const key = `${orgId}::${collectionName}`;
+    let colMap = localHardwareStore.get(key);
+    if (!colMap) {
+      colMap = new Map<string, any>();
+      localHardwareStore.set(key, colMap);
+    }
+    return colMap;
+  };
+
+  app.post('/api/bridge/launch-code', (req, res) => {
+    const body = req.body || {};
+    const { launchCode, moduleId, orgId, userId } = body;
+    if (!launchCode || !moduleId || !orgId || !userId) {
+      return res.status(400).json({ ok: false, error: 'Missing launchCode, moduleId, orgId, or userId' });
+    }
+
+    const localSessionToken = `lst_${crypto.randomBytes(24).toString('hex')}`;
+    const expiresAtMs = Date.now() + 90_000; // 90s for pop-out / LAN exchange
+    const sessionExpiryMs = Date.now() + 12 * 60 * 60 * 1000; // 12h local hardware session
+
+    localHardwareSessions.set(localSessionToken, {
+      orgId: String(orgId),
+      userId: String(userId),
+      moduleId: String(moduleId),
+      expiresAtMs: sessionExpiryMs,
+    });
+
+    bridgeLaunchCodes.set(String(launchCode), {
+      payload: {
+        ...body,
+        localSessionToken,
+      },
+      localSessionToken,
+      expiresAtMs,
+    });
+
+    // Periodically prune expired launch codes
+    const now = Date.now();
+    for (const [k, v] of bridgeLaunchCodes.entries()) {
+      if (now > v.expiresAtMs) bridgeLaunchCodes.delete(k);
+    }
+
+    return res.json({
+      ok: true,
+      localSessionToken,
+      expiresAt: new Date(expiresAtMs).toISOString(),
+    });
+  });
+
+  app.post('/api/bridge/exchange', (req, res) => {
+    const { launchCode, moduleId } = req.body || {};
+    if (!launchCode) {
+      return res.status(400).json({ ok: false, error: 'Missing launchCode' });
+    }
+
+    const record = bridgeLaunchCodes.get(String(launchCode));
+    if (!record) {
+      return res.status(401).json({ ok: false, error: 'Invalid or already consumed launchCode' });
+    }
+
+    // Single-use enforcement
+    bridgeLaunchCodes.delete(String(launchCode));
+
+    if (Date.now() > record.expiresAtMs) {
+      return res.status(401).json({ ok: false, error: 'Launch code expired' });
+    }
+
+    if (moduleId && record.payload?.moduleId && record.payload.moduleId !== moduleId) {
+      return res.status(403).json({ ok: false, error: 'Module mismatch for launchCode' });
+    }
+
+    return res.json({
+      ok: true,
+      payload: record.payload,
+    });
+  });
+
+  const requireLocalHardwareSession = (req: express.Request, res: express.Response) => {
+    const authHeader = String(req.headers.authorization || '');
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!token) {
+      res.status(401).json({ ok: false, error: 'Missing Bearer localSessionToken' });
+      return null;
+    }
+    const session = localHardwareSessions.get(token);
+    if (!session || Date.now() > session.expiresAtMs) {
+      res.status(401).json({ ok: false, error: 'Invalid or expired localSessionToken' });
+      return null;
+    }
+    return session;
+  };
+
+  app.get('/api/hardware/:collection', (req, res) => {
+    const session = requireLocalHardwareSession(req, res);
+    if (!session) return;
+
+    const colName = req.params.collection;
+    if (!ALLOWED_HARDWARE_COLLECTIONS.has(colName)) {
+      return res.status(403).json({ ok: false, error: `Collection "${colName}" is not exposed to external hardware modules` });
+    }
+
+    const colMap = getHardwareCollectionMap(session.orgId, colName);
+    return res.json({
+      ok: true,
+      organizationId: session.orgId,
+      collection: colName,
+      items: Array.from(colMap.values()),
+    });
+  });
+
+  app.post('/api/hardware/:collection', (req, res) => {
+    const session = requireLocalHardwareSession(req, res);
+    if (!session) return;
+
+    const colName = req.params.collection;
+    if (!ALLOWED_HARDWARE_COLLECTIONS.has(colName)) {
+      return res.status(403).json({ ok: false, error: `Collection "${colName}" is not writable by external hardware modules` });
+    }
+
+    const body = req.body || {};
+    const items = Array.isArray(body.items) ? body.items : [body];
+    const colMap = getHardwareCollectionMap(session.orgId, colName);
+    const saved: any[] = [];
+
+    for (const item of items) {
+      if (!item || typeof item !== 'object') continue;
+      const docId = String(item.id || item.deviceId || `${colName}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`);
+      const stamped = {
+        ...item,
+        id: docId,
+        organizationId: session.orgId, // Server-enforced tenant fencing
+        updatedAt: new Date().toISOString(),
+      };
+      colMap.set(docId, stamped);
+      saved.push(stamped);
+    }
+
+    return res.json({
+      ok: true,
+      organizationId: session.orgId,
+      collection: colName,
+      savedCount: saved.length,
+      items: saved,
+    });
+  });
+
   // Serve standalone root firstpage.html for web preview/hosting
   app.get(['/firstpage', '/firstpage.html'], (req, res) => {
     const firstPagePath = path.resolve(__dirname, 'firstpage.html');
@@ -905,12 +1078,21 @@ function synthesizeServerAutonomousResponse(contents: any, config?: any, upstrea
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true, hmr: false, ws: false },
-      appType: 'spa'
+      appType: 'mpa'
     });
     app.use(vite.middlewares);
   } else {
     const distPath = path.resolve(__dirname, 'dist');
     app.use(express.static(distPath));
+    app.get(['/vision', '/vision.html'], (req, res) => {
+      res.sendFile(path.join(distPath, 'vision.html'));
+    });
+    app.get(['/drone', '/drone.html'], (req, res) => {
+      res.sendFile(path.join(distPath, 'drone.html'));
+    });
+    app.get(['/gps', '/gps.html'], (req, res) => {
+      res.sendFile(path.join(distPath, 'gps.html'));
+    });
     app.use((req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });

@@ -93,6 +93,30 @@ service cloud.firestore {
       return !(field in request.resource.data) || request.resource.data[field] == resource.data[field];
     }
 
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidOptionalString(data, key, maxLen) {
+      return !(key in data) || (data[key] is string && data[key].size() <= maxLen);
+    }
+
+    function isValidOptionalNumber(data, key) {
+      return !(key in data) || (data[key] is number);
+    }
+
+    function isValidOptionalMap(data, key) {
+      return !(key in data) || (data[key] is map);
+    }
+
     // Domain Validators
     function isValidUser(data) {
       return true;
@@ -100,6 +124,125 @@ service cloud.firestore {
 
     function isValidOrg(data) {
       return true;
+    }
+
+    function isValidDeviceRegistry(data) {
+      return data.keys().hasAll(['id', 'organizationId', 'type', 'name', 'status']) &&
+        data.keys().hasOnly([
+          'id', 'organizationId', 'type', 'name', 'model', 'connectionType',
+          'connectionInfo', 'ipAddress', 'streamUrl', 'rtspPort', 'fovConfig',
+          'coords', 'status', 'lastPing', 'sectorId', 'assignedWorkerId',
+          'assignedMachineryId', 'metadata', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.organizationId) &&
+        data.type in ['CAMERA', 'DRONE', 'GPS_TRACKER', 'SOIL_SENSOR', 'WEATHER_STATION', 'PRINTER', 'SCANNER', 'SCALE'] &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 160 &&
+        data.status in ['ONLINE', 'OFFLINE', 'STANDBY', 'RECORDING'] &&
+        isValidOptionalString(data, 'model', 160) &&
+        isValidOptionalString(data, 'connectionType', 40) &&
+        isValidOptionalString(data, 'connectionInfo', 240) &&
+        isValidOptionalString(data, 'ipAddress', 64) &&
+        isValidOptionalString(data, 'streamUrl', 512) &&
+        isValidOptionalNumber(data, 'rtspPort') &&
+        isValidOptionalMap(data, 'fovConfig') &&
+        isValidOptionalMap(data, 'coords') &&
+        isValidOptionalString(data, 'lastPing', 64) &&
+        isValidOptionalString(data, 'sectorId', 128) &&
+        isValidOptionalString(data, 'assignedWorkerId', 128) &&
+        isValidOptionalString(data, 'assignedMachineryId', 128) &&
+        isValidOptionalMap(data, 'metadata') &&
+        isValidOptionalString(data, 'createdAt', 64) &&
+        isValidOptionalString(data, 'updatedAt', 64);
+    }
+
+    function isValidSystemNotification(data) {
+      return data.keys().hasAll(['id', 'organizationId', 'sourceApp', 'severity', 'title', 'message', 'isRead', 'createdAt']) &&
+        data.keys().hasOnly([
+          'id', 'organizationId', 'sourceApp', 'severity', 'title', 'message',
+          'sectorId', 'deviceId', 'coords', 'isRead', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.organizationId) &&
+        data.sourceApp in ['vision', 'drone', 'gps_iot'] &&
+        data.severity in ['info', 'warning', 'critical'] &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 180 &&
+        data.message is string && data.message.size() >= 1 && data.message.size() <= 1000 &&
+        data.isRead is bool &&
+        data.createdAt is string && data.createdAt.size() <= 64 &&
+        isValidOptionalString(data, 'sectorId', 128) &&
+        isValidOptionalString(data, 'deviceId', 128) &&
+        isValidOptionalMap(data, 'coords') &&
+        isValidOptionalString(data, 'updatedAt', 64);
+    }
+
+    function isValidAgronomistDiagnosis(data) {
+      return data.keys().hasAll(['id', 'organizationId', 'title', 'diagnosis', 'healthStatus', 'createdAt']) &&
+        data.keys().hasOnly([
+          'id', 'organizationId', 'sectorId', 'seedlingId', 'droneId', 'title',
+          'diagnosis', 'healthStatus', 'confidence', 'photoRef', 'coords',
+          'recommendedAction', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.organizationId) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 180 &&
+        data.diagnosis is string && data.diagnosis.size() >= 1 && data.diagnosis.size() <= 1500 &&
+        data.healthStatus in ['HEALTHY', 'SUSPICIOUS', 'DRIED'] &&
+        data.createdAt is string && data.createdAt.size() <= 64 &&
+        isValidOptionalString(data, 'sectorId', 128) &&
+        isValidOptionalString(data, 'seedlingId', 128) &&
+        isValidOptionalString(data, 'droneId', 128) &&
+        isValidOptionalNumber(data, 'confidence') &&
+        isValidOptionalString(data, 'photoRef', 512) &&
+        isValidOptionalMap(data, 'coords') &&
+        isValidOptionalString(data, 'recommendedAction', 500) &&
+        isValidOptionalString(data, 'updatedAt', 64);
+    }
+
+    function isValidLiveTelemetry(data) {
+      return data.keys().hasAll(['deviceId', 'organizationId', 'assetType', 'lat', 'lng', 'speed', 'battery', 'updatedAt']) &&
+        data.keys().hasOnly([
+          'id', 'deviceId', 'organizationId', 'assetType', 'workerId',
+          'machineryId', 'label', 'lat', 'lng', 'speed', 'battery',
+          'headingDeg', 'sectorId', 'trenchId', 'updatedAt'
+        ]) &&
+        isValidId(data.deviceId) &&
+        isValidId(data.organizationId) &&
+        data.assetType in ['worker', 'machinery', 'drone'] &&
+        data.lat is number &&
+        data.lng is number &&
+        data.speed is number &&
+        data.battery is number &&
+        data.updatedAt is string && data.updatedAt.size() <= 64 &&
+        isValidOptionalString(data, 'id', 128) &&
+        isValidOptionalString(data, 'workerId', 128) &&
+        isValidOptionalString(data, 'machineryId', 128) &&
+        isValidOptionalString(data, 'label', 160) &&
+        isValidOptionalNumber(data, 'headingDeg') &&
+        isValidOptionalString(data, 'sectorId', 128) &&
+        isValidOptionalString(data, 'trenchId', 128);
+    }
+
+    function isValidSoilTelemetry(data) {
+      return data.keys().hasAll(['id', 'organizationId', 'sectorId', 'soil_ph', 'soil_ec', 'moisture', 'temp_c', 'recordedAt']) &&
+        data.keys().hasOnly([
+          'id', 'organizationId', 'sectorId', 'deviceId', 'soil_ph', 'soil_ec',
+          'moisture', 'temp_c', 'humidity_pct', 'wind_kmh', 'rain_mm',
+          'recordedAt', 'updatedAt'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.organizationId) &&
+        isValidId(data.sectorId) &&
+        data.soil_ph is number &&
+        data.soil_ec is number &&
+        data.moisture is number &&
+        data.temp_c is number &&
+        data.recordedAt is string && data.recordedAt.size() <= 64 &&
+        isValidOptionalString(data, 'deviceId', 128) &&
+        isValidOptionalNumber(data, 'humidity_pct') &&
+        isValidOptionalNumber(data, 'wind_kmh') &&
+        isValidOptionalNumber(data, 'rain_mm') &&
+        isValidOptionalString(data, 'updatedAt', 64);
     }
 
     // ===============================================================
@@ -174,31 +317,31 @@ service cloud.firestore {
 
     match /{collection}/{docId} {
       allow list: if isAuthenticated() && 
-        !(collection in ['alerts', 'cropVarieties', 'listings', 'bids', 'reviews', 'forumPosts']) && (
+        !(collection in ['alerts', 'cropVarieties', 'listings', 'bids', 'reviews', 'forumPosts', 'deviceRegistry', 'systemNotifications', 'agronomistDiagnoses', 'liveTelemetry', 'soilTelemetry']) && (
         isAdmin() || 
         (resource != null && (isMemberOf(resource.data.get('organizationId', null)) || resource.data.get('createdBy', '') == request.auth.uid))
       );
       allow get: if isAuthenticated() && 
-        !(collection in ['alerts', 'cropVarieties', 'listings', 'bids', 'reviews', 'forumPosts']) && (
+        !(collection in ['alerts', 'cropVarieties', 'listings', 'bids', 'reviews', 'forumPosts', 'deviceRegistry', 'systemNotifications', 'agronomistDiagnoses', 'liveTelemetry', 'soilTelemetry']) && (
         isAdmin() ||
         resource == null || 
         isMemberOf(resource.data.get('organizationId', null)) ||
         resource.data.get('createdBy', '') == request.auth.uid
       );
       allow create: if isAuthenticated() && 
-        !(collection in ['alerts', 'cropVarieties', 'listings', 'bids', 'reviews', 'forumPosts']) && (
+        !(collection in ['alerts', 'cropVarieties', 'listings', 'bids', 'reviews', 'forumPosts', 'deviceRegistry', 'systemNotifications', 'agronomistDiagnoses', 'liveTelemetry', 'soilTelemetry']) && (
         isAdmin() ||
         isMemberOf(request.resource.data.get('organizationId', null)) ||
         request.resource.data.get('createdBy', '') == request.auth.uid
       );
       allow update: if isAuthenticated() && 
-        !(collection in ['alerts', 'cropVarieties', 'listings', 'bids', 'reviews', 'forumPosts']) && (
+        !(collection in ['alerts', 'cropVarieties', 'listings', 'bids', 'reviews', 'forumPosts', 'deviceRegistry', 'systemNotifications', 'agronomistDiagnoses', 'liveTelemetry', 'soilTelemetry']) && (
         isAdmin() ||
         isMemberOf(resource.data.get('organizationId', null)) ||
         resource.data.get('createdBy', '') == request.auth.uid
       );
       allow delete: if isAuthenticated() && 
-        !(collection in ['alerts', 'cropVarieties', 'listings', 'bids', 'reviews', 'forumPosts']) && (
+        !(collection in ['alerts', 'cropVarieties', 'listings', 'bids', 'reviews', 'forumPosts', 'deviceRegistry', 'systemNotifications', 'agronomistDiagnoses', 'liveTelemetry', 'soilTelemetry']) && (
         isAdmin() ||
         isOrgAdmin(resource.data.get('organizationId', null)) ||
         resource.data.get('createdBy', '') == request.auth.uid
@@ -418,6 +561,161 @@ service cloud.firestore {
     match /unique_identifiers/{id} {
       allow get: if true;
       allow create: if isAuthenticated();
+    }
+
+    // ===============================================================
+    // Decoupled External Hardware Contract Collections (Tenant-Fenced)
+    // ===============================================================
+
+    match /deviceRegistry/{docId} {
+      allow get: if isAuthenticated() && isValidId(docId) && (
+        isAdmin() ||
+        (resource != null && isMemberOf(existing().organizationId))
+      );
+      allow list: if isAuthenticated() && (
+        isAdmin() ||
+        isMemberOf(existing().organizationId)
+      );
+      allow create: if isAuthenticated() && isValidId(docId) &&
+        isValidDeviceRegistry(incoming()) &&
+        (isAdmin() || isMemberOf(incoming().organizationId));
+      allow update: if isAuthenticated() && isValidId(docId) &&
+        isValidDeviceRegistry(incoming()) &&
+        incoming().organizationId == existing().organizationId &&
+        incoming().id == existing().id && (
+          isAdmin() ||
+          (isOrgAdmin(existing().organizationId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'name', 'model', 'connectionType', 'connectionInfo', 'ipAddress',
+              'streamUrl', 'rtspPort', 'fovConfig', 'coords', 'status', 'lastPing',
+              'sectorId', 'assignedWorkerId', 'assignedMachineryId', 'metadata',
+              'updatedAt', 'type'
+            ])) ||
+          (isMemberOf(existing().organizationId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'lastPing', 'coords', 'fovConfig', 'streamUrl',
+              'ipAddress', 'rtspPort', 'model', 'name', 'connectionType',
+              'type', 'updatedAt'
+            ]))
+        );
+      allow delete: if isAuthenticated() && isValidId(docId) && (
+        isAdmin() ||
+        isOrgAdmin(existing().organizationId)
+      );
+    }
+
+    match /systemNotifications/{docId} {
+      allow get: if isAuthenticated() && isValidId(docId) && (
+        isAdmin() ||
+        (resource != null && isMemberOf(existing().organizationId))
+      );
+      allow list: if isAuthenticated() && (
+        isAdmin() ||
+        isMemberOf(existing().organizationId)
+      );
+      allow create: if isAuthenticated() && isValidId(docId) &&
+        isValidSystemNotification(incoming()) &&
+        (isAdmin() || isMemberOf(incoming().organizationId));
+      allow update: if isAuthenticated() && isValidId(docId) &&
+        isValidSystemNotification(incoming()) &&
+        incoming().organizationId == existing().organizationId &&
+        incoming().id == existing().id && (
+          isAdmin() ||
+          (isMemberOf(existing().organizationId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['isRead', 'updatedAt']))
+        );
+      allow delete: if isAuthenticated() && isValidId(docId) && (
+        isAdmin() ||
+        isOrgAdmin(existing().organizationId)
+      );
+    }
+
+    match /agronomistDiagnoses/{docId} {
+      allow get: if isAuthenticated() && isValidId(docId) && (
+        isAdmin() ||
+        (resource != null && isMemberOf(existing().organizationId))
+      );
+      allow list: if isAuthenticated() && (
+        isAdmin() ||
+        isMemberOf(existing().organizationId)
+      );
+      allow create: if isAuthenticated() && isValidId(docId) &&
+        isValidAgronomistDiagnosis(incoming()) &&
+        (isAdmin() || isMemberOf(incoming().organizationId));
+      allow update: if isAuthenticated() && isValidId(docId) &&
+        isValidAgronomistDiagnosis(incoming()) &&
+        incoming().organizationId == existing().organizationId &&
+        incoming().id == existing().id && (
+          isAdmin() ||
+          (isMemberOf(existing().organizationId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'healthStatus', 'diagnosis', 'recommendedAction', 'confidence',
+              'photoRef', 'coords', 'updatedAt'
+            ]))
+        );
+      allow delete: if isAuthenticated() && isValidId(docId) && (
+        isAdmin() ||
+        isOrgAdmin(existing().organizationId)
+      );
+    }
+
+    match /liveTelemetry/{deviceId} {
+      allow get: if isAuthenticated() && isValidId(deviceId) && (
+        isAdmin() ||
+        (resource != null && isMemberOf(existing().organizationId))
+      );
+      allow list: if isAuthenticated() && (
+        isAdmin() ||
+        isMemberOf(existing().organizationId)
+      );
+      allow create: if isAuthenticated() && isValidId(deviceId) &&
+        isValidLiveTelemetry(incoming()) &&
+        (isAdmin() || isMemberOf(incoming().organizationId));
+      allow update: if isAuthenticated() && isValidId(deviceId) &&
+        isValidLiveTelemetry(incoming()) &&
+        incoming().organizationId == existing().organizationId &&
+        incoming().deviceId == existing().deviceId && (
+          isAdmin() ||
+          (isMemberOf(existing().organizationId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'id', 'lat', 'lng', 'speed', 'battery', 'headingDeg', 'sectorId',
+              'trenchId', 'label', 'workerId', 'machineryId', 'assetType', 'updatedAt'
+            ]))
+        );
+      allow delete: if isAuthenticated() && isValidId(deviceId) && (
+        isAdmin() ||
+        isOrgAdmin(existing().organizationId)
+      );
+    }
+
+    match /soilTelemetry/{docId} {
+      allow get: if isAuthenticated() && isValidId(docId) && (
+        isAdmin() ||
+        (resource != null && isMemberOf(existing().organizationId))
+      );
+      allow list: if isAuthenticated() && (
+        isAdmin() ||
+        isMemberOf(existing().organizationId)
+      );
+      allow create: if isAuthenticated() && isValidId(docId) &&
+        isValidSoilTelemetry(incoming()) &&
+        (isAdmin() || isMemberOf(incoming().organizationId));
+      allow update: if isAuthenticated() && isValidId(docId) &&
+        isValidSoilTelemetry(incoming()) &&
+        incoming().organizationId == existing().organizationId &&
+        incoming().id == existing().id &&
+        incoming().sectorId == existing().sectorId && (
+          isAdmin() ||
+          (isMemberOf(existing().organizationId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'deviceId', 'soil_ph', 'soil_ec', 'moisture', 'temp_c',
+              'humidity_pct', 'wind_kmh', 'rain_mm', 'recordedAt', 'updatedAt'
+            ]))
+        );
+      allow delete: if isAuthenticated() && isValidId(docId) && (
+        isAdmin() ||
+        isOrgAdmin(existing().organizationId)
+      );
     }
   }
 }

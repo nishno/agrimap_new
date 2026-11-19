@@ -44,21 +44,19 @@ import {
     Video,
     CloudRain,
     Droplets,
-    MapPin
+    MapPin,
+    ExternalLink,
+    Server,
+    Plane
 } from 'lucide-react';
 import { Employee, PlantationFeature } from '../../types';
 import { toast } from 'sonner';
 import { useAppTheme } from '../../contexts/ThemeContext';
-import { HardwareTestingSandboxMap } from './HardwareLabs/HardwareTestingSandboxMap';
 import { UsbScannerLab } from './HardwareLabs/UsbScannerLab';
-import { GpsTrackerLab } from './HardwareLabs/GpsTrackerLab';
-import { CameraNvrLab } from './HardwareLabs/CameraNvrLab';
-const DroneHardwareLab = React.lazy(() => 
-    import('./HardwareLabs/DroneHardwareLab').then(m => ({ default: m.DroneHardwareLab }))
-);
-import { WeatherStationLab } from './HardwareLabs/WeatherStationLab';
-import { SoilSensorsLab } from './HardwareLabs/SoilSensorsLab';
 import { getMainPlantation, resolvePlantationCenter } from '../../utils/plantationHelper';
+import { launchExternalModule, openExternalBridgeSettings } from '../../services/ExternalModuleBridge';
+import { getResolvedModuleConfig } from '../../config/externalModulesConfig';
+import type { ExternalModuleId } from '../../types/hardwareContract';
 
 interface HardwareLabsProps {
     employees?: Employee[];
@@ -96,26 +94,22 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({
         return getMainPlantation(plantationFeatures, resolvedPlantationCenter, organizationId);
     }, [plantationFeatures, resolvedPlantationCenter, organizationId]);
 
-    const [activeTab, setActiveTab] = useState<'sandbox_map' | 'bluetooth' | 'gps' | 'cameras' | 'drone' | 'weather' | 'sensors' | 'printer' | 'qr' | 'nfc' | 'scale' | 'ports'>(
-        initialTab ? initialTab : (fullScreenMap ? 'sandbox_map' : 'bluetooth')
+    const [activeTab, setActiveTab] = useState<'bridges' | 'sandbox_map' | 'bluetooth' | 'gps' | 'cameras' | 'drone' | 'weather' | 'sensors' | 'printer' | 'qr' | 'nfc' | 'scale' | 'ports'>(
+        initialTab ? initialTab : 'bluetooth'
     );
     const [isScanning, setIsScanning] = useState(false);
 
-    // Drone Standalone External Tool Connection State (Disconnected by default for speed & Zero RAM)
-    const [isDroneConnected, setIsDroneConnected] = useState<boolean>(() => {
-        return safeStorage.getItem('agrimap_drone_tool_connected') === 'true';
-    });
-
-    const handleConnectDrone = () => {
-        setIsDroneConnected(true);
-        safeStorage.setItem('agrimap_drone_tool_connected', 'true');
-        toast.success('Real Drone Telemetry & Mission Lab connected to project!');
-    };
-
-    const handleDisconnectDrone = () => {
-        setIsDroneConnected(false);
-        safeStorage.setItem('agrimap_drone_tool_connected', 'false');
-        toast.info('Drone module disconnected back to external standby');
+    const launchExternalApp = (moduleId: ExternalModuleId, openInNewTab = false) => {
+        launchExternalModule({
+            moduleId,
+            orgId: organizationId || 'personal',
+            userId: 'operator',
+            center: resolvedPlantationCenter,
+            plantationFeatures,
+            employees,
+            devices: installedDevices,
+            openInNewTab,
+        });
     };
 
     useEffect(() => {
@@ -1310,17 +1304,15 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({
 
     const tabs = [
         { id: 'bluetooth', label: 'USB & BT Scanners', icon: ScanLine },
-        { id: 'gps', label: 'GPS & Worker Jackets', icon: Navigation },
-        { id: 'cameras', label: 'Cameras', icon: Video },
-        { id: 'drone', label: 'Real Drone Link', icon: Radio },
-        { id: 'weather', label: 'Weather Station & AI', icon: CloudRain },
-        { id: 'sensors', label: 'Soil pH/EC & Water', icon: Droplets },
         { id: 'printer', label: 'Zebra & Printers', icon: Printer },
         { id: 'scale', label: 'Weigh System', icon: Scale },
         { id: 'ports', label: 'Ports & USB Bus', icon: Usb },
         { id: 'qr', label: 'QR Generator', icon: QrCode },
         { id: 'nfc', label: 'NFC & RFID', icon: Rss },
-        { id: 'sandbox_map', label: 'Testing Sandbox Map', icon: MapPin },
+        { id: 'bridges', label: 'External Bridges', icon: Server },
+        { id: 'cameras', label: 'Vision & Cameras', icon: Video },
+        { id: 'drone', label: 'Drone 3D Control', icon: Plane },
+        { id: 'gps', label: 'GPS & IoT Hub', icon: Navigation },
     ];
 
     const manageDevice = (devId: string, action: string) => {
@@ -1334,23 +1326,6 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({
         );
     };
 
-    if (activeTab === 'sandbox_map' && fullScreenMap) {
-        return (
-            <div className="module-labs w-full h-full relative overflow-hidden flex flex-col">
-                <HardwareTestingSandboxMap 
-                    plantationFeatures={plantationFeatures}
-                    mapCenter={resolvedPlantationCenter}
-                    onSwitchTab={(tab: string) => {
-                        if (onSelectLabTab) {
-                            onSelectLabTab('hardware');
-                        }
-                        setActiveTab((tab as any) || 'bluetooth');
-                    }}
-                />
-            </div>
-        );
-    }
-
     return (
         <div className="module-labs bg-[#FAFBF8] text-[#163022] rounded-[2.5rem] border border-[#D8E3D4] shadow-xl overflow-hidden min-h-[700px] flex flex-col">
             <div className="p-6 sm:p-8 border-b border-[#D8E3D4] bg-[#EEF3EA] flex flex-wrap items-center justify-between gap-4">
@@ -1359,42 +1334,26 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({
                         <Cpu className="text-emerald-700" /> Hardware Peripheral Labs
                     </h2>
                     <p className="text-xs font-bold text-[#4A6753] mt-1 uppercase tracking-widest flex items-center gap-2">
-                        <Wifi size={12} className="text-emerald-600" /> Active Local Mesh • Low-level driver management
+                        <Wifi size={12} className="text-emerald-600" /> Core Peripherals + Decoupled External Bridges
                     </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2.5">
-                    {/* Main Plantation Testing Map Link */}
                     <button
-                        onClick={() => {
-                            if (onOpenDevicesMap) {
-                                onOpenDevicesMap();
-                            } else if (onSelectLabTab) {
-                                onSelectLabTab('devices_map');
-                            } else {
-                                setActiveTab('sandbox_map');
-                            }
-                            toast.success(`Opening map on: ${mainPlantation.name}`);
-                        }}
-                        className="px-3.5 py-2 bg-white text-[#244130] border border-[#CFDCCB] hover:bg-emerald-600 hover:text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer"
-                        title="Open device testing map on Main Plantation"
+                        type="button"
+                        onClick={() => launchExternalApp('gps_iot')}
+                        className="px-3.5 py-2 bg-white text-[#244130] border border-[#CFDCCB] hover:bg-emerald-600 hover:text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                        title="Open External GPS & IoT Map Hub"
                     >
-                        <MapPin size={13} className="text-emerald-600 group-hover:text-white" />
-                        <span className="truncate max-w-[160px]">🌿 {mainPlantation.name}</span>
+                        <MapPin size={13} />
+                        <span className="truncate max-w-[160px]">{mainPlantation.name} — IoT Map</span>
                     </button>
 
                     <button
-                        onClick={() => {
-                            if (onOpenDevicesMap) {
-                                onOpenDevicesMap();
-                            } else if (onSelectLabTab) {
-                                onSelectLabTab('devices_map');
-                            } else {
-                                setActiveTab('sandbox_map');
-                            }
-                        }}
-                        className="px-4 py-2 bg-white text-[#244130] border border-[#CFDCCB] hover:bg-blue-600 hover:text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer"
+                        type="button"
+                        onClick={() => openExternalBridgeSettings()}
+                        className="px-3.5 py-2 bg-white text-[#244130] border border-[#CFDCCB] hover:bg-slate-900 hover:text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
                     >
-                        <MapPin size={13} /> 🗺️ Full Screen Testing Map
+                        <Settings size={13} /> Bridge Endpoints
                     </button>
                     <button
                         onClick={() => {
@@ -1461,13 +1420,6 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.2 }}
                     >
-                        {activeTab === 'sandbox_map' && (
-                            <HardwareTestingSandboxMap 
-                                plantationFeatures={plantationFeatures}
-                                mapCenter={resolvedPlantationCenter}
-                            />
-                        )}
-
                         {activeTab === 'bluetooth' && (
                             <UsbScannerLab 
                                 employees={employees}
@@ -1477,111 +1429,118 @@ const HardwareLabs: React.FC<HardwareLabsProps> = ({
                             />
                         )}
 
-                        {activeTab === 'gps' && (
-                            <GpsTrackerLab 
-                                employees={employees}
-                                activeOrgId={organizationId}
-                                mapCenter={resolvedPlantationCenter}
-                            />
-                        )}
-
-                        {activeTab === 'cameras' && (
-                            <CameraNvrLab 
-                                plantationFeatures={plantationFeatures}
-                                mapCenter={resolvedPlantationCenter}
-                            />
-                        )}
-
-                        {activeTab === 'drone' && (
-                            <div className="space-y-4">
-                                {!isDroneConnected ? (
-                                    <div className="p-8 sm:p-12 bg-white rounded-3xl border border-[#D8E3D4] shadow-sm flex flex-col items-center justify-center text-center max-w-2xl mx-auto my-6 select-none">
-                                        <div className="w-16 h-16 rounded-3xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 mb-4 shadow-sm">
-                                            <Radio className="w-8 h-8 animate-pulse" />
-                                        </div>
-                                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#EEF3EA] border border-[#D8E3D4] text-[11px] font-mono text-[#244130] mb-3">
-                                            <span className="w-2 h-2 rounded-full bg-slate-400" />
-                                            <span>External Standby Tool (Disconnected / Zero RAM)</span>
-                                        </div>
-                                        <h3 className="text-xl font-black text-[#163022] tracking-tight mb-2">
-                                            Real Drone MAVLink & RTK Flight Controller
+                        {(activeTab === 'bridges' || activeTab === 'cameras' || activeTab === 'drone' || activeTab === 'gps' || activeTab === 'weather' || activeTab === 'sensors' || activeTab === 'sandbox_map') && (
+                            <div className="space-y-6">
+                                <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-[#D8E3D4]">
+                                    <div>
+                                        <h3 className="text-lg font-bold text-[#163022] tracking-tight">
+                                            Autonomous External Hardware Applications
                                         </h3>
-                                        <p className="text-xs text-slate-500 max-w-lg leading-relaxed mb-6">
-                                            This tool stands outside the main application to keep your project ultra-fast. 
-                                            Click below only when you need to establish live telemetry, RTK centimeter satellite lock, or autonomous plantation flight missions.
+                                        <p className="text-xs text-[#4A6753] mt-0.5">
+                                            Heavy video NVR, Three.js 3D drone simulation, and GPS/IoT telemetry run outside Core memory and connect via verified Zero-URL-Token bridge.
                                         </p>
-
-                                        {/* Capabilities quick preview */}
-                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 w-full mb-6 text-left">
-                                            <div className="p-2.5 rounded-xl bg-[#FAFBF8] border border-[#D8E3D4]">
-                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Radio Link</div>
-                                                <div className="text-xs font-black text-[#163022] mt-0.5">MAVLink 433MHz</div>
-                                            </div>
-                                            <div className="p-2.5 rounded-xl bg-[#FAFBF8] border border-[#D8E3D4]">
-                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">GNSS Precision</div>
-                                                <div className="text-xs font-black text-[#163022] mt-0.5">RTK Fixed (28 Sats)</div>
-                                            </div>
-                                            <div className="p-2.5 rounded-xl bg-[#FAFBF8] border border-[#D8E3D4]">
-                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Terrain AGL</div>
-                                                <div className="text-xs font-black text-[#163022] mt-0.5">DEM Auto-Contour</div>
-                                            </div>
-                                            <div className="p-2.5 rounded-xl bg-[#FAFBF8] border border-[#D8E3D4]">
-                                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Video Feed</div>
-                                                <div className="text-xs font-black text-[#163022] mt-0.5">RTSP Live Gimbal</div>
-                                            </div>
-                                        </div>
-
-                                        <button
-                                            type="button"
-                                            onClick={handleConnectDrone}
-                                            className="px-6 py-3 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-bold rounded-2xl text-sm flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-700/20 transition-all hover:scale-105 active:scale-95"
-                                        >
-                                            <Zap className="w-4 h-4" />
-                                            <span>Connect Drone Tool to Project</span>
-                                        </button>
                                     </div>
-                                ) : (
-                                    <>
-                                        {/* Connected Bar with Disconnect button */}
-                                        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between gap-4 text-xs">
-                                            <div className="flex items-center gap-2 text-emerald-900 font-bold">
-                                                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                                                <span>Real Drone Link Connected to Active Plantation Project</span>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={handleDisconnectDrone}
-                                                className="px-3 py-1.5 bg-white hover:bg-red-50 text-red-700 border border-red-200 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
-                                                title="Disconnect Drone tool back to external standby"
+                                    <button
+                                        type="button"
+                                        onClick={() => openExternalBridgeSettings()}
+                                        className="px-3.5 py-2 rounded-xl border border-[#CFDCCB] bg-white hover:bg-slate-900 hover:text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
+                                    >
+                                        <Settings size={14} /> Configure Cloud / LAN Servers
+                                    </button>
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                                    {(['vision', 'drone', 'gps_iot'] as ExternalModuleId[]).map((modId) => {
+                                        const cfg = getResolvedModuleConfig(modId);
+                                        const isHighlighted =
+                                            (activeTab === 'cameras' && modId === 'vision') ||
+                                            (activeTab === 'drone' && modId === 'drone') ||
+                                            ((activeTab === 'gps' || activeTab === 'weather' || activeTab === 'sensors' || activeTab === 'sandbox_map') && modId === 'gps_iot');
+
+                                        const icon = modId === 'vision'
+                                            ? <Video size={20} className="text-sky-600" />
+                                            : modId === 'drone'
+                                                ? <Plane size={20} className="text-emerald-600" />
+                                                : <Navigation size={20} className="text-amber-600" />;
+
+                                        return (
+                                            <div
+                                                key={modId}
+                                                className={`rounded-2xl border p-5 bg-white flex flex-col justify-between transition-colors ${
+                                                    isHighlighted ? 'border-emerald-600 ring-1 ring-emerald-500/20' : 'border-[#D8E3D4]'
+                                                }`}
                                             >
-                                                <span>🔌 Disconnect to Standby</span>
-                                            </button>
-                                        </div>
+                                                <div>
+                                                    <div className="flex items-start justify-between gap-3 mb-3">
+                                                        <div className="w-10 h-10 rounded-xl border border-[#D8E3D4] bg-[#FAFBF8] flex items-center justify-center shrink-0">
+                                                            {icon}
+                                                        </div>
+                                                        <span className="text-[11px] font-mono text-[#4A6753] tabular-nums">
+                                                            {cfg.sameOriginEntryPath}
+                                                        </span>
+                                                    </div>
+                                                    <h4 className="text-sm font-bold text-[#163022]">{cfg.name}</h4>
+                                                    <p className="text-xs text-[#4A6753] mt-1 leading-relaxed">{cfg.subtitle}</p>
+                                                    <div className="mt-3 pt-3 border-t border-[#EEF3EA] space-y-1 text-[11px] font-mono text-[#4A6753] tabular-nums">
+                                                        <div className="truncate">Cloud: {cfg.cloudUrl}</div>
+                                                        <div className="truncate">LAN: {cfg.localUrl}</div>
+                                                    </div>
+                                                </div>
 
-                                        <Suspense fallback={
-                                            <div className="w-full p-16 bg-white rounded-3xl border border-[#D8E3D4] flex flex-col items-center justify-center text-slate-500 font-mono text-xs gap-3">
-                                                <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-                                                <span>Loading Real Drone MAVLink Controller...</span>
+                                                <div className="mt-4 pt-3 border-t border-[#EEF3EA] flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => launchExternalApp(modId, false)}
+                                                        className="flex-1 py-2 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold cursor-pointer transition-colors"
+                                                    >
+                                                        Launch App
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => launchExternalApp(modId, true)}
+                                                        className="py-2 px-2.5 rounded-xl border border-[#CFDCCB] bg-[#FAFBF8] hover:bg-[#EEF3EA] text-[#163022] text-xs font-medium cursor-pointer transition-colors"
+                                                        title="Open in new tab"
+                                                    >
+                                                        <ExternalLink size={14} />
+                                                    </button>
+                                                </div>
                                             </div>
-                                        }>
-                                            <DroneHardwareLab 
-                                                mapCenter={resolvedPlantationCenter}
-                                            />
-                                        </Suspense>
-                                    </>
-                                )}
+                                        );
+                                    })}
+                                </div>
+
+                                <div className="rounded-2xl border border-[#D8E3D4] bg-white p-5">
+                                    <div className="flex items-center justify-between gap-2 mb-3">
+                                        <h4 className="text-xs font-bold uppercase tracking-wider text-[#4A6753]">
+                                            Core Device Registry ({installedDevices.length})
+                                        </h4>
+                                        <span className="text-[11px] font-mono text-[#4A6753] tabular-nums">
+                                            Org: {organizationId || 'personal'}
+                                        </span>
+                                    </div>
+                                    {installedDevices.length === 0 ? (
+                                        <p className="text-xs text-[#4A6753]">
+                                            No peripheral or bridge devices registered yet. Devices deployed from Vision NVR, Drone 3D, or GPS Hub sync here automatically.
+                                        </p>
+                                    ) : (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                                            {installedDevices.map((dev: any) => (
+                                                <div key={dev.id} className="p-3 rounded-xl border border-[#E5ECE2] bg-[#FAFBF8] flex items-center justify-between gap-2">
+                                                    <div className="min-w-0">
+                                                        <div className="text-xs font-bold text-[#163022] truncate">{dev.name || dev.id}</div>
+                                                        <div className="text-[11px] font-mono text-[#4A6753] truncate tabular-nums">
+                                                            {dev.type || 'DEVICE'} {dev.ipAddress ? `• ${dev.ipAddress}` : ''}
+                                                        </div>
+                                                    </div>
+                                                    <span className={`text-[10px] font-mono font-semibold ${dev.status === 'OFFLINE' ? 'text-rose-600' : 'text-emerald-700'}`}>
+                                                        {dev.status || 'ONLINE'}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                        )}
-
-                        {activeTab === 'weather' && (
-                            <WeatherStationLab 
-                                mapCenter={resolvedPlantationCenter}
-                                plantationFeatures={plantationFeatures}
-                            />
-                        )}
-
-                        {activeTab === 'sensors' && (
-                            <SoilSensorsLab />
                         )}
 
                         {activeTab === 'ports' && (

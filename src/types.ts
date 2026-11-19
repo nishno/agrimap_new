@@ -86,7 +86,7 @@ export interface Membership {
     role: UserRole;
     permissionLevel: 'read' | 'write' | 'admin';
     isGlobalRegistrationAgreed?: boolean;
-    status: 'active' | 'invited' | 'suspended' | 'pending';
+    status: 'active' | 'invited' | 'suspended' | 'pending' | 'declined';
     joinedAt: string;
 }
 
@@ -367,8 +367,15 @@ export interface SeedlingPlantationFeature extends BasePlantationFeature {
     type: 'seedling';
     geometry: [number, number];
     condition: SeedlingCondition;
+    healthStatus?: 'HEALTHY' | 'SUSPICIOUS' | 'DRIED';
     cropVariety?: string;
 }
+
+export type {
+    DeviceRegistryRecord as DeviceRegistryEntry,
+    SystemNotificationRecord as SystemNotification,
+    AgronomistDiagnosisRecord as AgronomistDiagnosis,
+} from './types/hardwareContract';
 
 export interface NotePlantationFeature extends BasePlantationFeature {
     type: 'note';
@@ -1665,6 +1672,13 @@ export interface ForumPost {
     isRead?: boolean;
     readBy?: string[];
     parentPostId?: string;
+    ticketType?: 'company_join' | 'support' | 'general';
+    ticketStatus?: 'pending' | 'approved' | 'declined';
+    ticketOrgId?: string;
+    ticketOrgName?: string;
+    ticketMembershipId?: string;
+    ticketResolvedBy?: string;
+    ticketResolvedAt?: string;
     replies: ForumReply[];
 }
 
@@ -1768,16 +1782,18 @@ export interface Review {
 export interface Alert {
     id: string;
     organizationId?: string;
+    recipientId?: string;
+    createdBy?: string;
     title: string;
     content: string;
-    type: 'info' | 'warning' | 'error';
+    type: 'info' | 'warning' | 'error' | 'success';
     timestamp: string;
     isRead?: boolean;
     readBy?: string[];
     metadata?: any;
     actions?: {
         label: string;
-        actionType: 'approve_join' | 'open_chat' | 'link';
+        actionType: 'approve_join' | 'decline_join' | 'open_chat' | 'link';
         actionData?: any;
     }[];
 }
@@ -1873,14 +1889,15 @@ export const checkModuleAccess = (user: User | null, module: AppMode, activeOrg?
     if (userRole === 'company') userRole = 'Founder'; // Map company to Founder for permissions
     
     if (activeOrg) {
-        const membership = memberships?.find(m => m.organizationId === activeOrg.id && m.userId === user.id);
+        const membership = memberships?.find(m => m.organizationId === activeOrg.id && m.userId === user.id && (m.status === 'active' || !m.status));
         if (membership) {
             userRole = membership.role;
         }
     } else if (memberships && memberships.length > 0) {
-        // "See All" Context: Check max permission across all memberships
+        // "See All" Context: Check max permission across all active memberships
         let maxAccess: AccessLevel = 'none';
         for (const m of memberships) {
+             if (m.status && m.status !== 'active') continue;
              const role = m.role;
              const access = permissionMatrix[module]?.[role] || 'none';
              if (access === 'full') return 'full';
@@ -1908,10 +1925,10 @@ export const checkModuleAccess = (user: User | null, module: AppMode, activeOrg?
     if (user.verificationStatus === 'unverified' && !activeOrg) {
         if (module === 'profile' || module === 'dashboard' || module === 'onboarding') return baseAccess;
         
-        // Allow users with Admin/Founder/Co-Founder privileges (global or via membership) to access management modules
+        // Allow users with Admin/Founder/Co-Founder privileges (global or via active membership) to access management modules
         const hasAdminOrFounderPrivilege = 
             (user.roles || []).some(r => ['Admin', 'Founder', 'Co-Founder'].includes(r)) || 
-            (memberships || []).some(m => m.userId === user.id && ['Admin', 'Founder', 'Co-Founder'].includes(m.role));
+            (memberships || []).some(m => m.userId === user.id && (m.status === 'active' || !m.status) && ['Admin', 'Founder', 'Co-Founder'].includes(m.role));
             
         if (hasAdminOrFounderPrivilege && (module === 'tools' || module === 'invitations' || module === 'system')) {
             return 'full';

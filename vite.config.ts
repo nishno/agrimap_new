@@ -104,8 +104,7 @@ export default defineConfig(() => {
           'firebase/firestore',
           'lucide-react',
           '@google/genai',
-          'd3',
-          'three'
+          'd3'
         ]
       },
       build: {
@@ -113,6 +112,12 @@ export default defineConfig(() => {
         chunkSizeWarningLimit: 3000,
         cssCodeSplit: true,
         rollupOptions: {
+          input: {
+            main: path.resolve(__dirname, 'index.html'),
+            vision: path.resolve(__dirname, 'vision.html'),
+            drone: path.resolve(__dirname, 'drone.html'),
+            gps: path.resolve(__dirname, 'gps.html'),
+          },
           output: {
             manualChunks(id) {
               if (id.includes('node_modules')) {
