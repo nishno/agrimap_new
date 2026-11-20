@@ -7443,6 +7443,7 @@ const App: React.FC = () => {
                             machinery={machinery || []}
                             nutritionPlans={nutritionPlans || []}
                             onNavigateToTasks={() => setAppMode('tasks' as any)}
+                            onNavigateMode={(mode) => setAppMode(mode as any)}
                             onAddTask={canManageActiveOrg ? handleAddTask : undefined}
                             onAddNutritionPlan={canManageActiveOrg ? handleUpsertNutritionPlan : undefined}
                         />

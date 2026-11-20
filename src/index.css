@@ -364,4 +364,20 @@ input[type=number] {
   box-shadow: 0 6px 14px rgba(15, 23, 42, 0.14) !important;
 }
 
+/* ==========================================================================
+   GLOBAL RESPONSIVE POP-UP & MODAL VIEWPORT ADAPTATION
+   Ensures all pop-up dialogs scale cleanly across mobile, tablet & desktop
+   without clipping Close (X) buttons or overflowing small screens.
+   ========================================================================== */
+[role="dialog"],
+.modal-content {
+  max-width: calc(100vw - 1rem);
+  max-height: calc(100dvh - 1rem);
+}
 
+@media (max-width: 640px) {
+  .fixed.inset-0 > div:not(.leaflet-container) {
+    max-width: calc(100vw - 0.75rem) !important;
+    max-height: calc(100dvh - 0.75rem) !important;
+  }
+}

@@ -45,8 +45,8 @@ try {
   }
 } catch (e) {}
 
-export const PRIMARY_GEMINI_MODEL = 'gemini-3.8-flash';
-export const FALLBACK_GEMINI_MODEL = 'gemini-flash-latest';
+export const PRIMARY_GEMINI_MODEL = 'gemini-4-hydrogen';
+export const FALLBACK_GEMINI_MODEL = 'gemini-3.1-flash-lite';
 export const LIVE_GEMINI_MODEL = 'gemini-3.8-live';
 
 export function cleanApiKey(input?: string | null): string {
@@ -61,22 +61,84 @@ export function cleanApiKey(input?: string | null): string {
   return k;
 }
 
+export function isPlaceholderApiKey(key?: string | null): boolean {
+  if (!key) return true;
+  const upper = key.trim().toUpperCase();
+  if (upper.length < 15) return true;
+  if (
+    upper.includes('MY_GEMINI') ||
+    upper.includes('YOUR_API_KEY') ||
+    upper.includes('YOUR_GEMINI') ||
+    upper.includes('REPLACE_ME') ||
+    upper.includes('PLACEHOLDER') ||
+    upper === 'GEMINI_API_KEY'
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function normalizeGeminiModel(requestedModel?: string | null): string {
+  if (!requestedModel || typeof requestedModel !== 'string') return PRIMARY_GEMINI_MODEL;
+  const m = requestedModel.trim().toLowerCase();
+  // Upgrade invalid/legacy models automatically to active Gemini 4 Hydrogen
+  if (
+    m === 'gemini-3.8-flash' ||
+    m === 'gemini-flash-latest' ||
+    m.startsWith('gemini-1.5') ||
+    m.startsWith('gemini-2.0') ||
+    m.startsWith('gemini-2.5') ||
+    m.startsWith('gemini-3.0') ||
+    m === 'gemini-pro'
+  ) {
+    return PRIMARY_GEMINI_MODEL;
+  }
+  return requestedModel.trim();
+}
+
+export function sanitizeGeminiConfig(model: string, config?: any): any {
+  if (!config || typeof config !== 'object') return config;
+  const sanitized = { ...config };
+  // Gemini 4 models reject deprecated sampling parameters (temperature, topP, topK, candidateCount, thinkingBudget)
+  if (model.startsWith('gemini-4')) {
+    delete sanitized.temperature;
+    delete sanitized.topP;
+    delete sanitized.topK;
+    delete sanitized.candidateCount;
+    if (sanitized.thinkingConfig && typeof sanitized.thinkingConfig === 'object') {
+      const tc = { ...sanitized.thinkingConfig };
+      delete tc.thinkingBudget;
+      sanitized.thinkingConfig = Object.keys(tc).length > 0 ? tc : undefined;
+      if (!sanitized.thinkingConfig) delete sanitized.thinkingConfig;
+    }
+  }
+  return sanitized;
+}
+
 let serverGenAI: GoogleGenAI | null = null;
 let currentServerKeyUsed = '';
 let serverCustomKeyOverride = '';
 
-function getServerGenAI(customKey?: string): GoogleGenAI {
-  const cleanedCustom = cleanApiKey(customKey);
-  const activeKey = (
-    cleanedCustom ||
-    serverCustomKeyOverride ||
-    cleanApiKey(process.env.GEMINI_API_KEY) ||
-    cleanApiKey(process.env.API_KEY) ||
-    cleanApiKey(process.env.VITE_GEMINI_API_KEY) ||
-    ''
-  ).trim();
+function resolveActiveServerKey(customKey?: string): string {
+  const candidates = [
+    cleanApiKey(customKey),
+    cleanApiKey(serverCustomKeyOverride),
+    cleanApiKey(process.env.GEMINI_API_KEY),
+    cleanApiKey(process.env.API_KEY),
+    cleanApiKey(process.env.VITE_GEMINI_API_KEY)
+  ];
+  for (const key of candidates) {
+    if (key && !isPlaceholderApiKey(key)) {
+      return key;
+    }
+  }
+  return '';
+}
 
-  if (!activeKey || activeKey.length < 15) {
+function getServerGenAI(customKey?: string): GoogleGenAI {
+  const activeKey = resolveActiveServerKey(customKey);
+
+  if (!activeKey) {
     throw new Error('SERVER_GEMINI_KEY_MISSING');
   }
 
@@ -104,33 +166,27 @@ async function startServer() {
 
   // 1. Health & Server Status Endpoint
   app.get('/api/health', (req, res) => {
-    const hasKey = Boolean(
-      serverCustomKeyOverride ||
-      cleanApiKey(process.env.GEMINI_API_KEY) ||
-      cleanApiKey(process.env.API_KEY) ||
-      cleanApiKey(process.env.VITE_GEMINI_API_KEY)
-    );
+    const hasKey = Boolean(resolveActiveServerKey());
     res.json({
       status: 'healthy',
       time: new Date().toISOString(),
       service: 'AgriMap Pro Full-Stack Core',
-      hasGeminiKey: hasKey
+      hasGeminiKey: hasKey,
+      defaultModel: PRIMARY_GEMINI_MODEL
     });
   });
 
   // 2. Gemini Status & Verification Endpoint
   app.get('/api/gemini/status', (req, res) => {
-    const activeKey = (
-      serverCustomKeyOverride ||
-      cleanApiKey(process.env.GEMINI_API_KEY) ||
-      cleanApiKey(process.env.API_KEY) ||
-      cleanApiKey(process.env.VITE_GEMINI_API_KEY) ||
-      ''
-    );
+    const activeKey = resolveActiveServerKey();
     res.json({
       ok: true,
-      hasServerKey: Boolean(activeKey && activeKey.length >= 15),
-      source: serverCustomKeyOverride ? 'custom_runtime' : (process.env.GEMINI_API_KEY ? 'environment' : 'none'),
+      hasServerKey: Boolean(activeKey),
+      source: serverCustomKeyOverride && !isPlaceholderApiKey(serverCustomKeyOverride)
+        ? 'custom_runtime'
+        : activeKey
+          ? 'environment'
+          : 'none',
       maskedKey: activeKey && activeKey.length >= 10 ? `${activeKey.slice(0, 6)}...${activeKey.slice(-4)}` : null,
       defaultModel: PRIMARY_GEMINI_MODEL,
       fallbackModel: FALLBACK_GEMINI_MODEL
@@ -269,21 +325,51 @@ async function startServer() {
     }
   });
 
+function extractCleanUserQuestion(contents: any): string {
+  const extractFromText = (raw: string): string => {
+    const trimmed = raw.trim();
+    // 1. Explicit USER QUESTION: marker (used by HelpAiAssistantChat & guides)
+    const uqMatch = trimmed.match(/USER QUESTION:\s*([\s\S]+)$/i);
+    if (uqMatch && uqMatch[1].trim()) return uqMatch[1].trim();
+    // 2. Explicit "The user says:" marker (used by GlobalAssistantPanel)
+    const saysMatch =
+      trimmed.match(/The user says:\s*"([^"]+)"/i) ||
+      trimmed.match(/The user says:\s*([^\n\r]+)/i);
+    if (saysMatch && saysMatch[1].trim()) return saysMatch[1].trim();
+    // 3. Explicit "Question:" or "Prompt:" at end
+    const qMatch = trimmed.match(/(?:^|\n)(?:Question|Query|შეკითხვა):\s*([\s\S]+)$/i);
+    if (qMatch && qMatch[1].trim()) return qMatch[1].trim();
+    return trimmed;
+  };
+
+  if (typeof contents === 'string') {
+    return extractFromText(contents);
+  }
+  if (Array.isArray(contents)) {
+    // Prefer the last user turn if structured as [{role, parts}]
+    for (let i = contents.length - 1; i >= 0; i--) {
+      const entry = contents[i];
+      if (typeof entry === 'string' && entry.trim()) {
+        return extractFromText(entry);
+      }
+      if (entry && Array.isArray(entry.parts)) {
+        const texts = entry.parts.map((p: any) => (typeof p === 'string' ? p : p?.text || '')).filter(Boolean);
+        if (texts.length > 0) {
+          return extractFromText(texts.join(' '));
+        }
+      }
+    }
+  }
+  if (contents && typeof contents === 'object' && Array.isArray(contents.parts)) {
+    const texts = contents.parts.map((p: any) => p?.text || '').filter(Boolean);
+    if (texts.length > 0) return extractFromText(texts.join(' '));
+  }
+  return '';
+}
+
 function synthesizeServerAutonomousResponse(contents: any, config?: any, upstreamNotice?: any): { text: string; candidates: any[] } {
   const schemaProps = config?.responseSchema?.properties || {};
-
-  // Extract query text
-  let userQuery = '';
-  if (typeof contents === 'string') {
-    const userMatch = contents.match(/The user says:\s*"([^"]+)"/i) || contents.match(/The user says:\s*([^\n\r]+)/i);
-    userQuery = userMatch ? userMatch[1].trim() : contents.trim();
-  } else if (Array.isArray(contents)) {
-    const textParts = contents.flatMap((c: any) => (c.parts || []).map((p: any) => p.text || '')).filter(Boolean);
-    const joined = textParts.join(' ');
-    const userMatch = joined.match(/The user says:\s*"([^"]+)"/i) || joined.match(/The user says:\s*([^\n\r]+)/i);
-    userQuery = userMatch ? userMatch[1].trim() : (textParts[textParts.length - 1] || joined);
-  }
-
+  const userQuery = extractCleanUserQuestion(contents);
   const queryLower = userQuery.toLowerCase();
   const isKa = /[\u10A0-\u10FF]/.test(userQuery);
 
@@ -565,14 +651,126 @@ function synthesizeServerAutonomousResponse(contents: any, config?: any, upstrea
       : `📊 **Harvest Sales Excel Export**: Generating comprehensive export including batch IDs, net kilograms, container tares, and revenues.`);
     action = { type: 'excel_export', title: 'Harvest Sales' };
   }
-  // F. Plant Disease, Yellow Leaves, Spraying, Symptoms
+  // E2. Profile Creation, Verification & KYC
+  else if (
+    queryLower.includes('profile') || queryLower.includes('kyc') ||
+    queryLower.includes('verify') || queryLower.includes('verification') ||
+    queryLower.includes('პროფილ') || queryLower.includes('ვერიფიკაც') ||
+    queryLower.includes('როლი') || queryLower.includes('role')
+  ) {
+    responseText = noticePrefix + (isKa
+      ? `🪪 **პროფილის შექმნა, როლის არჩევა და KYC ვერიფიკაცია**:\n\n` +
+        `1. გახსენით **პროფილი (Profile)** ზედა მარჯვენა მენიუდან ან Dashboard-ის მოციმციმე ბარათიდან.\n` +
+        `2. შეავსეთ სახელი, გვარი, მოქმედი ტელეფონი, ქვეყანა/რეგიონი და ელ-ფოსტა.\n` +
+        `3. აირჩიეთ თქვენი სამუშაო როლი (*დამფუძნებელი, აგრონომი, მენეჯერი, მუშაკი ან მყიდველი*) და შეინახეთ.\n` +
+        `4. ატვირთეთ პირადობის მოწმობა/პასპორტი KYC ვერიფიკაციის განყოფილებაში.\n` +
+        `5. დადასტურებისა და როლის არჩევის შემდეგ Dashboard-დან ვერიფიკაციისა და პროფილის ბარათები ავტომატურად მოიხსნება.\n\n[ACTION:profile:პროფილის გახსნა] [ACTION:founders:კომპანიის რეგისტრაცია]`
+      : `🪪 **Profile Setup, Role Selection & KYC Verification**:\n\n` +
+        `1. Open **Profile** from the top-right user menu or the blinking Verification card on your Dashboard.\n` +
+        `2. Fill in Full Name, active Phone Number, Country/Region, and verify Email.\n` +
+        `3. Choose your operational role (*Founder, Farm Manager, Agronomist, Worker, or Buyer*) and save.\n` +
+        `4. Upload your National ID / Passport in the **KYC Verification** section.\n` +
+        `5. Once verified and your role is selected, both onboarding cards automatically clear from the Dashboard.\n\n[ACTION:profile:Open Profile] [ACTION:founders:Founders Hub]`);
+  }
+  // E3. Company Registration & Founders Hub
+  else if (
+    queryLower.includes('company') || queryLower.includes('founder') ||
+    queryLower.includes('enterprise') || queryLower.includes('tax id') ||
+    queryLower.includes('კომპანი') || queryLower.includes('დამფუძნებ') ||
+    queryLower.includes('რეგისტრაცი')
+  ) {
+    responseText = noticePrefix + (isKa
+      ? `🏢 **კომპანიის რეგისტრაცია და დამფუძნებელთა ჰაბი (Founders Hub)**:\n\n` +
+        `1. გადადით **Founders Hub**-ში და დააჭირეთ **Register Company**.\n` +
+        `2. მიუთითეთ იურიდიული დასახელება, საიდენტიფიკაციო კოდი (Tax ID) და ფორმა (შპს, კოოპერატივი, ი/მ).\n` +
+        `3. დაამატეთ თანადამფუძნებლები და გაანაწილეთ წილები (ჯამში 100%).\n` +
+        `4. შენახვის შემდეგ ზედა მენიუს გადამრთველში გააქტიურდება თქვენი კომპანიის სამუშაო სივრცე (C-xxx).\n\n[ACTION:founders:Founders Hub] [ACTION:design:პლანტაციის რუკა]`
+      : `🏢 **Company Registration & Founders Hub**:\n\n` +
+        `1. Open **Founders Hub** and click **Register Company**.\n` +
+        `2. Enter Company Legal Name, Tax ID, and Legal Form (LLC, Cooperative, JSC, or IE).\n` +
+        `3. Add co-founders and allocate equity percentages totaling **100%**.\n` +
+        `4. Once saved, switch into your new company workspace (C-xxx) from the top-left workspace switcher.\n\n[ACTION:founders:Open Founders Hub] [ACTION:design:Open Map & Design]`);
+  }
+  // E4. Workers, HR, Attendance & Payroll
+  else if (
+    queryLower.includes('worker') || queryLower.includes('employee') ||
+    queryLower.includes('attendance') || queryLower.includes('payroll') ||
+    queryLower.includes('salary') || queryLower.includes('wage') ||
+    queryLower.includes('მუშა') || queryLower.includes('თანამშრომ') ||
+    queryLower.includes('დასწრებ') || queryLower.includes('ხელფას')
+  ) {
+    responseText = noticePrefix + (isKa
+      ? `👷 **მუშახელის რეგისტრაცია, დასწრება და გამომუშავება (HR & Tools)**:\n\n` +
+        `1. გახსენით **HR & Tools** მოდული.\n` +
+        `2. დაამატეთ მუშაკი (სახელი, ტელეფონი, ტარიფი კგ/ყუთზე ან დღიური ანაზღაურება, PIN კოდი).\n` +
+        `3. დაბეჭდეთ ან შეინახეთ მუშაკის **QR ბეჯი** სასწორთან სწრაფი სკანირებისთვის.\n` +
+        `4. ყოველ დილით **Attendance** ტაბში 1 კლიკით მონიშნეთ *Present / Absent / Late*.\n` +
+        `5. აწონილი კილოგრამები ავტომატურად იანგარიშება **Accounting -> Payroll**-ში.\n\n[ACTION:tools:HR & მუშახელი] [ACTION:accounting:ხელფასები & ბუღალტერია]`
+      : `👷 **Worker Registration, Attendance & Piece-Rate Payroll**:\n\n` +
+        `1. Open **HR & Tools** from the navigation menu.\n` +
+        `2. Add each picker or staff member with name, phone, piece-rate tariff (per kg/box) or daily rate, and PIN.\n` +
+        `3. Generate their **QR Badge** for sub-second Weigh Station check-in.\n` +
+        `4. Mark daily attendance (*Present / Absent / Late*) in the **Attendance** tab with 1 click.\n` +
+        `5. All weighed net kilograms automatically accrue into **Accounting -> Payroll**.\n\n[ACTION:tools:Open HR & Tools] [ACTION:accounting:Open Payroll & Ledger]`);
+  }
+  // E5. Dashboard Layout, Widgets, SOP & Help
+  else if (
+    queryLower.includes('dashboard') || queryLower.includes('widget') ||
+    queryLower.includes('layout') || queryLower.includes('sop') ||
+    queryLower.includes('guide') || queryLower.includes('help') ||
+    queryLower.includes('დაფა') || queryLower.includes('ვიჯეტ') ||
+    queryLower.includes('ინსტრუქც') || queryLower.includes('გზამკვლევ')
+  ) {
+    responseText = noticePrefix + (isKa
+      ? `📖 **Dashboard ვიჯეტების მართვა და ვიზუალური SOP გზამკვლევი**:\n\n` +
+        `1. **ვიჯეტების დამალვა/ჩვენება**: მთავარ დაფაზე დააჭირეთ **Layout** ღილაკს — თვალით (👁️) შეგიძლიათ მყისიერად დამალოთ ან გამოაჩინოთ ნებისმიერი ვიჯეტი რუკის გარდა.\n` +
+        `2. **რუკის პოზიცია**: Layout-ში აირჩიეთ რუკის ადგილი (ზემოთ, პროფილთან, ქვემოთ ან მოძრავი ფანჯარა).\n` +
+        `3. **SOP გზამკვლევი სქრინშოთებით**: გახსენით **Help -> SOP Manual & Procedures** — თითოეულ მოდულს ახლავს ვიზუალური ეკრანის გზამკვლევი (Screenshot), პარამეტრების სია და ნაბიჯ-ნაბიჯ ჩექლისტი.\n\n[ACTION:dashboard:მთავარი დაფა] [ACTION:guide:SOP გზამკვლევი]`
+      : `📖 **Dashboard Widget Layout & Visual SOP Guide**:\n\n` +
+        `1. **Hide/Show Widgets**: Click **Layout** on the Dashboard banner to toggle any widget (except the Map) off or on instantly.\n` +
+        `2. **Map Position**: Choose Top, With Profile, Upper, Bottom, or Floating directly inside the Layout manager.\n` +
+        `3. **Visual SOP Guide with Screenshots**: Open **Help -> SOP Manual & Procedures** to view step-by-step screenshots, controls, and checklists for every AgriMap module.\n\n[ACTION:dashboard:Open Dashboard] [ACTION:guide:Open SOP Guide]`);
+  }
+  // E6. Accounting, Finance & Ledger
+  else if (
+    queryLower.includes('accounting') || queryLower.includes('ledger') ||
+    queryLower.includes('invoice') || queryLower.includes('expense') ||
+    queryLower.includes('finance') || queryLower.includes('ბუღალტ') ||
+    queryLower.includes('ხარჯ') || queryLower.includes('ფინანს')
+  ) {
+    responseText = noticePrefix + (isKa
+      ? `💰 **ბუღალტერია, ხარჯები და ფინანსური ლეჯერი**:\n\n` +
+        `1. გახსენით **Accounting** მოდული.\n` +
+        `2. დააფიქსირეთ ოპერაციული ხარჯები (OPEX), შესყიდვის ორდერები (PO) და გაყიდვების შემოსავლები.\n` +
+        `3. გადაამოწმეთ მკრეფავთა გამომუშავების უწყისები და დააექსპორტეთ საბანკო/Excel რეესტრი.\n\n[ACTION:accounting:ბუღალტერიის გახსნა]`
+      : `💰 **Accounting, OPEX Expenses & Double-Entry Ledger**:\n\n` +
+        `1. Open the **Accounting** module.\n` +
+        `2. Record farm OPEX expenses, supplier purchase orders (POs), and wholesale fruit sales revenues.\n` +
+        `3. Reconcile picker piece-rate payroll balances and export bank-ready payout sheets.\n\n[ACTION:accounting:Open Accounting]`);
+  }
+  // E7. Offline Sync & Local Server
+  else if (
+    queryLower.includes('offline') || queryLower.includes('sync') ||
+    queryLower.includes('local server') || queryLower.includes('ოფლაინ') ||
+    queryLower.includes('სინქრონ') || queryLower.includes('სერვერ')
+  ) {
+    responseText = noticePrefix + (isKa
+      ? `📡 **ოფლაინ მუშაობა და სინქრონიზაცია**:\n\n` +
+        `1. სუსტი ინტერნეტის დროს AgriMap Pro ავტომატურად ინახავს ყველა აწონვას, დასწრებასა და ჩანაწერს ლოკალურ ბუფერში.\n` +
+        `2. ინტერნეტის დაბრუნებისთანავე დააჭირეთ ზედა პანელზე **Push / Sync** ღილაკს ან დაელოდეთ ავტო-სინქრონიზაციას.\n\n[ACTION:dashboard:სინქრონიზაციის სტატუსი]`
+      : `📡 **Offline Field Mode & Cloud Synchronization**:\n\n` +
+        `1. In low-signal orchards, AgriMap Pro buffers all weighments, attendance, and notes safely in local storage.\n` +
+        `2. Once connectivity returns, click **Push / Sync** in the top bar (or wait for auto-sync) to reconcile with Cloud Firestore.\n\n[ACTION:dashboard:Check Sync Status]`);
+  }
+  // F. Plant Disease, Yellow Leaves, Spraying, Symptoms (ONLY when user actually asks about crop health!)
   else if (
     queryLower.includes('yellow') || queryLower.includes('ყვითელ') || 
     queryLower.includes('disease') || queryLower.includes('დაავადებ') || 
     queryLower.includes('წამლობ') || queryLower.includes('ფუნგიციდ') || 
-    queryLower.includes('spray') || queryLower.includes('bt') ||
+    queryLower.includes('spray') || queryLower.includes('fungus') ||
     queryLower.includes('leaf') || queryLower.includes('ფოთოლ') ||
-    queryLower.includes('chlorosis') || queryLower.includes('ქლოროზ')
+    queryLower.includes('chlorosis') || queryLower.includes('ქლოროზ') ||
+    queryLower.includes('pest') || queryLower.includes('მავნებელ')
   ) {
     responseText = noticePrefix + (isKa
       ? `🌿 **აგრონომიული დიაგნოსტიკა და სამკურნალო სქემა**:\n\n` +
@@ -618,19 +816,19 @@ function synthesizeServerAutonomousResponse(contents: any, config?: any, upstrea
     queryLower.includes('scale') || queryLower.includes('weigh') || 
     queryLower.includes('harvest') || queryLower.includes('tare') || 
     queryLower.includes('ტარა') || queryLower.includes('სასწორ') || 
-    queryLower.includes('რთველ') || queryLower.includes('მკრეფავ')
+    queryLower.includes('რთველ') || queryLower.includes('მოსავალ') || queryLower.includes('მკრეფავ')
   ) {
     responseText = noticePrefix + (isKa
       ? `⚖️ **რთველის მიღება & ციფრული სასწორის 6 პროტოკოლი**:\n\n` +
-        `- **პროტოკოლი 1 & 2**: Bluetooth/სერიული უწყვეტი ნაკადი ან მოთხოვნითი პოლინგი.\n` +
-        `- **პროტოკოლი 3 (ავტო-ტარა)**: 0.35 კგ ტარის ავტომატური გამოკლება ყუთზე, რაც უზრუნველყოფს 100%-ით ზუსტ ნეტო წონას.\n` +
-        `- **მკრეფავის QR ბეჯი**: სკანირება წამში, ნეტო კილოგრამები ავტომატურად ირიცხება მკრეფავის ტარიფზე (₾/კგ).\n` +
-        `- **ცივი ჯაჭვის 45-წუთიანი ტაიმერი**: კრეფიდან სამაცივრეში მოხვედრის მაქსიმალური ვადა კენკრის სიმკვრივის შესანარჩუნებლად.`
+        `- **პროტოკოლი 1 & 2**: Bluetooth/სერიული უწყვეტი ნაკადი ან მექანიკური აწონვა ავტო-ნეტო გამოთვლით.\n` +
+        `- **პროტოკოლი 3 (პალეტიზაცია & ავტო-ტარა)**: ყუთის ტარის (მაგ. 0.35 კგ) ავტომატური გამოკლება 100%-ით ზუსტი ნეტო წონისთვის.\n` +
+        `- **მკრეფავის QR ბეჯი**: სკანირება წამში — ნეტო კილოგრამები ავტომატურად ირიცხება მკრეფავის ტარიფზე (₾/კგ).\n` +
+        `- **ცივი ჯაჭვის 45-წუთიანი ტაიმერი**: კრეფიდან სამაცივრეში მოხვედრის კონტროლი.\n\n[ACTION:harvesting:მოსავლის აღება & სასწორი]`
       : `⚖️ **Harvest Weigh Station & 6 Scale Protocols**:\n\n` +
-        `- **Protocol 1 & 2**: Bluetooth/Serial continuous broadcast or on-demand query poll.\n` +
-        `- **Protocol 3 (Auto-Tare)**: 0.35kg automatic crate deduction for 100% net fruit yield accuracy.\n` +
+        `- **Protocol 1 & 2**: Bluetooth/Serial QR Scale or Manual Scale with automatic net-weight calculation.\n` +
+        `- **Protocol 3 (Pallet Batching & Auto-Tare)**: Automatic crate tare deduction (e.g. 0.35 kg) for exact net fruit yield.\n` +
         `- **Worker QR Badging**: Sub-second badge scanning instantly credits net kilograms to piece-rate wages.\n` +
-        `- **45-Min Cold Chain Timer**: Enforces transit to pre-cooling within 45 minutes to protect fruit firmness.`);
+        `- **45-Min Cold Chain Timer**: Tracks transit from field to pre-cooling to preserve berry firmness.\n\n[ACTION:harvesting:Open Harvesting & Weigh Station]`);
   }
   // I. Stock & Inventory FIFO
   else if (
@@ -641,45 +839,40 @@ function synthesizeServerAutonomousResponse(contents: any, config?: any, upstrea
     responseText = noticePrefix + (isKa
       ? `📦 **საწყობის FIFO და ავტომატური ჩამოწერა**:\n\n` +
         `- **ყუთების ავტო-ჩამოწერა**: სასწორზე ყოველი დაფიქსირებული ყუთი ავტომატურად აკლდება ტარის საწყობს FIFO პრინციპით.\n` +
-        `- **აგროქიმიის ჩამოწერა**: სამუშაო დავალების (წამლობა/მორწყვა) დასრულება ავტომატურად აკლებს შეტანილ ლიტრებსა და კილოგრამებს.\n` +
-        `- **კრიტიკული ნაშთის განგაში**: სისტემა გაფრთხილებთ, როდესაც ყუთების ან სასუქების რაოდენობა მინიმალურ ზღვარს ჩამოსცდება.`
+        `- **აგროქიმიის ჩამოწერა**: სამუშაო დავალების დასრულება ავტომატურად აკლებს შეტანილ ლიტრებსა და კილოგრამებს.\n` +
+        `- **კრიტიკული ნაშთის განგაში**: სისტემა გაფრთხილებთ, როდესაც მარაგი მინიმალურ ზღვარს ჩამოსცდება.\n\n[ACTION:stock:საწყობის გახსნა]`
       : `📦 **Stock FIFO & Automated Inventory Depletion**:\n\n` +
         `- **Crate Auto-Depletion**: Every logged weighment decrements packaging stock in real time via FIFO.\n` +
-        `- **Chemical Depletion**: Completing a spray/fertilization task automatically depletes assigned dosages.\n` +
-        `- **Safety Stock Alerts**: Real-time notifications when packaging or spray units drop below minimum thresholds.`);
+        `- **Chemical Depletion**: Completing a treatment or fertigation task automatically depletes assigned dosages.\n` +
+        `- **Safety Stock Alerts**: Real-time alerts when crates or agrochemicals drop below minimum thresholds.\n\n[ACTION:stock:Open Warehouse & Stock]`);
   }
   // J. GIS Mapping, Cadastre & Hectares
   else if (
     queryLower.includes('map') || queryLower.includes('cadastr') || 
     queryLower.includes('რუკა') || queryLower.includes('საკადასტრო') || 
-    queryLower.includes('boundary') || queryLower.includes('polygon') || queryLower.includes('ჰექტარ')
+    queryLower.includes('boundary') || queryLower.includes('polygon') || queryLower.includes('ჰექტარ') ||
+    queryLower.includes('plantation') || queryLower.includes('ნაკვეთ')
   ) {
     responseText = noticePrefix + (isKa
       ? `🗺️ **GIS რუკა, საკადასტრო ძებნა და ნაკვეთის მოხაზვა**:\n\n` +
         `- **ნაკვეთის მოძებნა**: საძიებო ზოლში შეიყვანეთ საკადასტრო კოდი ან GPS კოორდინატები და გადართეთ სატელიტურ ხედზე.\n` +
         `- **პოლიგონის ხელსაწყო**: მონიშნეთ ნაკვეთის კუთხეები; სისტემა ავტომატურად გამოთვლის ჰექტრებსა და პერიმეტრს.\n` +
-        `- **სექტორები და რიგები**: ნაკვეთის შიგნით დაამატეთ ნერგების რიგები (სგრძივი თხრილები) და სარწყავი მილები.`
+        `- **სექტორები და რიგები**: ნაკვეთის შიგნით დაამატეთ ნერგების რიგები და სარწყავი მილები.\n\n[ACTION:design:რუკის გახსნა]`
       : `🗺️ **GIS Satellite Mapping & Cadastral Boundaries**:\n\n` +
-        `- **Locate Parcel**: Enter Cadastral Code or GPS coordinates in the search bar and toggle to Satellite view.\n` +
-        `- **Polygon Tool**: Click vertices to seal parcel boundary; the system auto-calculates exact surface area in Hectares (ha).\n` +
-        `- **Internal Vectors**: Layer planting trenches, blueberry rows, and drip irrigation mains.`);
+        `- **Locate Parcel**: Enter Cadastral Code or GPS coordinates in the map search bar and toggle Satellite view.\n` +
+        `- **Polygon Tool**: Click vertices to seal parcel boundaries; the system auto-calculates exact area in Hectares (ha).\n` +
+        `- **Internal Vectors**: Layer sectors, seedling rows, and drip irrigation lines.\n\n[ACTION:design:Open Plantation Map]`);
   }
   // K. General Agricultural & System Guidance (Personalized to user's exact query)
   else {
-    const topicSummary = userQuery.slice(0, 80);
+    const topicSummary = userQuery.slice(0, 100);
     responseText = noticePrefix + (isKa
-      ? `🌾 **AgriMap Pro აგრონომიული ინტელექტი**: მოთხოვნა **"${topicSummary}"** მიღებულია.\n\n` +
-        `**ოპერაციული რეკომენდაციები მეურნეობისთვის**:\n` +
-        `- **საველე კონტროლი**: შეამოწმეთ სექტორების მორწყვის გრაფიკი და ნიადაგის ტენიანობა (15-25 kPa).\n` +
-        `- **სასწორის პროტოკოლები**: რთველის მიღებისას გააქტიურეთ 0.35 კგ ტარის ავტომატური გამოკლება და QR ბეჯების სკანირება.\n` +
-        `- **საწყობის მართვა**: გამოიყენეთ FIFO მეთოდი ტარისა და აგროქიმიის რეალურ დროში ჩამოსაწერად.\n` +
-        `- **AI გასაღების პარამეტრები**: ღრუბლოვანი მოდელების (Gemini 3.8 Flash) გასააქტიურებლად შეიყვანეთ აქტიური API გასაღები ან შეავსეთ კრედიტები https://ai.studio/projects-ზე.`
-      : `🌾 **AgriMap Pro Operational Agronomic Guidance**: Analysis for query: **"${topicSummary}"**.\n\n` +
-        `**Key Farm Directives**:\n` +
-        `- **Field Operations**: Align drip fertigation schedules with crop phenology (soil tension 15-25 kPa).\n` +
-        `- **Weigh Station Protocols**: Maintain 0.35kg auto-tare deduction and worker QR badge logging.\n` +
-        `- **Inventory Control**: Real-time FIFO depletion of crates and agrochemicals.\n` +
-        `- **AI Cloud Key Notice**: To activate live Gemini 3.8 Flash reasoning, configure an active API key with available credits in AI Settings or add credits at https://ai.studio/projects.`);
+      ? `🌾 **AgriMap Pro ასისტენტი**: მიღებულია შეკითხვა **"${topicSummary}"**.\n\n` +
+        `აირჩიეთ სასურველი მიმართულება ან დააზუსტეთ მოდული (მაგ: *პროფილი და KYC, კომპანიის რეგისტრაცია, რუკა და საზღვრები, მუშახელი და დასწრება, საწყობი, მოსავლის აწონვა, ბუღალტერია ან დაავადების დიაგნოსტიკა*):\n` +
+        `- **SOP გზამკვლევი სქრინშოთებით**: იხილეთ ყველა მოდულის ნაბიჯ-ნაბიჯ ინსტრუქცია Help განყოფილებაში.\n\n[ACTION:guide:SOP გზამკვლევი] [ACTION:dashboard:მთავარი დაფა]`
+      : `🌾 **AgriMap Pro Operational Assistant**: Received your question: **"${topicSummary}"**.\n\n` +
+        `Ask specifically about any module (*Profile & KYC, Company Setup, Satellite Map & Boundaries, Workers & Attendance, Warehouse Stock, Harvest Weigh Station, Accounting, Weather, Soil pH, or Crop Diagnostics*) for exact step-by-step instructions.\n` +
+        `- You can also browse the **Visual SOP Guide with Screenshots** inside Help.\n\n[ACTION:guide:Open SOP Guide] [ACTION:dashboard:Open Dashboard]`);
   }
 
   // Format final response based on caller's expected mimeType/schema
@@ -701,16 +894,17 @@ function synthesizeServerAutonomousResponse(contents: any, config?: any, upstrea
       return res.status(400).json({ success: false, error: 'Missing contents parameter' });
     }
 
-    const targetModel = model || PRIMARY_GEMINI_MODEL;
+    const targetModel = normalizeGeminiModel(model);
 
     // Helper to attempt calling GoogleGenAI
     const tryGeminiCall = async (apiKeyToTry?: string): Promise<any> => {
       const ai = getServerGenAI(apiKeyToTry);
       const executeCall = async (modelToUse: string) => {
+        const sanitizedConfig = sanitizeGeminiConfig(modelToUse, config);
         const response = await ai.models.generateContent({
           model: modelToUse,
           contents,
-          config
+          ...(sanitizedConfig ? { config: sanitizedConfig } : {})
         });
         return {
           success: true,
@@ -724,7 +918,7 @@ function synthesizeServerAutonomousResponse(contents: any, config?: any, upstrea
         return await executeCall(targetModel);
       } catch (err: any) {
         const errStr = err?.message || String(err);
-        if ((errStr.includes('404') || errStr.includes('not found')) && targetModel !== FALLBACK_GEMINI_MODEL) {
+        if ((errStr.includes('404') || errStr.includes('not found') || errStr.includes('429')) && targetModel !== FALLBACK_GEMINI_MODEL) {
           return await executeCall(FALLBACK_GEMINI_MODEL);
         }
         throw err;
@@ -741,7 +935,7 @@ function synthesizeServerAutonomousResponse(contents: any, config?: any, upstrea
         });
       } catch (firstErr: any) {
         // If custom key failed, retry once with server environment key if available
-        if (customKey && (serverCustomKeyOverride || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY)) {
+        if (customKey && resolveActiveServerKey()) {
           const fallbackResult = await tryGeminiCall(undefined);
           return res.json({
             ...fallbackResult,
@@ -819,14 +1013,15 @@ function synthesizeServerAutonomousResponse(contents: any, config?: any, upstrea
       (res as any).flushHeaders();
     }
 
-    const targetModel = model || PRIMARY_GEMINI_MODEL;
+    const targetModel = normalizeGeminiModel(model);
 
     try {
       const ai = getServerGenAI(customKey);
+      const sanitizedConfig = sanitizeGeminiConfig(targetModel, config);
       const responseStream = await ai.models.generateContentStream({
         model: targetModel,
         contents,
-        config
+        ...(sanitizedConfig ? { config: sanitizedConfig } : {})
       });
 
       for await (const chunk of responseStream) {
@@ -1075,6 +1270,14 @@ function synthesizeServerAutonomousResponse(contents: any, config?: any, upstrea
 
   // 7. Vite Mounting (Dev) or Static File Serving (Prod)
   if (!isProduction) {
+    app.use((req, res, next) => {
+      if (!req.path.startsWith('/api/')) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      }
+      next();
+    });
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true, hmr: false, ws: false },
@@ -1083,17 +1286,27 @@ function synthesizeServerAutonomousResponse(contents: any, config?: any, upstrea
     app.use(vite.middlewares);
   } else {
     const distPath = path.resolve(__dirname, 'dist');
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, {
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html') || filePath.endsWith('sw.js')) {
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        }
+      }
+    }));
     app.get(['/vision', '/vision.html'], (req, res) => {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       res.sendFile(path.join(distPath, 'vision.html'));
     });
     app.get(['/drone', '/drone.html'], (req, res) => {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       res.sendFile(path.join(distPath, 'drone.html'));
     });
     app.get(['/gps', '/gps.html'], (req, res) => {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       res.sendFile(path.join(distPath, 'gps.html'));
     });
     app.use((req, res) => {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

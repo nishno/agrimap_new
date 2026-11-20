@@ -11,8 +11,8 @@ export const Type = {
 } as const;
 export type Type = (typeof Type)[keyof typeof Type];
 
-export const PRIMARY_GEMINI_MODEL = "gemini-3.8-flash";
-export const FALLBACK_GEMINI_MODEL = "gemini-flash-latest";
+export const PRIMARY_GEMINI_MODEL = "gemini-4-hydrogen";
+export const FALLBACK_GEMINI_MODEL = "gemini-3.1-flash-lite";
 
 export const DEFAULT_AI_CREDIT_PACKS: AiCreditPack[] = [
     {
@@ -591,7 +591,7 @@ const SEED_AI_QUERY_HISTORY: AiQueryHistoryItem[] = [
         prompt: 'Synthesize daily agro field notes for Blueberry Block 4: dripper clog and leaf margin yellowing.',
         response: 'Synthesized daily condition: Fertilizer salt accumulation detected around emitters causing osmotic stress. Recommended: Flush dripper lines with 0.1% nitric acid solution and balance calcium/magnesium ratio.',
         source: 'cloud',
-        modelUsed: 'gemini-2.5-flash',
+        modelUsed: 'gemini-4-hydrogen',
         tokensOrCreditsSpent: 2,
         remainingQuota: 96,
         moduleName: 'Notes',
@@ -604,7 +604,7 @@ const SEED_AI_QUERY_HISTORY: AiQueryHistoryItem[] = [
         prompt: 'Calculate projected harvest labor requirement for 15 tons of Chandler walnuts with 2 shakers.',
         response: 'Operational estimate: 2 mechanical tree shakers operating over 12 hours require a collection crew of 14 pickers plus 2 tractor drivers with hydraulic dump trailers. Net daily harvest capacity ~7.5 tons.',
         source: 'cloud',
-        modelUsed: 'gemini-2.5-flash',
+        modelUsed: 'gemini-4-hydrogen',
         tokensOrCreditsSpent: 1,
         remainingQuota: 98,
         moduleName: 'Harvest',
@@ -1176,15 +1176,22 @@ export const createGeminiLiveSession = (options?: {
 function synthesizeAutonomousResponse(params: { contents: any; config?: any }): any {
     const schemaProps = params.config?.responseSchema?.properties || {};
 
+    const extractOnlyUserQuery = (raw: string): string => {
+        const trimmed = raw.trim();
+        const uq = trimmed.match(/USER QUESTION:\s*([\s\S]+)$/i);
+        if (uq && uq[1].trim()) return uq[1].trim();
+        const says = trimmed.match(/The user says:\s*"([^"]+)"/i) || trimmed.match(/The user says:\s*([^\n\r]+)/i);
+        if (says && says[1].trim()) return says[1].trim();
+        return trimmed;
+    };
+
     let userQuery = '';
     if (typeof params.contents === 'string') {
-        const userMatch = params.contents.match(/The user says:\s*"([^"]+)"/i) || params.contents.match(/The user says:\s*([^\n\r]+)/i);
-        userQuery = userMatch ? userMatch[1].trim() : params.contents.trim();
+        userQuery = extractOnlyUserQuery(params.contents);
     } else if (Array.isArray(params.contents)) {
         const textParts = params.contents.flatMap((c: any) => (c.parts || []).map((p: any) => p.text || '')).filter(Boolean);
         const joined = textParts.join(' ');
-        const userMatch = joined.match(/The user says:\s*"([^"]+)"/i) || joined.match(/The user says:\s*([^\n\r]+)/i);
-        userQuery = userMatch ? userMatch[1].trim() : (textParts[textParts.length - 1] || joined);
+        userQuery = extractOnlyUserQuery(textParts[textParts.length - 1] || joined);
     }
 
     const queryLower = userQuery.toLowerCase();

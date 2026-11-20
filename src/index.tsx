@@ -172,19 +172,35 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// Register service worker for PWA safely in production only
+// Ensure stale Service Workers never serve outdated bundles in dev, and auto-update cleanly in prod
 try {
-  if (import.meta.env.PROD && typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-    const updateSW = registerSW({
-      onNeedRefresh() {
-        if (confirm('New content available. Reload?')) {
+  if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+    if (import.meta.env.DEV) {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        registrations.forEach((registration) => {
+          registration.unregister().catch(() => {});
+        });
+      }).catch(() => {});
+      if ('caches' in window) {
+        caches.keys().then((keys) => {
+          keys.forEach((key) => {
+            if (key.includes('workbox') || key.includes('precache') || key.includes('vite-pwa')) {
+              caches.delete(key).catch(() => {});
+            }
+          });
+        }).catch(() => {});
+      }
+    } else if (import.meta.env.PROD) {
+      const updateSW = registerSW({
+        immediate: true,
+        onNeedRefresh() {
           updateSW(true);
-        }
-      },
-      onOfflineReady() {
-        console.log('App ready to work offline');
-      },
-    });
+        },
+        onOfflineReady() {
+          console.log('App ready to work offline');
+        },
+      });
+    }
   }
 } catch (swErr) {
   console.warn('[PWA] Service Worker registration skipped:', swErr);

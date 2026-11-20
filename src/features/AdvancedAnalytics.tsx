@@ -254,7 +254,7 @@ Language: ${isKa ? 'Write the complete report in natural, professional Georgian 
 
             const result = await executeGeminiCall({
                 contents: prompt,
-                model: 'gemini-2.5-flash'
+                model: 'gemini-4-hydrogen'
             });
 
             const report = result?.text || (isKa ? 'აგრო-ანალიზი წარმატებით დასრულდა.' : 'Agro analysis completed successfully.');

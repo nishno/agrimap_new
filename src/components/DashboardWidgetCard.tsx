@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import type { DashboardWidget } from '../types';
 import { 
     GripVertical, Maximize2, MoveHorizontal, MoveVertical, 
-    ArrowUpToLine, ChevronUp, ChevronDown, Check, MoreVertical
+    ArrowUpToLine, ChevronUp, ChevronDown, Check, MoreVertical, EyeOff
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -18,6 +18,7 @@ interface DashboardWidgetCardProps {
     onUpdateDimensions: (id: string, colSpan?: 1 | 2 | 3, heightPx?: number) => void;
     onMoveToTop?: (id: string) => void;
     onMoveStep?: (id: string, direction: 'up' | 'down') => void;
+    onHideWidget?: (id: string) => void;
     children: React.ReactNode;
 }
 
@@ -33,9 +34,11 @@ export const DashboardWidgetCard: React.FC<DashboardWidgetCardProps> = ({
     onUpdateDimensions,
     onMoveToTop,
     onMoveStep,
+    onHideWidget,
     children
 }) => {
-    const { t } = useLanguage();
+    const { t, language } = useLanguage();
+    const isKa = language === 'ka';
     const cardRef = useRef<HTMLDivElement>(null);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isResizing, setIsResizing] = useState(false);
@@ -278,6 +281,22 @@ export const DashboardWidgetCard: React.FC<DashboardWidgetCardProps> = ({
                                     </button>
                                 ))}
                             </div>
+                            {onHideWidget && (
+                                <>
+                                    <div className="my-1 border-t border-slate-100" />
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            onHideWidget(widget.id);
+                                            setIsMenuOpen(false);
+                                        }}
+                                        className="w-full flex items-center gap-2 px-2.5 py-2 text-left text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                                    >
+                                        <EyeOff size={14} className="text-rose-500" />
+                                        <span>{isKa ? 'დაფაზე დამალვა' : 'Hide from Dashboard'}</span>
+                                    </button>
+                                </>
+                            )}
                         </div>
                     </>
                 )}

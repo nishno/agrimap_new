@@ -49,17 +49,45 @@ export const FloatingWidgetWindow: React.FC<FloatingWidgetWindowProps> = ({
     // Window container ref
     const containerRef = useRef<HTMLDivElement>(null);
 
-    // Center window on initial open if not placed
+    const [isCompactViewport, setIsCompactViewport] = useState<boolean>(() =>
+        typeof window !== 'undefined' ? window.innerWidth < 640 : false
+    );
+
+    // Center window on initial open and clamp dynamically whenever screen size changes
     useEffect(() => {
-        if (isOpen && !pos && typeof window !== 'undefined') {
-            const defaultW = Math.min(initialWidth, window.innerWidth - 40);
-            const defaultH = Math.min(initialHeight, window.innerHeight - 60);
-            const centerX = Math.max(20, Math.floor((window.innerWidth - defaultW) / 2));
-            const centerY = Math.max(20, Math.floor((window.innerHeight - defaultH) / 2));
-            setPos({ x: centerX, y: centerY });
-            setSize({ width: defaultW, height: defaultH });
-        }
-    }, [isOpen, initialWidth, initialHeight, pos]);
+        if (!isOpen || typeof window === 'undefined') return;
+        const clampToViewport = () => {
+            const vw = window.innerWidth;
+            const vh = Math.round(window.visualViewport?.height || window.innerHeight);
+            setIsCompactViewport(vw < 640);
+            setSize(prev => {
+                const targetW = pos ? prev.width : initialWidth;
+                const targetH = pos ? prev.height : initialHeight;
+                const nextW = Math.max(280, Math.min(targetW, vw - 16));
+                const nextH = Math.max(260, Math.min(targetH, vh - 20));
+                setPos(prevPos => {
+                    if (!prevPos) {
+                        return {
+                            x: Math.max(8, Math.floor((vw - nextW) / 2)),
+                            y: Math.max(8, Math.floor((vh - nextH) / 2))
+                        };
+                    }
+                    return {
+                        x: Math.max(8, Math.min(Math.max(8, vw - nextW - 8), prevPos.x)),
+                        y: Math.max(8, Math.min(Math.max(8, vh - nextH - 8), prevPos.y))
+                    };
+                });
+                return { width: nextW, height: nextH };
+            });
+        };
+        clampToViewport();
+        window.addEventListener('resize', clampToViewport);
+        window.visualViewport?.addEventListener('resize', clampToViewport);
+        return () => {
+            window.removeEventListener('resize', clampToViewport);
+            window.visualViewport?.removeEventListener('resize', clampToViewport);
+        };
+    }, [isOpen, initialWidth, initialHeight]);
 
     // Handle Dragging
     const handleDragPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -193,22 +221,24 @@ export const FloatingWidgetWindow: React.FC<FloatingWidgetWindowProps> = ({
         );
     }
 
-    const windowStyle: React.CSSProperties = isMaximized
+    const windowStyle: React.CSSProperties = (isMaximized || isCompactViewport)
         ? {
             position: 'fixed',
-            inset: '16px',
+            inset: isCompactViewport ? '8px' : '16px',
             zIndex: 9200,
-            width: 'calc(100vw - 32px)',
-            height: 'calc(100vh - 32px)'
+            width: isCompactViewport ? 'calc(100vw - 16px)' : 'calc(100vw - 32px)',
+            height: isCompactViewport ? 'calc(100dvh - 16px)' : 'calc(100dvh - 32px)',
+            maxWidth: 'calc(100vw - 16px)',
+            maxHeight: 'calc(100dvh - 16px)'
         }
         : {
             position: 'fixed',
-            left: pos ? `${pos.x}px` : '40px',
-            top: pos ? `${pos.y}px` : '40px',
+            left: pos ? `${pos.x}px` : '20px',
+            top: pos ? `${pos.y}px` : '20px',
             width: `${size.width}px`,
             height: `${size.height}px`,
-            maxWidth: 'calc(100vw - 24px)',
-            maxHeight: 'calc(100vh - 24px)',
+            maxWidth: 'calc(100vw - 16px)',
+            maxHeight: 'calc(100dvh - 16px)',
             zIndex: 9200
         };
 

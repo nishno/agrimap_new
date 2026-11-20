@@ -14,6 +14,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAppTheme } from '../contexts/ThemeContext';
 import ContextualStatusEngine from './ContextualStatusEngine';
 import { APP_VERSION_CODE, APP_VERSION_NAME, APP_CLASSIC_VERSION_NAME, UiVersionMode, getUiVersionMode, setUiVersionMode } from '../utils/version';
+import { isUserOwnerOrRoot } from '../data/rootManualSopData';
 
 
 interface SidebarProps {
@@ -253,10 +254,14 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <DocumentTextIcon className="h-4.5 w-4.5" />
               </div>
               <p className={`text-[10px] font-black uppercase tracking-widest text-center ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-                {language === 'ka' ? 'სისტემის გზამკვლევი' : 'Architecture Guide'}
+                {isUserOwnerOrRoot(currentUser)
+                  ? (language === 'ka' ? 'სისტემის გზამკვლევი' : 'Architecture & SOPs')
+                  : (language === 'ka' ? 'დახმარება & SOP' : 'Help & SOP Guide')}
               </p>
               <p className="text-[9px] font-bold text-slate-400 mt-0.5 text-center">
-                {language === 'ka' ? 'ინსტრუქციები და ინტელექტუალური მოდელები' : 'SOPs & AI Models'}
+                {isUserOwnerOrRoot(currentUser)
+                  ? (language === 'ka' ? 'AI ასისტენტი, SOP & არქიტექტურა' : 'AI Guide, SOPs & Architecture')
+                  : (language === 'ka' ? 'AI ასისტენტი & სამუშაო SOP' : 'AI Guide & SOP Manuals')}
               </p>
           </div>
         </div>

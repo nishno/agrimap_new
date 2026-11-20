@@ -69,15 +69,29 @@ export const AiAnalysisModal: React.FC<AiAnalysisModalProps> = ({
         startHeight: number;
     } | null>(null);
 
-    // Escape key listener
+    // Escape key & live viewport resize clamping listener
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape' && isOpen) {
                 onClose();
             }
         };
+        const handleViewportResize = () => {
+            const vw = window.innerWidth;
+            const vh = Math.round(window.visualViewport?.height || window.innerHeight);
+            setModalSize(prev => ({
+                width: Math.max(280, Math.min(prev.width, vw - 16)),
+                height: Math.max(320, Math.min(prev.height, vh - 16))
+            }));
+        };
         window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        window.addEventListener('resize', handleViewportResize);
+        window.visualViewport?.addEventListener('resize', handleViewportResize);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('resize', handleViewportResize);
+            window.visualViewport?.removeEventListener('resize', handleViewportResize);
+        };
     }, [isOpen, onClose]);
 
     // Resizing pointer event handlers
@@ -162,7 +176,7 @@ export const AiAnalysisModal: React.FC<AiAnalysisModalProps> = ({
                     width: `${modalSize.width}px`,
                     height: `${modalSize.height}px`,
                     maxWidth: 'calc(100vw - 16px)',
-                    maxHeight: 'calc(100vh - 16px)',
+                    maxHeight: 'calc(100dvh - 16px)',
                 } : undefined}
                 className={`bg-white border border-slate-700/60 rounded-xl sm:rounded-2xl flex flex-col shadow-2xl overflow-hidden relative transition-[box-shadow,border-color] duration-150 ${
                     isFullscreen 
@@ -172,20 +186,20 @@ export const AiAnalysisModal: React.FC<AiAnalysisModalProps> = ({
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Modal Top Header with Clear Window Controls */}
-                <div className="p-3 sm:p-4 border-b border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-emerald-950 text-white flex items-center justify-between shrink-0 select-none gap-2">
-                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 p-0.5 flex items-center justify-center shadow-lg shadow-emerald-950/50 shrink-0">
+                <div className="p-2.5 sm:p-4 border-b border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-emerald-950 text-white flex items-center justify-between shrink-0 select-none gap-2">
+                    <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 p-0.5 flex items-center justify-center shadow-lg shadow-emerald-950/50 shrink-0">
                             <div className="w-full h-full bg-slate-900 rounded-[10px] flex items-center justify-center">
-                                <Stethoscope className="w-5 h-5 text-emerald-400" />
+                                <Stethoscope className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" />
                             </div>
                         </div>
                         <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                                <h2 className="text-sm sm:text-base font-black tracking-tight text-white uppercase truncate">
+                                <h2 className="text-xs sm:text-base font-black tracking-tight text-white uppercase truncate">
                                     {isKa ? 'AI აგრო დიაგნოსტიკა & კლინიკური კონსოლი' : 'AI Agro Diagnostics & Clinical Console'}
                                 </h2>
                                 <span className="hidden sm:inline-flex text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950/90 text-emerald-300 border border-emerald-700/50 font-bold">
-                                    {isKa ? 'ვერსია v3.8 Flash' : 'v3.8 Flash'}
+                                    Gemini 4 Hydrogen
                                 </span>
                                 <button
                                     type="button"

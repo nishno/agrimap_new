@@ -11,6 +11,8 @@ import { getDefaultScreenshotForStep } from '../utils/defaultScreenshots';
 import { AiModuleArchitectureAnalyzer } from './AiModuleArchitectureAnalyzer';
 import { AiSopGenerator } from './Help/AiSopGenerator';
 import { HelpAiAssistantChat } from './Help/HelpAiAssistantChat';
+import { RootDocsSopManual } from './Help/RootDocsSopManual';
+import { isUserOwnerOrRoot } from '../data/rootManualSopData';
 
 interface HelpAndGuideViewProps {
     onSetAppMode: (mode: AppMode) => void;
@@ -809,12 +811,10 @@ const StepMockup: React.FC<{ stepId: string; t: (key: any) => string }> = ({ ste
 const HelpAndGuideView: React.FC<HelpAndGuideViewProps> = ({ onSetAppMode, onTriggerIdentityPopup, currentUser }) => {
     const { t, language } = useLanguage();
     const isKa = language === 'ka';
-    const isSopAdmin = currentUser?.email?.toLowerCase() === 'magrakvelidzesopio@gmail.com' ||
-                       currentUser?.email?.toLowerCase() === 'admin@agrimap.io' ||
-                       currentUser?.email?.toLowerCase() === 'nishno@agrimap.pro' ||
-                       currentUser?.email?.toLowerCase() === 'giorgi.nishno@gmail.com' ||
+    const isOwnerOrRoot = isUserOwnerOrRoot(currentUser);
+    const isSopAdmin = isOwnerOrRoot ||
+                       currentUser?.email?.toLowerCase() === 'magrakvelidzesopio@gmail.com' ||
                        (currentUser?.roles as string[] | undefined)?.includes('Admin') ||
-                       ((currentUser?.roles as string[] | undefined)?.includes('ROOT_SUPER_ADMIN')) ||
                        (currentUser?.roles as string[] | undefined)?.includes('founder') ||
                        (currentUser?.roles as string[] | undefined)?.includes('Founder');
 
@@ -823,7 +823,53 @@ const HelpAndGuideView: React.FC<HelpAndGuideViewProps> = ({ onSetAppMode, onTri
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('All');
     const [zoomedImage, setZoomedImage] = useState<string | null>(null);
-    const [activeViewMode, setActiveViewMode] = useState<'ai_architecture' | 'sop_timeline' | 'ai_chat'>('ai_architecture');
+    const [activeViewMode, setActiveViewMode] = useState<'ai_chat' | 'sop_timeline' | 'ai_architecture'>('ai_chat');
+    const [sopSubTab, setSopSubTab] = useState<'manual' | 'timeline' | 'generator'>('manual');
+    const [pendingAiPrompt, setPendingAiPrompt] = useState<string | undefined>(undefined);
+
+    useEffect(() => {
+        if (!isOwnerOrRoot && activeViewMode === 'ai_architecture') {
+            setActiveViewMode('ai_chat');
+        }
+    }, [isOwnerOrRoot, activeViewMode]);
+
+    useEffect(() => {
+        const applyDeepLink = () => {
+            try {
+                const focusSopId = sessionStorage.getItem('agrimap_focus_sop_id');
+                if (focusSopId) {
+                    setActiveViewMode('sop_timeline');
+                    setSopSubTab('manual');
+                }
+                const queuedPrompt = sessionStorage.getItem('agrimap_pending_ai_prompt');
+                if (queuedPrompt) {
+                    setPendingAiPrompt(queuedPrompt);
+                    setActiveViewMode('ai_chat');
+                    sessionStorage.removeItem('agrimap_pending_ai_prompt');
+                }
+            } catch {
+                // ignore storage errors
+            }
+        };
+        applyDeepLink();
+        const handleOpenSop = () => {
+            setActiveViewMode('sop_timeline');
+            setSopSubTab('manual');
+        };
+        const handleAskAi = (e: Event) => {
+            const prompt = (e as CustomEvent)?.detail;
+            if (typeof prompt === 'string' && prompt.trim()) {
+                setPendingAiPrompt(prompt);
+                setActiveViewMode('ai_chat');
+            }
+        };
+        window.addEventListener('agrimap_open_sop_manual', handleOpenSop);
+        window.addEventListener('agrimap_ask_ai_guide', handleAskAi);
+        return () => {
+            window.removeEventListener('agrimap_open_sop_manual', handleOpenSop);
+            window.removeEventListener('agrimap_ask_ai_guide', handleAskAi);
+        };
+    }, []);
     
     // Extract unique categories
     const categories = ['All', ...Array.from(new Set(PROCESS_STEPS.map(s => s.category)))];
@@ -1028,34 +1074,11 @@ const HelpAndGuideView: React.FC<HelpAndGuideViewProps> = ({ onSetAppMode, onTri
     return (
         <div className="flex-1 overflow-y-auto bg-slate-50 custom-scrollbar p-4 md:p-8">
             <div className="max-w-6xl mx-auto space-y-8">
-                {/* Master Mode Switcher Tabs */}
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-3 rounded-3xl border border-slate-200 shadow-sm">
+                {/* Master Mode Switcher Tabs — AI Guide Assistant first, SOP next, Architecture strictly Owner/Root only */}
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white p-3 rounded-3xl border border-slate-200 shadow-sm">
                     <div className="flex flex-wrap items-center gap-2 p-1 bg-slate-100 rounded-2xl w-full lg:w-auto">
                         <button
-                            onClick={() => setActiveViewMode('ai_architecture')}
-                            className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                                activeViewMode === 'ai_architecture'
-                                    ? 'bg-slate-900 text-white shadow-md'
-                                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                            }`}
-                        >
-                            <Brain className="w-4 h-4 text-emerald-400" />
-                            <span>{isKa ? 'AI მოდულების არქიტექტურა & ექსპორტი' : 'AI Module Architecture & Downloads'}</span>
-                        </button>
-
-                        <button
-                            onClick={() => setActiveViewMode('sop_timeline')}
-                            className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                                activeViewMode === 'sop_timeline'
-                                    ? 'bg-slate-900 text-white shadow-md'
-                                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                            }`}
-                        >
-                            <BookOpen className="w-4 h-4 text-indigo-400" />
-                            <span>{isKa ? 'სტანდარტული SOP-ები & AI გენერატორი' : 'Standard SOPs & AI Generator'}</span>
-                        </button>
-
-                        <button
+                            type="button"
                             onClick={() => setActiveViewMode('ai_chat')}
                             className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
                                 activeViewMode === 'ai_chat'
@@ -1063,48 +1086,133 @@ const HelpAndGuideView: React.FC<HelpAndGuideViewProps> = ({ onSetAppMode, onTri
                                     : 'text-slate-600 hover:text-indigo-600 hover:bg-indigo-50'
                             }`}
                         >
-                            <MessageSquare className="w-4 h-4 text-indigo-400" />
-                            <span>{isKa ? 'AI ასისტენტი & ჩატი' : 'AI Guide Assistant & Chat'}</span>
-                            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-indigo-500/20 text-indigo-600 border border-indigo-200">
+                            <MessageSquare className={`w-4 h-4 ${activeViewMode === 'ai_chat' ? 'text-white' : 'text-indigo-500'}`} />
+                            <span>{isKa ? 'AI გზამკვლევი ასისტენტი' : 'AI Guide Assistant'}</span>
+                            <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                activeViewMode === 'ai_chat'
+                                    ? 'bg-white/20 text-white'
+                                    : 'bg-indigo-500/15 text-indigo-600 border border-indigo-200'
+                            }`}>
                                 AI
                             </span>
                         </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setActiveViewMode('sop_timeline')}
+                            className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                activeViewMode === 'sop_timeline'
+                                    ? 'bg-slate-900 text-white shadow-md'
+                                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                            }`}
+                        >
+                            <BookOpen className={`w-4 h-4 ${activeViewMode === 'sop_timeline' ? 'text-emerald-400' : 'text-indigo-500'}`} />
+                            <span>{isKa ? 'SOP ინსტრუქციები & სახელმძღვანელო' : 'SOP Manual & Procedures'}</span>
+                        </button>
+
+                        {isOwnerOrRoot && (
+                            <button
+                                type="button"
+                                onClick={() => setActiveViewMode('ai_architecture')}
+                                className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                    activeViewMode === 'ai_architecture'
+                                        ? 'bg-slate-900 text-white shadow-md'
+                                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                                }`}
+                            >
+                                <Brain className="w-4 h-4 text-emerald-400" />
+                                <span>{isKa ? 'AI მოდულების არქიტექტურა & ექსპორტი' : 'AI Module Architecture & Downloads'}</span>
+                            </button>
+                        )}
                     </div>
 
-                    <div className="text-xs font-extrabold text-slate-400 flex items-center justify-between sm:justify-end gap-3 px-3">
-                        <button
-                            onClick={() => setActiveViewMode('ai_chat')}
-                            className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer"
-                        >
-                            <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-                            <span>{isKa ? 'კითხვა აპლიკაციაზე' : 'Ask System Question'}</span>
-                        </button>
-                        <div className="flex items-center gap-1.5">
+                    {isOwnerOrRoot && (
+                        <div className="text-xs font-extrabold text-slate-400 flex items-center justify-end gap-2 px-3">
                             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                            <span>AgriMap Pro 2.0.6 Enterprise</span>
+                            <span>Root / Owner Access</span>
                         </div>
-                    </div>
+                    )}
                 </div>
 
-                {/* VIEW 1: AI ARCHITECTURE, INTERACTIVE TOPOLOGY & DOWNLOADABLE DECKS/GUIDES */}
-                {activeViewMode === 'ai_architecture' && (
+                {/* VIEW 1: AI ARCHITECTURE, INTERACTIVE TOPOLOGY & DOWNLOADABLE DECKS/GUIDES (STRICTLY OWNER & ROOT ONLY) */}
+                {isOwnerOrRoot && activeViewMode === 'ai_architecture' && (
                     <AiModuleArchitectureAnalyzer 
                         onNavigateMode={(mode) => onSetAppMode(mode as AppMode)} 
                         currentUser={currentUser} 
                     />
                 )}
 
-                {/* VIEW 2: STANDARD 16-STEP OPERATIONAL SOP TIMELINE & AI SOP GENERATOR */}
+                {/* VIEW 2: SOP MANUAL (BASED ON ROOT DOCS), 16-STEP WORKFLOW & AI SOP GENERATOR */}
                 {activeViewMode === 'sop_timeline' && (
-                    <div className="max-w-5xl mx-auto space-y-10">
-                        {/* AI SOP & Operational Standard Generator */}
-                        <AiSopGenerator 
-                            language={language}
-                            currentUser={currentUser}
-                            onNavigateMode={(mode) => onSetAppMode(mode as AppMode)}
-                        />
+                    <div className="max-w-5xl mx-auto space-y-6">
+                        {/* Clean Sub-switcher inside SOP */}
+                        <div className="flex flex-wrap items-center gap-2 bg-white p-2 rounded-2xl border border-slate-200 shadow-2xs">
+                            <button
+                                type="button"
+                                onClick={() => setSopSubTab('manual')}
+                                className={`px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                                    sopSubTab === 'manual'
+                                        ? 'bg-emerald-600 text-white shadow-xs'
+                                        : 'text-slate-600 hover:bg-slate-100'
+                                }`}
+                            >
+                                <BookOpen className="w-3.5 h-3.5" />
+                                <span>{isKa ? 'მოდულების SOP სახელმძღვანელო' : 'Modules & Options SOP Manual'}</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setSopSubTab('timeline')}
+                                className={`px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                                    sopSubTab === 'timeline'
+                                        ? 'bg-slate-900 text-white shadow-xs'
+                                        : 'text-slate-600 hover:bg-slate-100'
+                                }`}
+                            >
+                                <Layers className="w-3.5 h-3.5" />
+                                <span>{isKa ? '16-ნაბიჯიანი ციკლი' : '16-Step Workflow'}</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setSopSubTab('generator')}
+                                className={`px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                                    sopSubTab === 'generator'
+                                        ? 'bg-indigo-600 text-white shadow-xs'
+                                        : 'text-slate-600 hover:bg-slate-100'
+                                }`}
+                            >
+                                <Wand2 className="w-3.5 h-3.5" />
+                                <span>{isKa ? 'AI SOP გენერატორი' : 'AI SOP Generator'}</span>
+                            </button>
+                        </div>
 
-                        {/* Standard 16-Step Process Timeline Intro */}
+                        {/* Sub-tab 1: Root-Documentation Modules & Options SOP Manual (with Visual Screenshots) */}
+                        {sopSubTab === 'manual' && (
+                            <RootDocsSopManual
+                                language={language}
+                                isOwnerOrRoot={isOwnerOrRoot}
+                                isSopAdmin={isSopAdmin}
+                                stepImages={stepImages}
+                                onUploadSopImage={handleImageUpload}
+                                onNavigateMode={(mode) => onSetAppMode(mode as AppMode)}
+                                onAskAiGuide={(prompt) => {
+                                    setPendingAiPrompt(prompt);
+                                    setActiveViewMode('ai_chat');
+                                }}
+                            />
+                        )}
+
+                        {/* Sub-tab 3: AI SOP Generator */}
+                        {sopSubTab === 'generator' && (
+                            <AiSopGenerator 
+                                language={language}
+                                currentUser={currentUser}
+                                onNavigateMode={(mode) => onSetAppMode(mode as AppMode)}
+                            />
+                        )}
+
+                        {/* Sub-tab 2: Standard 16-Step Process Timeline */}
+                        {sopSubTab === 'timeline' && (
+                        <div className="space-y-8">
                         <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm">
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                                 <div>
@@ -1116,11 +1224,12 @@ const HelpAndGuideView: React.FC<HelpAndGuideViewProps> = ({ onSetAppMode, onTri
                                     </p>
                                 </div>
                                 <button
+                                    type="button"
                                     onClick={() => setActiveViewMode('ai_chat')}
                                     className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 text-xs font-bold transition-all shrink-0 cursor-pointer"
                                 >
                                     <MessageSquare className="w-4 h-4 text-indigo-600" />
-                                    <span>{isKa ? 'გჭირდებათ დახმარება? გახსენით ჩატი' : 'Need Guidance? Open AI Chat'}</span>
+                                    <span>{isKa ? 'გჭირდებათ დახმარება? გახსენით AI ასისტენტი' : 'Need Guidance? Open AI Guide'}</span>
                                 </button>
                             </div>
                             
@@ -1326,49 +1435,59 @@ const HelpAndGuideView: React.FC<HelpAndGuideViewProps> = ({ onSetAppMode, onTri
                                 </div>
                             )}
 
-                            {/* Agro AI Analyst Log Control Guidance Card */}
-                            <div className="mt-16 bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-[2rem] p-8 border border-slate-700/50 shadow-xl overflow-hidden relative">
-                                <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
-                                <div className="absolute -bottom-16 -left-16 w-64 h-64 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none"></div>
-                                
-                                <div className="relative z-10 flex flex-col md:flex-row gap-6 items-start">
-                                    <div className="p-4 bg-indigo-500/20 text-indigo-400 rounded-2xl border border-indigo-500/30">
-                                        <Brain className="h-8 w-8 animate-pulse text-indigo-300" />
-                                    </div>
-                                    <div className="flex-1">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <h3 className="text-xl font-black text-white">Agro AI Log Control Guidance</h3>
-                                            <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[9px] uppercase font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                                                <Sparkles className="h-3 w-3 inline text-indigo-400" /> ACTIVE
-                                            </span>
+                            {/* Agro AI Analyst Log Control Guidance Card — Owner/Root Only */}
+                            {isOwnerOrRoot && (
+                                <div className="mt-16 bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-[2rem] p-8 border border-slate-700/50 shadow-xl overflow-hidden relative">
+                                    <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+                                    <div className="absolute -bottom-16 -left-16 w-64 h-64 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none"></div>
+                                    
+                                    <div className="relative z-10 flex flex-col md:flex-row gap-6 items-start">
+                                        <div className="p-4 bg-indigo-500/20 text-indigo-400 rounded-2xl border border-indigo-500/30">
+                                            <Brain className="h-8 w-8 animate-pulse text-indigo-300" />
                                         </div>
-                                        <p className="text-slate-300 text-xs leading-relaxed mb-6">
-                                            Our telemetry models actively analyze scale transactions, worker crate counts, varieties, and geofenced harvest sectors. In the event of network throttling or sync conflicts, the system uses idempotent transaction tokens to protect offline data logs. To view real-time performance indicators or verify your system's operational health, contact our engineering dispatch at <strong className="text-indigo-300">giorgi@agrimap.pro</strong> or <strong className="text-indigo-300">+995 595 12 47 47</strong>.
-                                        </p>
-                                        <div className="flex flex-wrap items-center gap-6 text-[10px] uppercase font-extrabold text-slate-400 tracking-wider">
-                                            <div className="flex items-center gap-1.5">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
-                                                DEDUPLICATION TOKEN: <span className="text-slate-200">AUTOMATICALLY RENEWED</span>
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <h3 className="text-xl font-black text-white">Agro AI Log Control Guidance</h3>
+                                                <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[9px] uppercase font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                                                    <Sparkles className="h-3 w-3 inline text-indigo-400" /> ACTIVE
+                                                </span>
                                             </div>
-                                            <div className="flex items-center gap-1.5">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                                                CELLULAR GUARD LIMIT: <span className="text-slate-200">100 BATCH SLICES</span>
+                                            <p className="text-slate-300 text-xs leading-relaxed mb-6">
+                                                Our telemetry models actively analyze scale transactions, worker crate counts, varieties, and geofenced harvest sectors. In the event of network throttling or sync conflicts, the system uses idempotent transaction tokens to protect offline data logs.
+                                            </p>
+                                            <div className="flex flex-wrap items-center gap-6 text-[10px] uppercase font-extrabold text-slate-400 tracking-wider">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+                                                    DEDUPLICATION TOKEN: <span className="text-slate-200">AUTOMATICALLY RENEWED</span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                                    CELLULAR GUARD LIMIT: <span className="text-slate-200">100 BATCH SLICES</span>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
+                        </div>
+                        )}
                     </div>
                 )}
 
-                {/* VIEW 3: AI SYSTEM NAVIGATOR & CHAT ASSISTANT */}
+                {/* VIEW 3: AI GUIDE ASSISTANT & CHAT */}
                 {activeViewMode === 'ai_chat' && (
                     <div className="max-w-5xl mx-auto">
                         <HelpAiAssistantChat 
                             currentUser={currentUser}
                             language={language}
                             onNavigateMode={(mode) => onSetAppMode(mode as AppMode)}
+                            onOpenSopGuide={() => {
+                                setActiveViewMode('sop_timeline');
+                                setSopSubTab('manual');
+                            }}
+                            initialQuery={pendingAiPrompt}
+                            onInitialQueryConsumed={() => setPendingAiPrompt(undefined)}
                         />
                     </div>
                 )}

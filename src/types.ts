@@ -555,9 +555,10 @@ export interface DashboardWidget {
     content?: any;
     colSpan?: 1 | 2 | 3;
     heightPx?: number;
+    manualVisibilityOverride?: boolean;
 }
 
-export type DashboardWidgetType = 'attendance' | 'market_feed' | 'seedling_health' | 'harvest_pulse' | 'daily_news' | 'weather' | 'field_summary' | 'tasks' | 'planner' | 'hardware_labs' | 'team_hubs' | 'guest_stats' | 'seedling_stats' | 'seedling_summary' | 'crops_summary' | 'choose_goal' | 'agronomy_quick';
+export type DashboardWidgetType = 'profile_verification' | 'onboarding_navigator' | 'system_command_center' | 'ai_stream' | 'attendance' | 'market_feed' | 'seedling_health' | 'harvest_pulse' | 'daily_news' | 'weather' | 'field_summary' | 'tasks' | 'planner' | 'hardware_labs' | 'team_hubs' | 'guest_stats' | 'seedling_stats' | 'seedling_summary' | 'crops_summary' | 'choose_goal' | 'agronomy_quick';
 
 export interface GroundingSource {
     web?: { uri: string; title: string };

@@ -27,7 +27,13 @@ import {
   detectCrossModuleAnomalies, getSavedAnalysisConfig, 
   getStoredAnalysisReports, runMultiModuleAiAnalysis 
 } from '../services/crossModuleAnalysisService';
-import { DashboardProfileManager } from './DashboardProfileManager';
+import {
+  ProfileVerificationWidget,
+  OnboardingNavigatorWidget,
+  SystemCommandCenterWidget,
+  getUserOnboardingStatus,
+  UserOnboardingStatus
+} from './DashboardProfileManager';
 import { ChooseYourGoalWidget } from './ChooseYourGoalWidget';
 import { AgronomyQuickAccessWidget } from './AgronomyQuickAccessWidget';
 import { TasksQuickAccessWidget } from './TasksQuickAccessWidget';
@@ -45,8 +51,8 @@ import { TeamHubsWidget } from './TeamHubsWidget';
 import { IntercomPopUpModal } from './IntercomPopUpModal';
 import { DashboardWidgetCard } from './DashboardWidgetCard';
 import { getWidgetTitle } from '../lib/widgetLocalization';
-import { getSavedDashboardLayout, saveDashboardLayout, DEFAULT_DASHBOARD_LAYOUT } from '../utils/dashboardLayoutStorage';
-import { Maximize2, Cpu, Calendar, Grid, Sprout, ShoppingBag, Briefcase, Tractor, Users, ArrowUpToLine, ArrowUpDown, Move, ChevronUp, ChevronDown, Check, Compass, ExternalLink, Plane, Layers, CloudRain } from 'lucide-react';
+import { getSavedDashboardLayout, saveDashboardLayout, normalizeDashboardLayout, DEFAULT_DASHBOARD_LAYOUT } from '../utils/dashboardLayoutStorage';
+import { Maximize2, Cpu, Calendar, Grid, Sprout, ShoppingBag, Briefcase, Tractor, Users, ArrowUpToLine, ArrowUpDown, Move, ChevronUp, ChevronDown, Check, Compass, ExternalLink, Plane, Layers, CloudRain, ShieldCheck, Sliders } from 'lucide-react';
 import { safeStorage } from '../services/storageService';
 import { MapCanvasContextMenu } from './MapCanvasContextMenu';
 import { MapWorkTaskModal } from './MapWorkTaskModal';
@@ -121,58 +127,83 @@ const WidgetManagerModal: React.FC<{
     userId?: string;
     mapPosition?: DashboardMapPosition;
     onUpdateMapPosition?: (pos: DashboardMapPosition) => void;
-}> = ({ isOpen, onClose, layout, onUpdate, userId, mapPosition = 'upper', onUpdateMapPosition }) => {
+    onboardingStatus?: UserOnboardingStatus;
+}> = ({ isOpen, onClose, layout, onUpdate, userId, mapPosition = 'upper', onUpdateMapPosition, onboardingStatus }) => {
     const { t, language } = useLanguage();
     const isKa = language === 'ka';
     const allKnownTypes: { type: DashboardWidgetType; label: string; defaultSpan: 1 | 2 | 3 }[] = [
-        { type: 'choose_goal', label: t('dash.widget.choose_goal'), defaultSpan: 3 },
-        { type: 'agronomy_quick', label: t('dash.widget.agronomy_quick'), defaultSpan: 1 },
-        { type: 'tasks', label: t('dash.widget.tasks'), defaultSpan: 1 },
-        { type: 'planner', label: t('dash.widget.planner'), defaultSpan: 2 },
-        { type: 'hardware_labs', label: t('dash.widget.hardware_labs'), defaultSpan: 2 },
-        { type: 'team_hubs', label: t('dash.widget.team_hubs'), defaultSpan: 2 },
-        { type: 'field_summary', label: t('dash.widget.field_summary'), defaultSpan: 3 },
-        { type: 'seedling_summary', label: t('dash.widget.seedling_summary'), defaultSpan: 3 },
-        { type: 'harvest_pulse', label: t('dash.widget.harvest_pulse'), defaultSpan: 1 },
-        { type: 'attendance', label: t('dash.widget.attendance'), defaultSpan: 1 },
-        { type: 'market_feed', label: t('dash.widget.market_feed'), defaultSpan: 1 },
-        { type: 'daily_news', label: t('dash.widget.daily_news'), defaultSpan: 1 },
-        { type: 'guest_stats', label: t('dash.widget.guest_stats'), defaultSpan: 1 },
-        { type: 'crops_summary', label: t('dash.widget.crops_summary'), defaultSpan: 1 },
+        { type: 'profile_verification', label: getWidgetTitle('profile_verification', 'Profile & KYC Verification', t), defaultSpan: 1 },
+        { type: 'onboarding_navigator', label: getWidgetTitle('onboarding_navigator', 'Manage Profile & Onboarding', t), defaultSpan: 2 },
+        { type: 'system_command_center', label: getWidgetTitle('system_command_center', 'System Command & Operations Center', t), defaultSpan: 3 },
+        { type: 'ai_stream', label: getWidgetTitle('ai_stream', 'AI Autonomous Stream & Anomalies', t), defaultSpan: 3 },
+        { type: 'choose_goal', label: getWidgetTitle('choose_goal', 'Choose Your Goal', t), defaultSpan: 3 },
+        { type: 'agronomy_quick', label: getWidgetTitle('agronomy_quick', 'Agronomy Quick Access', t), defaultSpan: 1 },
+        { type: 'tasks', label: getWidgetTitle('tasks', 'Work & Tasks Hub', t), defaultSpan: 1 },
+        { type: 'planner', label: getWidgetTitle('planner', 'Agro Planner & Schedule', t), defaultSpan: 2 },
+        { type: 'weather', label: getWidgetTitle('weather', 'Online Weather & Station', t), defaultSpan: 1 },
+        { type: 'hardware_labs', label: getWidgetTitle('hardware_labs', 'Hardware Labs & Telemetry', t), defaultSpan: 1 },
+        { type: 'team_hubs', label: getWidgetTitle('team_hubs', 'Team Hubs & Field Comms', t), defaultSpan: 2 },
+        { type: 'field_summary', label: getWidgetTitle('field_summary', 'Field, Sectors & Trenches', t), defaultSpan: 3 },
+        { type: 'seedling_summary', label: getWidgetTitle('seedling_summary', 'Seedling Census & Health', t), defaultSpan: 3 },
+        { type: 'harvest_pulse', label: getWidgetTitle('harvest_pulse', 'Harvest Pulse & Scale Station', t), defaultSpan: 1 },
+        { type: 'attendance', label: getWidgetTitle('attendance', 'Staff Attendance & HR', t), defaultSpan: 2 },
+        { type: 'market_feed', label: getWidgetTitle('market_feed', 'Wholesale Marketplace Feed', t), defaultSpan: 1 },
+        { type: 'daily_news', label: getWidgetTitle('daily_news', 'Daily Briefing', t), defaultSpan: 1 },
+        { type: 'guest_stats', label: getWidgetTitle('guest_stats', 'Global Stats', t), defaultSpan: 2 },
+        { type: 'crops_summary', label: getWidgetTitle('crops_summary', 'Crops & Varieties', t), defaultSpan: 1 },
     ];
 
     // Local working copy of layout for seamless reordering & sizing inside modal
     const [localLayout, setLocalLayout] = useState<DashboardWidget[]>([]);
+    const wasOpenRef = useRef(false);
 
     useEffect(() => {
-        if (isOpen) {
-            // Merge layout with any missing types
-            const existing = layout && layout.length > 0 ? [...layout] : [...DEFAULT_DASHBOARD_LAYOUT];
-            allKnownTypes.forEach((t, idx) => {
-                if (!existing.some(w => w.type === t.type)) {
-                    existing.push({
-                        id: `w_${t.type}`,
-                        type: t.type,
-                        title: t.label,
-                        isVisible: false,
-                        order: existing.length + idx,
-                        colSpan: t.defaultSpan
-                    });
-                }
-            });
-            existing.sort((a, b) => a.order - b.order);
-            setLocalLayout(existing);
+        if (isOpen && !wasOpenRef.current) {
+            setLocalLayout(normalizeDashboardLayout(layout));
         }
+        wasOpenRef.current = isOpen;
     }, [isOpen, layout]);
 
     if (!isOpen) return null;
 
-    const toggleVisibility = (id: string) => {
-        setLocalLayout(prev => prev.map(w => w.id === id ? { ...w, isVisible: !w.isVisible } : w));
+    const getEffectiveVisible = (w: DashboardWidget): boolean => {
+        if (w.manualVisibilityOverride) {
+            return w.isVisible !== false;
+        }
+        if (w.type === 'profile_verification' && onboardingStatus) {
+            if (onboardingStatus.isProfileVerified) return false;
+        }
+        if (w.type === 'onboarding_navigator' && onboardingStatus) {
+            if (onboardingStatus.isRoleChosen || (onboardingStatus.isProfileVerified && onboardingStatus.isCompanyRegistered)) return false;
+        }
+        return w.isVisible !== false;
     };
 
-    const setColSpan = (id: string, span: 1 | 2 | 3) => {
-        setLocalLayout(prev => prev.map(w => w.id === id ? { ...w, colSpan: span } : w));
+    const commitLayout = (next: DashboardWidget[]) => {
+        const finalized = normalizeDashboardLayout(next).map((w, idx) => ({ ...w, order: idx }));
+        setLocalLayout(finalized);
+        onUpdate(finalized);
+        saveDashboardLayout(finalized, userId);
+    };
+
+    const toggleVisibility = (widgetId: string, widgetType: DashboardWidget['type']) => {
+        const next = localLayout.map(w => {
+            if (w.id !== widgetId && w.type !== widgetType) return w;
+            const currentlyShown = getEffectiveVisible(w);
+            return {
+                ...w,
+                isVisible: !currentlyShown,
+                manualVisibilityOverride: true
+            };
+        });
+        commitLayout(next);
+    };
+
+    const setColSpan = (widgetId: string, widgetType: DashboardWidget['type'], span: 1 | 2 | 3) => {
+        const next = localLayout.map(w =>
+            (w.id === widgetId || w.type === widgetType) ? { ...w, colSpan: span } : w
+        );
+        commitLayout(next);
     };
 
     const moveWidget = (index: number, direction: 'up' | 'down' | 'top') => {
@@ -190,18 +221,43 @@ const WidgetManagerModal: React.FC<{
             const [item] = copy.splice(index, 1);
             copy.splice(index + 1, 0, item);
         }
-        const updated = copy.map((w, idx) => ({ ...w, order: idx }));
-        setLocalLayout(updated);
+        commitLayout(copy);
+    };
+
+    const handleHideAll = () => {
+        const next = localLayout.map(w => ({
+            ...w,
+            isVisible: false,
+            manualVisibilityOverride: true
+        }));
+        commitLayout(next);
+        toast.success(isKa ? 'ყველა ვიჯეტი დაიმალა დაფიდან (რუკის გარდა)' : 'All widgets hidden from dashboard (except Map)');
+    };
+
+    const handleShowAll = () => {
+        const next = localLayout.map(w => ({
+            ...w,
+            isVisible: true,
+            manualVisibilityOverride: true
+        }));
+        commitLayout(next);
+        toast.success(isKa ? 'ყველა ვიჯეტი გამოჩნდა დაფაზე' : 'All widgets shown on dashboard');
     };
 
     const handleResetDefaults = () => {
-        setLocalLayout([...DEFAULT_DASHBOARD_LAYOUT]);
+        const fresh = DEFAULT_DASHBOARD_LAYOUT.map((w, idx) => ({
+            ...w,
+            isVisible: true,
+            manualVisibilityOverride: false,
+            order: idx
+        }));
+        commitLayout(fresh);
+        toast.success(isKa ? 'განლაგება დაბრუნდა საწყის პარამეტრებზე' : 'Dashboard layout reset to defaults');
     };
 
     const handleSaveAndApply = () => {
-        const finalized = localLayout.map((w, idx) => ({ ...w, order: idx }));
-        onUpdate(finalized);
-        saveDashboardLayout(finalized, userId);
+        commitLayout(localLayout);
+        toast.success(isKa ? 'განლაგება შენახულია' : 'Dashboard layout saved');
         onClose();
     };
 
@@ -304,8 +360,18 @@ const WidgetManagerModal: React.FC<{
                     </div>
 
                     {localLayout.map((widget, idx) => {
-                        const isVisible = widget.isVisible !== false;
+                        const isVisible = getEffectiveVisible(widget);
                         const span = widget.colSpan ?? 1;
+                        const statusNote =
+                            widget.type === 'profile_verification' && onboardingStatus
+                                ? (onboardingStatus.isProfileVerified
+                                    ? (isKa ? 'ვერიფიცირებულია (ავტო-დამალული)' : 'Verified (Auto-hidden)')
+                                    : (isKa ? 'ვერიფიკაცია საჭიროა (ციმციმებს)' : 'Verification Pending (Blinking)'))
+                                : widget.type === 'onboarding_navigator' && onboardingStatus
+                                    ? (onboardingStatus.isRoleChosen
+                                        ? (isKa ? 'როლი არჩეულია (ავტო-დამალული)' : 'Role Chosen (Auto-hidden)')
+                                        : (isKa ? 'როლი ასარჩევია (ციმციმებს)' : 'Role Pending (Blinking)'))
+                                    : null;
                         return (
                             <div 
                                 key={widget.id} 
@@ -316,8 +382,20 @@ const WidgetManagerModal: React.FC<{
                                         {idx + 1}
                                     </span>
                                     <div className="min-w-0">
-                                        <h4 className="font-bold text-slate-800 text-xs sm:text-sm truncate">{getWidgetTitle(widget.type, widget.title, t)}</h4>
-                                        <span className="text-[10px] text-slate-400 font-medium capitalize">{widget.type.replace('_', ' ')}</span>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <h4 className="font-bold text-slate-800 text-xs sm:text-sm truncate">{getWidgetTitle(widget.type, widget.title, t)}</h4>
+                                            {statusNote && (
+                                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
+                                                    (widget.type === 'profile_verification' && !onboardingStatus?.isProfileVerified) ||
+                                                    (widget.type === 'onboarding_navigator' && !onboardingStatus?.isRoleChosen)
+                                                        ? 'bg-amber-100 text-amber-800'
+                                                        : 'bg-emerald-100 text-emerald-700'
+                                                }`}>
+                                                    {statusNote}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <span className="text-[10px] text-slate-400 font-medium capitalize">{widget.type.replace(/_/g, ' ')}</span>
                                     </div>
                                 </div>
 
@@ -358,7 +436,7 @@ const WidgetManagerModal: React.FC<{
                                     <div className="flex items-center bg-slate-100 p-0.5 rounded-xl text-[10px] font-black text-slate-600">
                                         <button
                                             type="button"
-                                            onClick={() => setColSpan(widget.id, 1)}
+                                            onClick={() => setColSpan(widget.id, widget.type, 1)}
                                             className={`px-2 py-1 rounded-lg transition-all cursor-pointer ${span === 1 ? 'bg-white text-indigo-600 shadow-xs' : 'hover:text-slate-900'}`}
                                             title="1 Column Width"
                                         >
@@ -366,7 +444,7 @@ const WidgetManagerModal: React.FC<{
                                         </button>
                                         <button
                                             type="button"
-                                            onClick={() => setColSpan(widget.id, 2)}
+                                            onClick={() => setColSpan(widget.id, widget.type, 2)}
                                             className={`px-2 py-1 rounded-lg transition-all cursor-pointer ${span === 2 ? 'bg-white text-indigo-600 shadow-xs' : 'hover:text-slate-900'}`}
                                             title="2 Columns Width"
                                         >
@@ -374,7 +452,7 @@ const WidgetManagerModal: React.FC<{
                                         </button>
                                         <button
                                             type="button"
-                                            onClick={() => setColSpan(widget.id, 3)}
+                                            onClick={() => setColSpan(widget.id, widget.type, 3)}
                                             className={`px-2 py-1 rounded-lg transition-all cursor-pointer ${span === 3 ? 'bg-white text-indigo-600 shadow-xs' : 'hover:text-slate-900'}`}
                                             title="3 Columns (Full Width)"
                                         >
@@ -382,11 +460,11 @@ const WidgetManagerModal: React.FC<{
                                         </button>
                                     </div>
 
-                                    {/* Visibility Toggle button */}
+                                    {/* Visibility Toggle button — Applies instantly */}
                                     <button 
                                         type="button"
-                                        onClick={() => toggleVisibility(widget.id)}
-                                        className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${isVisible ? 'bg-emerald-600 text-white shadow-xs' : 'bg-slate-200 text-slate-500'}`}
+                                        onClick={() => toggleVisibility(widget.id, widget.type)}
+                                        className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${isVisible ? 'bg-emerald-600 text-white shadow-xs hover:bg-emerald-700' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}
                                     >
                                         {isVisible ? t('dash.layout.visible') : t('dash.layout.hidden')}
                                     </button>
@@ -397,21 +475,37 @@ const WidgetManagerModal: React.FC<{
                 </div>
 
                 {/* Footer Controls */}
-                <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
-                    <button 
-                        type="button"
-                        onClick={handleResetDefaults}
-                        className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-200 rounded-xl transition-all cursor-pointer"
-                    >
-                        {t('dash.layout.reset')}
-                    </button>
+                <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        <button 
+                            type="button"
+                            onClick={handleResetDefaults}
+                            className="px-3 py-2 text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-200 rounded-xl transition-all cursor-pointer"
+                        >
+                            {t('dash.layout.reset')}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleHideAll}
+                            className="px-3 py-2 text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 rounded-xl transition-all cursor-pointer"
+                        >
+                            {isKa ? 'ყველას დამალვა' : 'Hide All'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleShowAll}
+                            className="px-3 py-2 text-xs font-bold text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 border border-emerald-200 rounded-xl transition-all cursor-pointer"
+                        >
+                            {isKa ? 'ყველას ჩვენება' : 'Show All'}
+                        </button>
+                    </div>
                     <div className="flex items-center gap-2">
                         <button 
                             type="button"
                             onClick={onClose}
                             className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-slate-900 rounded-xl transition-all cursor-pointer"
                         >
-                            {t('common.cancel')}
+                            {isKa ? 'დახურვა' : 'Close'}
                         </button>
                         <button 
                             type="button"
@@ -649,6 +743,10 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
 
   const getWidgetIcon = (type: string) => {
     switch (type) {
+      case 'profile_verification': return <ShieldCheck size={14} className="text-amber-600" />;
+      case 'onboarding_navigator': return <Sparkles size={14} className="text-indigo-600" />;
+      case 'system_command_center': return <Sliders size={14} className="text-emerald-600" />;
+      case 'ai_stream': return <Cpu size={14} className="text-violet-600" />;
       case 'choose_goal': return <Users size={14} className="text-indigo-600" />;
       case 'agronomy_quick': return <Sprout size={14} className="text-emerald-600" />;
       case 'tasks': return <Briefcase size={14} className="text-amber-600" />;
@@ -726,20 +824,52 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
   };
 
 
+  const onboardingStatus = useMemo(
+      () => getUserOnboardingStatus(props.currentUser, props.activeOrgId, props.organizations, props.memberships),
+      [props.currentUser, props.activeOrgId, props.organizations, props.memberships]
+  );
+
+  const normalizedLayout = useMemo(() => normalizeDashboardLayout(dashboardLayout), [dashboardLayout]);
+
+  const isWidgetEffectivelyVisible = (w: DashboardWidget): boolean => {
+      if (w.manualVisibilityOverride) {
+          return w.isVisible !== false;
+      }
+      // Auto-remove verification widget after profile verification (or verified + company registered)
+      if (w.type === 'profile_verification') {
+          if (onboardingStatus.isProfileVerified) return false;
+          return w.isVisible !== false;
+      }
+      // Auto-remove Manage Profile / Onboarding widget after role is chosen (or verified + company registered)
+      if (w.type === 'onboarding_navigator') {
+          if (onboardingStatus.isRoleChosen || (onboardingStatus.isProfileVerified && onboardingStatus.isCompanyRegistered)) return false;
+          return w.isVisible !== false;
+      }
+      return w.isVisible !== false;
+  };
+
   const sortedWidgets = useMemo(() => {
-      let layout = dashboardLayout && dashboardLayout.length > 0 ? [...dashboardLayout] : [...DEFAULT_DASHBOARD_LAYOUT];
-      DEFAULT_DASHBOARD_LAYOUT.forEach(dw => {
-          if (!layout.some(w => w.type === dw.type)) {
-              layout.push(dw);
+      const visible = normalizedLayout.filter(w => {
+          if (w.type === 'ai_stream' && props.personalOnly) {
+              return false;
           }
+          return isWidgetEffectivelyVisible(w);
       });
-      const visible = layout.filter(w => w.isVisible !== false);
+
       if (props.personalOnly) {
-          const allowedPersonal = new Set(['choose_goal', 'daily_news', 'guest_stats']);
+          const allowedPersonal = new Set([
+              'profile_verification',
+              'onboarding_navigator',
+              'system_command_center',
+              'choose_goal',
+              'weather',
+              'daily_news',
+              'guest_stats'
+          ]);
           return visible.filter(w => allowedPersonal.has(w.type)).sort((a, b) => a.order - b.order);
       }
       return visible.sort((a, b) => a.order - b.order);
-  }, [dashboardLayout, props.personalOnly]);
+  }, [normalizedLayout, props.personalOnly, onboardingStatus]);
 
   // Drag-and-drop state for dashboard widgets
   const [draggedWidgetId, setDraggedWidgetId] = useState<string | null>(null);
@@ -780,9 +910,7 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
       const [item] = currentList.splice(sourceIdx, 1);
       currentList.splice(targetIdx, 0, item);
 
-      // Re-map full layout preserving any hidden items
-      const existingLayout = dashboardLayout && dashboardLayout.length > 0 ? [...dashboardLayout] : [...sortedWidgets];
-      const updatedLayout = existingLayout.map(w => {
+      const updatedLayout = normalizedLayout.map(w => {
           const newIdx = currentList.findIndex(sw => sw.id === w.id);
           if (newIdx !== -1) {
               return { ...w, order: newIdx };
@@ -803,8 +931,7 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
       const [item] = currentList.splice(idx, 1);
       currentList.unshift(item);
 
-      const existingLayout = dashboardLayout && dashboardLayout.length > 0 ? [...dashboardLayout] : [...sortedWidgets];
-      const updatedLayout = existingLayout.map(w => {
+      const updatedLayout = normalizedLayout.map(w => {
           const newIdx = currentList.findIndex(sw => sw.id === w.id);
           if (newIdx !== -1) {
               return { ...w, order: newIdx };
@@ -828,8 +955,7 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
       const [item] = currentList.splice(idx, 1);
       currentList.splice(targetIdx, 0, item);
 
-      const existingLayout = dashboardLayout && dashboardLayout.length > 0 ? [...dashboardLayout] : [...sortedWidgets];
-      const updatedLayout = existingLayout.map(w => {
+      const updatedLayout = normalizedLayout.map(w => {
           const newIdx = currentList.findIndex(sw => sw.id === w.id);
           if (newIdx !== -1) {
               return { ...w, order: newIdx };
@@ -844,18 +970,33 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
   };
 
   const handleToggleWidgetVisible = (id: string) => {
-      const existingLayout = dashboardLayout && dashboardLayout.length > 0 ? [...dashboardLayout] : [...sortedWidgets];
-      const updated = existingLayout.map(w => w.id === id ? { ...w, isVisible: !w.isVisible } : w);
+      let targetWidget: DashboardWidget | undefined;
+      const updated = normalizedLayout.map(w => {
+          if (w.id === id || w.type === id) {
+              targetWidget = w;
+              const currentlyShown = isWidgetEffectivelyVisible(w);
+              return { ...w, isVisible: !currentlyShown, manualVisibilityOverride: true };
+          }
+          return w;
+      });
       if (onSetDashboardLayout) {
           onSetDashboardLayout(updated);
       }
       saveDashboardLayout(updated, props.currentUser?.id);
+      if (targetWidget) {
+          const title = getWidgetTitle(targetWidget.type, targetWidget.title, t);
+          const wasShown = isWidgetEffectivelyVisible(targetWidget);
+          toast.success(
+              wasShown
+                  ? (isKa ? `ვიჯეტი "${title}" დაიმალა დაფიდან` : `"${title}" hidden from dashboard`)
+                  : (isKa ? `ვიჯეტი "${title}" გამოჩნდა დაფაზე` : `"${title}" shown on dashboard`)
+          );
+      }
   };
 
   const handleUpdateDimensions = (id: string, colSpan?: 1 | 2 | 3, heightPx?: number) => {
-      const existingLayout = dashboardLayout && dashboardLayout.length > 0 ? [...dashboardLayout] : [...sortedWidgets];
-      const updated = existingLayout.map(w => {
-          if (w.id === id) {
+      const updated = normalizedLayout.map(w => {
+          if (w.id === id || w.type === id) {
               return {
                   ...w,
                   colSpan: colSpan !== undefined ? colSpan : w.colSpan,
@@ -870,8 +1011,57 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
       saveDashboardLayout(updated, props.currentUser?.id);
   };
 
+  const profileWidgetSharedProps = {
+      currentUser: props.currentUser,
+      activeOrgId: props.activeOrgId,
+      plantationFeatures: props.plantationFeatures,
+      organizations: props.organizations,
+      memberships: props.memberships,
+      employees: props.employees,
+      inventoryItems: props.inventoryItems,
+      harvestEvents: props.harvestEvents,
+      accounts: props.accounts,
+      workAssignments: props.workAssignments,
+      nutritionPlans: props.nutritionPlans,
+      listings: props.listings,
+      onNavigateMode: (mode: any) => {
+          if (props.onNavigateMode) {
+              props.onNavigateMode(mode);
+          } else if (mode === 'profile' && props.onOpenProfile) {
+              props.onOpenProfile();
+          } else if (mode === 'guide' && props.onOpenHelp) {
+              props.onOpenHelp();
+          } else {
+              window.dispatchEvent(new CustomEvent('agrimap_set_mode', { detail: mode }));
+          }
+      },
+      onOpenProfile: () => {
+          if (props.onOpenProfile) props.onOpenProfile();
+          else if (props.onNavigateMode) props.onNavigateMode('profile');
+          else window.dispatchEvent(new CustomEvent('agrimap_set_mode', { detail: 'profile' }));
+      },
+      onOpenHelp: () => {
+          if (props.onOpenHelp) props.onOpenHelp();
+          else if (props.onNavigateMode) props.onNavigateMode('guide');
+          else window.dispatchEvent(new CustomEvent('agrimap_set_mode', { detail: 'guide' }));
+      }
+  };
+
   const renderWidget = (widget: DashboardWidget) => {
       switch (widget.type) {
+          case 'profile_verification': return <ProfileVerificationWidget {...profileWidgetSharedProps} />;
+          case 'onboarding_navigator': return <OnboardingNavigatorWidget {...profileWidgetSharedProps} />;
+          case 'system_command_center': return <SystemCommandCenterWidget {...profileWidgetSharedProps} />;
+          case 'ai_stream': return (
+              <DashboardAiStream
+                  anomalies={anomalies}
+                  latestReport={latestReport}
+                  config={aiConfig}
+                  onOpenAiHub={handleOpenAiHub}
+                  onRefreshAnalysis={handleRefreshAnalysis}
+                  isLoading={isAiLoading}
+              />
+          );
           case 'choose_goal': return (
               <ChooseYourGoalWidget
                   currentUser={props.currentUser}
@@ -1267,47 +1457,6 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
             {/* WITH PROFILE POSITION MAP (UPPER WITH PROFILE TOOL WIDGET!) */}
             {!props.personalOnly && mapPosition === 'with_profile' && renderMapSection()}
 
-            {/* Profile Management, Next-Step Guidance & System Operation Hub */}
-            <DashboardProfileManager
-                currentUser={props.currentUser}
-                activeOrgId={props.activeOrgId}
-                plantationFeatures={props.plantationFeatures}
-                organizations={props.organizations}
-                onNavigateMode={(mode) => {
-                    if (props.onNavigateMode) {
-                        props.onNavigateMode(mode);
-                    } else if (mode === 'profile' && props.onOpenProfile) {
-                        props.onOpenProfile();
-                    } else if (mode === 'guide' && props.onOpenHelp) {
-                        props.onOpenHelp();
-                    } else {
-                        window.dispatchEvent(new CustomEvent('agrimap_set_mode', { detail: mode }));
-                    }
-                }}
-                onOpenProfile={() => {
-                    if (props.onOpenProfile) props.onOpenProfile();
-                    else if (props.onNavigateMode) props.onNavigateMode('profile');
-                    else window.dispatchEvent(new CustomEvent('agrimap_set_mode', { detail: 'profile' }));
-                }}
-                onOpenHelp={() => {
-                    if (props.onOpenHelp) props.onOpenHelp();
-                    else if (props.onNavigateMode) props.onNavigateMode('guide');
-                    else window.dispatchEvent(new CustomEvent('agrimap_set_mode', { detail: 'guide' }));
-                }}
-            />
-
-            {/* AI Autonomous Stream & Anomaly Engine Panel */}
-            {!props.personalOnly && (
-                <DashboardAiStream
-                    anomalies={anomalies}
-                    latestReport={latestReport}
-                    config={aiConfig}
-                    onOpenAiHub={handleOpenAiHub}
-                    onRefreshAnalysis={handleRefreshAnalysis}
-                    isLoading={isAiLoading}
-                />
-            )}
-
             {/* UPPER POSITION MAP (MOVED UPPER ABOVE WIDGETS!) */}
             {!props.personalOnly && mapPosition === 'upper' && renderMapSection()}
 
@@ -1320,6 +1469,7 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
                         onUpdateDimensions={handleUpdateDimensions}
                         onMoveToTop={handleMoveToTop}
                         onMoveStep={handleMoveStep}
+                        onHideWidget={handleToggleWidgetVisible}
                         onDragStart={handleDragStart}
                         onDragOver={handleDragOver}
                         onDragLeave={handleDragLeave}
@@ -1524,6 +1674,7 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
             userId={props.currentUser?.id}
             mapPosition={mapPosition}
             onUpdateMapPosition={handleSetMapPosition}
+            onboardingStatus={onboardingStatus}
         />
 
         {activeOrgId && (
@@ -1583,6 +1734,13 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
             .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
             .animate-slide-up { animation: slide-up 0.5s ease-out forwards; }
             @keyframes slide-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+            @keyframes agrimap-blink-ring {
+                0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55), 0 12px 24px -8px rgba(244, 63, 94, 0.22); border-color: #f59e0b; }
+                50% { box-shadow: 0 0 0 7px rgba(244, 63, 94, 0.25), 0 12px 28px -6px rgba(245, 158, 11, 0.35); border-color: #f43f5e; }
+            }
+            .agrimap-blink-alert {
+                animation: agrimap-blink-ring 1.5s ease-in-out infinite;
+            }
         `}</style>
       </main>
   );

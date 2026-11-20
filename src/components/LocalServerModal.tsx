@@ -156,7 +156,7 @@ app.post('/api/gemini/test', async (req, res) => {
         });
     }
     try {
-        const fetchUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=" + encodeURIComponent(key);
+        const fetchUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-4-hydrogen:generateContent?key=" + encodeURIComponent(key);
         const testRes = await fetch(fetchUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -189,7 +189,7 @@ app.post('/api/gemini/call', async (req, res) => {
         });
     }
 
-    const targetModel = model || 'gemini-3.8-flash';
+    const targetModel = model || 'gemini-4-hydrogen';
 
     try {
         let payloadContents = contents;

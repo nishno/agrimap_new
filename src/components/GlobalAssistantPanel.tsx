@@ -1,16 +1,17 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import type { AssistantMessage, Note, User } from '../types';
+import type { AssistantMessage, Note, User, AppMode } from '../types';
 import { SparklesIcon, CommandLineIcon, ArrowUpCircleIcon, MicrophoneIcon, XIcon, ChevronDownIcon, ChevronUpIcon, ChatBubbleLeftRightIcon, PaperAirplaneIcon, StopIcon, DocumentTextIcon } from './Icons';
 import { 
   MessageSquare, Video, GripHorizontal, ChevronDown, Sparkles, Mic, 
   Settings, CheckCircle2, AlertTriangle, RefreshCw, Key, Trash2, ExternalLink, ShieldCheck,
   Crown, Leaf, Briefcase, TrendingUp, Layers, Eye, EyeOff, History, FileText, Stethoscope,
   Maximize2, Minimize2, Minus, X, ArrowLeftRight, ArrowUpDown, MoreHorizontal,
-  Calendar, FileSpreadsheet, FolderOpen, Search, Server
+  Calendar, FileSpreadsheet, FolderOpen, Search, Server, BookOpen
 } from 'lucide-react';
 import AiAnalysisSuite from './AiAnalysisSuite';
 import AiAnalysisModal from './AiAnalysisModal';
 import GlobalVoiceNotesModal from './GlobalVoiceNotesModal';
+import { HelpAiAssistantChat } from './Help/HelpAiAssistantChat';
 import { GodAIIntelligenceHubModal } from '../new_engine/ui/GodAIIntelligenceHubModal';
 import { AIAssistantMode } from '../new_engine/types';
 import { safeStorage } from '../services/storageService';
@@ -93,6 +94,7 @@ interface GlobalAssistantPanelProps {
   machinery?: any[];
   nutritionPlans?: any[];
   onNavigateToTasks?: () => void;
+  onNavigateMode?: (mode: AppMode) => void;
   onAddTask?: (task: any) => void;
   onAddNutritionPlan?: (plan: any) => void;
 }
@@ -192,6 +194,7 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
   machinery = [],
   nutritionPlans = [],
   onNavigateToTasks,
+  onNavigateMode,
   onAddTask,
   onAddNutritionPlan
 }) => {
@@ -200,44 +203,74 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
   const [inputValue, setInputValue] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
-  const [assistantView, setAssistantView] = useState<'chat' | 'analysis'>('chat');
+  const [assistantView, setAssistantView] = useState<'guide' | 'chat' | 'analysis'>('guide');
   const [analysisInitialTool, setAnalysisInitialTool] = useState<'disease' | 'document' | 'agro_image' | 'history'>('disease');
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
   const [isEnlarged, setIsEnlarged] = useState<boolean>(() => {
     return safeStorage.getItem('agrimap_assistant_enlarged') === 'true';
   });
 
+  // Live viewport dimensions so the AI Assistant scales dynamically across phones, tablets, laptops & desktops
+  const [viewport, setViewport] = useState<{ width: number; height: number }>(() => ({
+    width: typeof window !== 'undefined' ? window.innerWidth : 1280,
+    height: typeof window !== 'undefined' ? (window.visualViewport?.height || window.innerHeight) : 800
+  }));
+
   // Window Custom Dimensions (Live Resizing)
   const [panelSize, setPanelSize] = useState<{ width: number; height: number }>(() => {
+    const vw = typeof window !== 'undefined' ? window.innerWidth : 1280;
+    const vh = typeof window !== 'undefined' ? (window.visualViewport?.height || window.innerHeight) : 800;
     const stored = safeStorage.getItem('agrimap_assistant_custom_size');
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
         if (Number.isFinite(parsed?.width) && Number.isFinite(parsed?.height)) {
           return {
-            width: Math.max(340, Math.min(typeof window !== 'undefined' ? window.innerWidth - 16 : 1200, parsed.width)),
-            height: Math.max(400, Math.min(typeof window !== 'undefined' ? window.innerHeight - 20 : 900, parsed.height)),
+            width: Math.max(300, Math.min(vw - 16, parsed.width)),
+            height: Math.max(360, Math.min(vh - 20, parsed.height)),
           };
         }
       } catch (e) {}
     }
-    const defaultW = typeof window !== 'undefined' ? (window.innerWidth < 640 ? Math.max(320, window.innerWidth - 20) : 440) : 440;
-    return { width: defaultW, height: 560 };
+    const defaultW = vw < 640 ? Math.max(296, vw - 16) : Math.min(460, vw - 24);
+    const defaultH = Math.min(580, vh - 24);
+    return { width: defaultW, height: defaultH };
   });
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleViewportResize = () => {
+      const vw = window.innerWidth;
+      const vh = Math.round(window.visualViewport?.height || window.innerHeight);
+      setViewport({ width: vw, height: vh });
+      setPanelSize(prev => ({
+        width: Math.max(280, Math.min(prev.width, vw - 16)),
+        height: Math.max(320, Math.min(prev.height, vh - 20))
+      }));
+    };
+    window.addEventListener('resize', handleViewportResize);
+    window.visualViewport?.addEventListener('resize', handleViewportResize);
+    return () => {
+      window.removeEventListener('resize', handleViewportResize);
+      window.visualViewport?.removeEventListener('resize', handleViewportResize);
+    };
+  }, []);
+
   const toggleEnlarged = () => {
+    const vw = typeof window !== 'undefined' ? window.innerWidth : viewport.width;
+    const vh = typeof window !== 'undefined' ? Math.round(window.visualViewport?.height || window.innerHeight) : viewport.height;
     setIsEnlarged(prev => {
       const next = !prev;
       safeStorage.setItem('agrimap_assistant_enlarged', next ? 'true' : 'false');
       if (next) {
         setPanelSize({
-          width: Math.min(940, window.innerWidth - 24),
-          height: Math.min(840, window.innerHeight - 30)
+          width: Math.min(940, vw - 16),
+          height: Math.min(820, vh - 20)
         });
       } else {
         setPanelSize({
-          width: Math.min(440, window.innerWidth - 24),
-          height: 560
+          width: Math.min(460, vw - 16),
+          height: Math.min(580, vh - 24)
         });
       }
       return next;
@@ -434,7 +467,10 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
 
   useEffect(() => {
     const handleOpenNotes = () => setIsVoiceNotesOpen(true);
-    const handleOpenAssistant = () => setIsCollapsed(false);
+    const handleOpenAssistant = () => {
+      setAssistantView('guide');
+      setIsCollapsed(false);
+    };
     window.addEventListener('agrimap_open_voice_notes', handleOpenNotes);
     window.addEventListener('agrimap_open_assistant', handleOpenAssistant);
     return () => {
@@ -951,18 +987,21 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
                         </div>
                     </div>
 
-                    {/* 5. AI Assistant & Crop Diagnostics Button */}
+                    {/* 5. AI Assistant (Starts on AI Guide Assistant) */}
                     <div className="relative group/btn">
                         <button
                             type="button"
-                            onClick={() => setIsCollapsed(false)}
+                            onClick={() => {
+                                setAssistantView('guide');
+                                setIsCollapsed(false);
+                            }}
                             className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-tr from-cyan-600 via-teal-500 to-emerald-500 hover:from-cyan-500 hover:to-emerald-400 text-white shadow-xl shadow-cyan-950/20 flex items-center justify-center transition-all transform hover:scale-110 active:scale-95 cursor-pointer border border-cyan-300/40 relative"
-                            title={isKa ? "AI აგრონომიული ასისტენტი & დიაგნოსტიკა" : "AI Agronomist Assistant & Diagnostic Copilot"}
+                            title={isKa ? "AI გზამკვლევი ასისტენტი & დიაგნოსტიკა" : "AI Guide Assistant & Diagnostics"}
                         >
                             <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                         </button>
                         <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-[#FAFBF8] text-stone-800 text-[11px] font-bold rounded-xl whitespace-nowrap shadow-xl border border-stone-200 opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-all duration-150 transform translate-x-2 group-hover/btn:translate-x-0 z-50">
-                            AI Assistant
+                            {isKa ? 'AI ასისტენტი & გზამკვლევი' : 'AI Guide Assistant'}
                         </div>
                     </div>
 
@@ -1167,6 +1206,7 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
                             type="button"
                             onClick={() => {
                                 setIsGoogleHubOpen(false);
+                                setAssistantView('guide');
                                 setIsCollapsed(false);
                             }}
                             className="p-3.5 bg-slate-950 hover:bg-cyan-950/40 border border-slate-800 hover:border-cyan-500/50 rounded-2xl flex flex-col gap-2 transition-all text-left cursor-pointer group"
@@ -1200,117 +1240,161 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
     );
   }
 
+  const isCompactScreen = viewport.width < 640;
+  const effectiveWidth = isCompactScreen
+    ? Math.max(280, viewport.width - 16)
+    : Math.max(320, Math.min(panelSize.width, viewport.width - 16));
+  const effectiveHeight = isCompactScreen
+    ? Math.max(320, viewport.height - 16)
+    : Math.max(320, Math.min(panelSize.height, viewport.height - 20));
+  const clampedLeft = !isCompactScreen && commsPos
+    ? Math.max(8, Math.min(Math.max(8, viewport.width - effectiveWidth - 8), commsPos.x))
+    : undefined;
+  const clampedTop = !isCompactScreen && commsPos
+    ? Math.max(8, Math.min(Math.max(8, viewport.height - effectiveHeight - 8), commsPos.y))
+    : undefined;
+
   return (
     <>
       <div 
         ref={commsContainerRef}
-        style={{
+        style={isCompactScreen ? {
           position: 'fixed',
-          left: commsPos ? `${Math.max(8, Math.min((typeof window !== 'undefined' ? window.innerWidth : 1200) - panelSize.width - 8, commsPos.x))}px` : undefined,
-          top: commsPos ? `${Math.max(8, Math.min((typeof window !== 'undefined' ? window.innerHeight : 800) - panelSize.height - 8, commsPos.y))}px` : undefined,
-          right: !commsPos ? '16px' : undefined,
-          bottom: !commsPos ? '16px' : undefined,
-          width: `${Math.max(280, Math.min(panelSize.width, typeof window !== 'undefined' ? window.innerWidth - 16 : 440))}px`,
-          height: `${Math.max(240, Math.min(panelSize.height, typeof window !== 'undefined' ? window.innerHeight - 24 : 560))}px`,
+          inset: '8px',
+          width: 'calc(100vw - 16px)',
+          height: 'calc(100dvh - 16px)',
           maxWidth: 'calc(100vw - 16px)',
-          maxHeight: 'calc(100vh - 24px)',
+          maxHeight: 'calc(100dvh - 16px)',
+          zIndex: 8500
+        } : {
+          position: 'fixed',
+          left: clampedLeft !== undefined ? `${clampedLeft}px` : undefined,
+          top: clampedTop !== undefined ? `${clampedTop}px` : undefined,
+          right: clampedLeft === undefined ? '12px' : undefined,
+          bottom: clampedTop === undefined ? '12px' : undefined,
+          width: `${effectiveWidth}px`,
+          height: `${effectiveHeight}px`,
+          maxWidth: 'calc(100vw - 16px)',
+          maxHeight: 'calc(100dvh - 16px)',
           zIndex: 8500
         }}
         className="bg-white flex flex-col rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200 origin-bottom-right relative pointer-events-auto transition-[box-shadow,border-color] duration-150"
       >
-        {/* Header */}
-        <div className="p-2.5 sm:p-3 border-b bg-slate-50 flex justify-between items-center select-none shrink-0 gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-              <div 
-                onPointerDown={handleCommsPointerDown}
-                onPointerMove={handleCommsPointerMove}
-                onPointerUp={handleCommsPointerUp}
-                className="cursor-move p-1 text-slate-400 hover:text-slate-700 rounded transition-colors shrink-0"
-                title={isKa ? "ფანჯრის გადაადგილება" : "Drag Assistant Window"}
-              >
-                <GripHorizontal size={15} />
-              </div>
-              <SparklesIcon className="h-5 w-5 text-emerald-500 shrink-0" />
-              <div className="min-w-0">
-                <h3 className="text-xs sm:text-sm font-black text-slate-800 uppercase tracking-tight truncate">
-                  {isKa ? 'AI სისტემის ნავიგატორი & Copilot' : 'AI System Navigator & Copilot'}
+        {/* Row 1: Primary Window Title Bar — Pinned Always-Visible Minimize / Maximize / Close (X) */}
+        <div className="px-2.5 py-2 sm:px-3 sm:py-2.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between select-none shrink-0 gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
+              {!isCompactScreen && (
+                <div 
+                  onPointerDown={handleCommsPointerDown}
+                  onPointerMove={handleCommsPointerMove}
+                  onPointerUp={handleCommsPointerUp}
+                  className="cursor-move p-1 text-slate-400 hover:text-slate-700 rounded transition-colors shrink-0"
+                  title={isKa ? "ფანჯრის გადაადგილება" : "Drag Assistant Window"}
+                >
+                  <GripHorizontal size={15} />
+                </div>
+              )}
+              <SparklesIcon className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-500 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <h3 className="text-[11px] sm:text-xs font-black text-slate-800 uppercase tracking-tight truncate">
+                  {isKa ? 'AI ასისტენტი & ნავიგატორი' : 'AI System Navigator & Copilot'}
                 </h3>
-                <div className="flex items-center gap-1 flex-wrap mt-0.5">
-                  <span className="text-[9px] font-black text-emerald-800 bg-emerald-100 px-1.5 py-0.2 rounded tracking-wide border border-emerald-300">
-                    Gemini 2.5 Knowledge Engine
+                <div className="flex items-center gap-1 mt-0.5 overflow-hidden">
+                  <span className="text-[8.5px] sm:text-[9px] font-black text-emerald-800 bg-emerald-100 px-1.5 py-0.2 rounded tracking-wide border border-emerald-300 shrink-0">
+                    Gemini 4 Hydrogen
                   </span>
-                  <span className="text-[9px] font-bold text-slate-600 bg-slate-200/80 px-1 py-0.2 rounded truncate max-w-[120px]">
+                  <span className="text-[8.5px] sm:text-[9px] font-bold text-slate-600 bg-slate-200/80 px-1 py-0.2 rounded truncate">
                     {activeModuleName}
                   </span>
                   {isGodAIHubOpen && (
-                    <span className="text-[8px] font-black text-amber-700 bg-amber-100 border border-amber-300 px-1 rounded animate-pulse">
-                      Console Active
+                    <span className="hidden sm:inline text-[8px] font-black text-amber-700 bg-amber-100 border border-amber-300 px-1 rounded animate-pulse shrink-0">
+                      Console
                     </span>
                   )}
                 </div>
               </div>
           </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-              {/* Dedicated Pop-up Window Button (Like Console) */}
+
+          {/* Strictly Pinned Window Controls: Collapse (-), Enlarge/Restore, Close (X) — ALWAYS VISIBLE on every screen */}
+          <div className="flex items-center gap-1 shrink-0 pl-1.5 border-l border-slate-200">
+              <button 
+                  type="button"
+                  onClick={() => setIsCollapsed(true)}
+                  className="w-7 h-7 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 flex items-center justify-center transition-all cursor-pointer shadow-2xs active:scale-95"
+                  title={isKa ? "ჩაკეცვა (-)" : "Minimize (-)"}
+                  aria-label="Minimize AI Assistant"
+              >
+                 <Minus size={14} strokeWidth={2.5} />
+              </button>
+
+              {!isCompactScreen && (
+                <button
+                    type="button"
+                    onClick={toggleEnlarged}
+                    className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 flex items-center justify-center transition-all cursor-pointer shadow-2xs active:scale-95"
+                    title={isEnlarged ? (isKa ? "სტანდარტული ზომა" : "Standard Size") : (isKa ? "ფანჯრის გაფართოება" : "Enlarge Window")}
+                    aria-label="Resize AI Assistant"
+                >
+                    {isEnlarged ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+                </button>
+              )}
+
+              <button 
+                  type="button"
+                  onClick={() => setIsCollapsed(true)}
+                  className="w-7 h-7 rounded-lg bg-rose-600 hover:bg-rose-700 text-white border border-rose-700 flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-95"
+                  title={isKa ? "დახურვა (X)" : "Close (X)"}
+                  aria-label="Close AI Assistant"
+              >
+                 <X size={15} strokeWidth={2.5} />
+              </button>
+          </div>
+        </div>
+
+        {/* Row 2: Compact Horizontally-Scrollable Quick Tools Bar — Never pushes Close (X) off-screen */}
+        <div className="px-2.5 py-1.5 border-b border-slate-100 bg-slate-50/70 flex items-center gap-1 overflow-x-auto no-scrollbar select-none shrink-0">
+              <button
+                  type="button"
+                  onClick={() => {
+                      if (onNavigateMode) onNavigateMode('guide');
+                      else window.dispatchEvent(new CustomEvent('agrimap_set_mode', { detail: 'guide' }));
+                      setIsCollapsed(true);
+                  }}
+                  className="px-2 py-1 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 transition-all flex items-center gap-1 text-[10px] font-black uppercase cursor-pointer shrink-0"
+                  title={isKa ? "SOP გზამკვლევი სქრინშოთებით" : "Open SOP Guide with Screenshots"}
+              >
+                  <BookOpen size={11} />
+                  <span>{isKa ? 'SOP' : 'SOP Guide'}</span>
+              </button>
+
               <button
                   type="button"
                   onClick={() => {
                       setAnalysisInitialTool('disease');
                       setIsAnalysisModalOpen(true);
                   }}
-                  className="px-2 py-1 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 transition-all flex items-center gap-1 text-[10px] font-black uppercase cursor-pointer shadow-2xs"
-                  title={isKa ? "დიაგნოსტიკის გახსნა ცალკე Pop-up ფანჯარაში (კონსოლის მსგავსად)" : "Open Diagnostics in Dedicated Pop-up Modal"}
+                  className="px-2 py-1 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 transition-all flex items-center gap-1 text-[10px] font-black uppercase cursor-pointer shrink-0"
+                  title={isKa ? "დიაგნოსტიკის გახსნა ცალკე Pop-up ფანჯარაში" : "Open Diagnostics in Dedicated Pop-up Modal"}
               >
-                  <ExternalLink size={12} />
-                  <span>{isKa ? 'Pop-up' : 'Pop-up'}</span>
+                  <ExternalLink size={11} />
+                  <span>Pop-up</span>
               </button>
 
-              {/* AI Analysis View Toggle */}
-              <button
-                  type="button"
-                  onClick={() => {
-                      setAssistantView(assistantView === 'analysis' ? 'chat' : 'analysis');
-                  }}
-                  className={`px-2 py-1 rounded-lg border transition-all flex items-center gap-1 text-[10px] font-black uppercase cursor-pointer shadow-2xs ${
-                      assistantView === 'analysis'
-                          ? 'bg-emerald-600 text-white border-emerald-600'
-                          : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
-                  }`}
-                  title={isKa ? "მცენარეთა დაავადებების AI დიაგნოსტიკა" : "AI Plant Disease Diagnostic"}
-              >
-                  <Leaf size={12} />
-                  <span>{isKa ? 'დიაგნოსტიკა' : 'Diagnostics'}</span>
-              </button>
-
-              {/* Chat Return Button when in Analysis View */}
-              {assistantView === 'analysis' && (
-                  <button
-                      type="button"
-                      onClick={() => setAssistantView('chat')}
-                      className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-[10px] font-black uppercase flex items-center gap-1 transition-colors cursor-pointer"
-                      title={isKa ? "ჩატში დაბრუნება" : "Return to Chat"}
-                  >
-                      <MessageSquare size={12} />
-                      <span>{isKa ? 'ჩატი' : 'Chat'}</span>
-                  </button>
-              )}
-
-              {/* Google Workspace Suite Quick Button */}
               <button
                   type="button"
                   onClick={() => setIsGoogleHubOpen(true)}
-                  className="p-1.5 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer text-slate-600 hover:text-slate-900"
+                  className="px-2 py-1 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer text-slate-600 hover:text-slate-900 flex items-center gap-1 text-[10px] font-bold shrink-0"
                   title={isKa ? "Google Workspace & საველე სერვისები" : "Google Workspace Suite & Farm Tools"}
               >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24">
+                  <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
                       <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
                       <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.34 24 12 24z"/>
                       <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
                       <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
                   </svg>
+                  <span className="hidden sm:inline">Google</span>
               </button>
 
-              {/* Google Meet Video Button (Privileged roles only) */}
               {hasPrivilegedGoogleAiAccess && (
                 <button
                     type="button"
@@ -1318,14 +1402,13 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
                         if (onOpenMeet) onOpenMeet();
                         else window.dispatchEvent(new CustomEvent('agrimap_open_meet'));
                     }}
-                    className="p-1.5 hover:bg-emerald-50 rounded-lg transition-colors text-emerald-600 hover:text-emerald-700 cursor-pointer"
+                    className="p-1.5 hover:bg-emerald-50 rounded-lg transition-colors text-emerald-600 hover:text-emerald-700 cursor-pointer shrink-0"
                     title={isKa ? "Google Meet - ვიდეო ოთახი" : "Google Meet - Video Room"}
                 >
-                    <Video className="w-4 h-4" />
+                    <Video className="w-3.5 h-3.5" />
                 </button>
               )}
 
-              {/* Google Chat Button (Privileged roles only) */}
               {hasPrivilegedGoogleAiAccess && (
                 <button
                     type="button"
@@ -1333,29 +1416,27 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
                         if (onOpenChat) onOpenChat();
                         else window.dispatchEvent(new CustomEvent('agrimap_open_chat'));
                     }}
-                    className="p-1.5 hover:bg-blue-50 rounded-lg transition-colors text-blue-600 hover:text-blue-700 cursor-pointer"
+                    className="p-1.5 hover:bg-blue-50 rounded-lg transition-colors text-blue-600 hover:text-blue-700 cursor-pointer shrink-0"
                     title={isKa ? "Google Chat & საველე ინტერკომი" : "Google Chat & Field Spaces"}
                 >
-                    <MessageSquare className="w-4 h-4" />
+                    <MessageSquare className="w-3.5 h-3.5" />
                 </button>
               )}
 
-              {/* Voice Notes Button */}
               <button
                   type="button"
                   onClick={() => setIsVoiceNotesOpen(true)}
-                  className="p-1.5 hover:bg-purple-50 rounded-lg transition-colors text-purple-600 hover:text-purple-700 cursor-pointer relative"
+                  className="p-1.5 hover:bg-purple-50 rounded-lg transition-colors text-purple-600 hover:text-purple-700 cursor-pointer relative shrink-0"
                   title={isKa ? `ხმოვანი ჩანაწერები (${notes?.length || 0})` : `Voice Notes (${notes?.length || 0})`}
               >
-                  <Mic className="w-4 h-4" />
+                  <Mic className="w-3.5 h-3.5" />
                   {notes && notes.length > 0 && (
-                      <span className="absolute -top-1 -right-1 px-1 py-0.2 min-w-3.5 h-3.5 rounded-full bg-rose-500 text-white font-mono text-[8px] font-black flex items-center justify-center">
+                      <span className="absolute -top-0.5 -right-0.5 px-1 min-w-3.5 h-3.5 rounded-full bg-rose-500 text-white font-mono text-[8px] font-black flex items-center justify-center">
                           {notes.length}
                       </span>
                   )}
               </button>
 
-              {/* Position & Alignment Correction Tool Button */}
               <button
                   type="button"
                   onClick={() => {
@@ -1365,57 +1446,64 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
                       safeStorage.removeItem('agrimap_comms_hub_pos');
                       toast.success(isKa ? "პოზიცია გასწორდა!" : "Floating position & alignment corrected!");
                   }}
-                  className="p-1.5 hover:bg-slate-200 rounded-lg transition-colors text-cyan-600 hover:text-cyan-800 cursor-pointer"
-                  title={isKa ? "კორექციის ხელსაწყო: პოზიციის და გასწორების აღდგენა" : "Correction Tool: Reset & Align Position"}
+                  className="p-1.5 hover:bg-slate-200 rounded-lg transition-colors text-cyan-600 hover:text-cyan-800 cursor-pointer shrink-0"
+                  title={isKa ? "პოზიციის აღდგენა" : "Reset Window Position"}
               >
                   <RefreshCw className="w-3.5 h-3.5" />
               </button>
 
-              {/* Settings */}
               <button 
+                  type="button"
                   onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-                  className="p-1.5 hover:bg-slate-200 rounded-lg transition-colors text-slate-500 hover:text-slate-800 cursor-pointer"
+                  className="p-1.5 hover:bg-slate-200 rounded-lg transition-colors text-slate-500 hover:text-slate-800 cursor-pointer ml-auto shrink-0"
                   title={isKa ? "Gemini AI პარამეტრები" : "Gemini AI Settings & Diagnostics"}
               >
-                  <Settings className="h-4 w-4" />
+                  <Settings className="h-3.5 h-3.5" />
               </button>
-
-              {/* Window Control Buttons: Collapse (-), Restore/Maximize [ ], Close (X) */}
-              <div className="flex items-center gap-1 pl-1.5 ml-0.5 border-l border-slate-200">
-                  {/* Collapse (-) Button */}
-                  <button 
-                      type="button"
-                      onClick={() => setIsCollapsed(true)}
-                      className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
-                      title={isKa ? "ჩაკეცვა (-)" : "Collapse to Dock (-)"}
-                  >
-                     <Minus size={14} strokeWidth={2.5} />
-                  </button>
-
-                  {/* Enlarge / Shrink Button */}
-                  <button
-                      type="button"
-                      onClick={toggleEnlarged}
-                      className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
-                      title={isEnlarged ? (isKa ? "სტანდარტული ზომა" : "Standard Size") : (isKa ? "ფანჯრის გაფართოება" : "Enlarge Window")}
-                  >
-                      {isEnlarged ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-                  </button>
-
-                  {/* Close (X) Button */}
-                  <button 
-                      type="button"
-                      onClick={() => setIsCollapsed(true)}
-                      className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-300 hover:border-rose-600 flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
-                      title={isKa ? "დახურვა (X)" : "Close (X)"}
-                  >
-                     <X size={14} strokeWidth={2.5} />
-                  </button>
-              </div>
-          </div>
         </div>
 
-        {/* Mode Selector & Intelligence Hub Console Bar */}
+        {/* Dedicated AI Assistant View Switcher — Starts on AI Guide Assistant */}
+        <div className="px-2.5 py-1.5 bg-white border-b border-slate-200 flex items-center gap-1.5 select-none shrink-0">
+          <button
+            type="button"
+            onClick={() => setAssistantView('guide')}
+            className={`flex-1 px-2.5 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              assistantView === 'guide'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700'
+            }`}
+          >
+            <BookOpen size={13} />
+            <span className="truncate">{isKa ? 'AI გზამკვლევი' : 'AI Guide Assistant'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setAssistantView('chat')}
+            className={`flex-1 px-2.5 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              assistantView === 'chat'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <MessageSquare size={13} />
+            <span className="truncate">{isKa ? 'Copilot ჩატი' : 'Copilot Chat'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setAssistantView('analysis')}
+            className={`flex-1 px-2.5 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              assistantView === 'analysis'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700'
+            }`}
+          >
+            <Leaf size={13} />
+            <span className="truncate">{isKa ? 'დიაგნოსტიკა' : 'Diagnostics'}</span>
+          </button>
+        </div>
+
+        {/* Mode Selector & Intelligence Hub Console Bar (shown in Copilot chat mode) */}
+        {assistantView === 'chat' && (
         <div className="px-3 py-1.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-xs select-none shrink-0 gap-2">
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
             <span className="text-[9px] uppercase font-black tracking-widest text-slate-400">{isKa ? 'რეჟიმი:' : 'Mode:'}</span>
@@ -1487,6 +1575,7 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
             )}
           </div>
         </div>
+        )}
 
         {/* Tenant Attachment / Scope Radius / Root AI Banner */}
         {currentAiMode === 'expert' && (
@@ -1623,7 +1712,7 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
                          </div>
                          <div className="text-[11px] text-slate-600 flex items-center justify-between">
                              <span>Model Tier:</span>
-                             <span className="font-mono text-slate-800 font-medium">gemini-3.8-flash (auto-fallback)</span>
+                             <span className="font-mono text-slate-800 font-medium">gemini-4-hydrogen (auto-fallback)</span>
                          </div>
                      </div>
 
@@ -1785,7 +1874,28 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
             </div>
         )}
 
-        {assistantView === 'analysis' ? (
+        {assistantView === 'guide' ? (
+          <div className="flex-grow min-h-0 overflow-hidden flex flex-col bg-white">
+            <HelpAiAssistantChat
+              compact
+              language={language}
+              currentUser={currentUser}
+              onOpenSopGuide={() => {
+                if (onNavigateMode) onNavigateMode('guide');
+                else window.dispatchEvent(new CustomEvent('agrimap_set_mode', { detail: 'guide' }));
+                setIsCollapsed(true);
+              }}
+              onNavigateMode={(mode) => {
+                if (onNavigateMode) {
+                  onNavigateMode(mode);
+                } else {
+                  window.dispatchEvent(new CustomEvent('agrimap_set_mode', { detail: mode }));
+                }
+                setIsCollapsed(true);
+              }}
+            />
+          </div>
+        ) : assistantView === 'analysis' ? (
           <div className="flex-grow min-h-0 overflow-hidden flex flex-col bg-white">
             <div className="p-2 bg-emerald-50/90 border-b border-emerald-100 flex items-center justify-between text-xs px-3">
               <span className="text-[11px] font-bold text-emerald-950 flex items-center gap-1.5 truncate">
@@ -1818,7 +1928,7 @@ const GlobalAssistantPanel: React.FC<GlobalAssistantPanelProps> = ({
               initialTool={analysisInitialTool}
               activeOrgId={activeOrgId}
               currentUser={currentUser}
-              onClose={() => setAssistantView('chat')}
+              onClose={() => setAssistantView('guide')}
               onAddTask={onAddTask}
               onAddNutritionPlan={onAddNutritionPlan}
             />

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
     Send, Bot, User, Sparkles, RefreshCw, Copy, Check, 
     ArrowRight, Compass, Building2, Tractor, Package, 
-    Users, Banknote, HelpCircle, Lightbulb, ExternalLink, Key
+    Users, Banknote, HelpCircle, Lightbulb, ExternalLink, Key, BookOpen
 } from 'lucide-react';
 import { 
     executeGeminiCall, 
@@ -10,15 +10,21 @@ import {
     setCustomGeminiApiKey, 
     testGeminiApiKey, 
     cleanApiKey, 
-    triggerAiDiagnosticsModal 
+    triggerAiDiagnosticsModal,
+    PRIMARY_GEMINI_MODEL
 } from '../../services/geminiService';
 import { AppMode } from '../../types';
 import { toast } from 'sonner';
+import { isUserOwnerOrRoot, ROOT_MANUAL_SOPS } from '../../data/rootManualSopData';
 
 interface HelpAiAssistantChatProps {
     language?: string;
     onNavigateMode?: (mode: AppMode) => void;
+    onOpenSopGuide?: () => void;
     currentUser?: any;
+    compact?: boolean;
+    initialQuery?: string;
+    onInitialQueryConsumed?: () => void;
 }
 
 import { AiSourceBadge } from '../AiSourceBadge';
@@ -475,9 +481,14 @@ const PRESET_QUESTIONS = [
 export const HelpAiAssistantChat: React.FC<HelpAiAssistantChatProps> = ({
     language = 'en',
     onNavigateMode,
-    currentUser
+    onOpenSopGuide,
+    currentUser,
+    compact = false,
+    initialQuery,
+    onInitialQueryConsumed
 }) => {
     const isKa = language === 'ka';
+    const isOwnerOrRoot = isUserOwnerOrRoot(currentUser);
     const [messages, setMessages] = useState<ChatMessage[]>(() => [
         {
             id: 'welcome',
@@ -559,6 +570,15 @@ Ask me anything or select one of the quick guided questions below!`,
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, isLoading]);
+
+    const lastConsumedQueryRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (initialQuery && initialQuery.trim() && initialQuery !== lastConsumedQueryRef.current) {
+            lastConsumedQueryRef.current = initialQuery;
+            handleSendMessage(initialQuery);
+            onInitialQueryConsumed?.();
+        }
+    }, [initialQuery]);
 
     // Parse actionable directives from AI response text (e.g. [ACTION:mode:Label])
     const parseActionsFromResponse = (text: string): { cleanText: string; actions: Array<{ label: string; mode: AppMode }> } => {
@@ -659,15 +679,20 @@ DIRECTIVES & FORMATTING INSTRUCTIONS:
   Example: [ACTION:profile:Manage Profile] or [ACTION:design:Open Map & Draw Boundaries] or [ACTION:harvesting:Start Harvest Event].
 - Answer in ${isKa ? 'fluent Georgian (ქართული)' : 'fluent English'}.`;
 
+            // Send systemPrompt in config.systemInstruction and ONLY the user's question in contents
             const response = await executeGeminiCall({
-                contents: `${systemPrompt}\n\nUSER QUESTION: ${query}`
+                contents: query,
+                config: {
+                    systemInstruction: systemPrompt
+                },
+                model: PRIMARY_GEMINI_MODEL
             });
 
             const isLocal = Boolean(response?.isAutonomousFallback || response?.source === 'local' || response?.modelUsed === 'autonomous-agri-core');
             const fallbackReason = response?.fallbackReason || (isLocal ? 'Autonomous Agricultural Knowledge Core active' : undefined);
-            const fallbackCode = response?.fallbackCode || response?.upstreamNotice?.code || (isLocal ? 402 : undefined);
+            const fallbackCode = response?.fallbackCode || response?.upstreamNotice?.code || (isLocal ? 401 : undefined);
 
-            if (response && response.text) {
+            if (!isLocal && response && response.text) {
                 const { cleanText, actions } = parseActionsFromResponse(response.text);
                 const assistantMsg: ChatMessage = {
                     id: `assistant-${Date.now()}`,
@@ -675,18 +700,72 @@ DIRECTIVES & FORMATTING INSTRUCTIONS:
                     text: cleanText,
                     timestamp: new Date(),
                     actions: actions.length > 0 ? actions : [
-                        { label: isKa ? 'SOP გზამკვლევი' : 'SOP Timeline', mode: 'guide' }
+                        { label: isKa ? 'SOP გზამკვლევი' : 'SOP Guide', mode: 'guide' }
                     ],
-                    isKnowledgeFallback: isLocal,
-                    source: isLocal ? 'local' : 'cloud',
-                    fallbackReason,
-                    fallbackCode,
-                    upstreamNotice: response?.upstreamNotice,
-                    modelUsed: response?.modelUsed || (isLocal ? 'autonomous-agri-core' : 'gemini-3.8-flash')
+                    isKnowledgeFallback: false,
+                    source: 'cloud',
+                    modelUsed: response?.modelUsed || PRIMARY_GEMINI_MODEL
                 };
                 setMessages(prev => [...prev, assistantMsg]);
             } else {
-                throw new Error('No response from AI engine');
+                // Local / Offline high-fidelity answer: search Root SOP Manual first, then rich Knowledge Base
+                const qLower = query.toLowerCase();
+                const words = qLower.split(/[\s,?.!:/()-]+/).filter(w => w.length >= 3);
+                const scoredSops = ROOT_MANUAL_SOPS
+                    .filter(s => isOwnerOrRoot || !s.rootOnly)
+                    .map(sop => {
+                        const hay = [
+                            sop.code, sop.titleEn, sop.titleKa, sop.purposeEn, sop.purposeKa,
+                            ...sop.optionsEn, ...sop.optionsKa, ...sop.stepsEn, ...sop.stepsKa
+                        ].join(' ').toLowerCase();
+                        let score = 0;
+                        for (const w of words) {
+                            if (hay.includes(w)) score += 1;
+                            if (sop.titleEn.toLowerCase().includes(w) || sop.titleKa.toLowerCase().includes(w)) score += 3;
+                        }
+                        return { sop, score };
+                    })
+                    .filter(x => x.score >= 3)
+                    .sort((a, b) => b.score - a.score);
+
+                const kbFallback = generateKnowledgeBaseResponse(query, language || 'en', isKa);
+                const matchedSop = scoredSops[0]?.sop;
+
+                let finalRawText = kbFallback.text;
+                let finalActions = kbFallback.actions;
+
+                // If the question specifically matches a Root SOP manual procedure not already covered cleanly, enrich with exact SOP steps
+                if (matchedSop && scoredSops[0].score >= 5 && kbFallback.text.includes('Complete End-to-End') || (matchedSop && scoredSops[0].score >= 6 && kbFallback.text.includes('სისტემის გამართვისა'))) {
+                    const sopTitle = isKa ? matchedSop.titleKa : matchedSop.titleEn;
+                    const sopPurpose = isKa ? matchedSop.purposeKa : matchedSop.purposeEn;
+                    const sopOptions = isKa ? matchedSop.optionsKa : matchedSop.optionsEn;
+                    const sopSteps = isKa ? matchedSop.stepsKa : matchedSop.stepsEn;
+                    finalRawText = `📖 **${matchedSop.code}: ${sopTitle}**\n\n${sopPurpose}\n\n` +
+                        `**${isKa ? 'მოდულის პარამეტრები' : 'Available Controls & Options'}:**\n` +
+                        sopOptions.map(o => `• ${o}`).join('\n') +
+                        `\n\n**${isKa ? 'შესრულების ნაბიჯები (SOP)' : 'Step-by-Step Procedure'}:**\n` +
+                        sopSteps.map((s, idx) => `${idx + 1}. ${s}`).join('\n');
+                    finalActions = [
+                        { label: isKa ? 'მოდულის გახსნა' : 'Open Module', mode: matchedSop.moduleMode },
+                        { label: isKa ? 'SOP გზამკვლევი სქრინშოთებით' : 'Visual SOP Guide', mode: 'guide' }
+                    ];
+                }
+
+                const { cleanText, actions } = parseActionsFromResponse(finalRawText);
+                const assistantMsg: ChatMessage = {
+                    id: `assistant-local-${Date.now()}`,
+                    sender: 'assistant',
+                    text: cleanText,
+                    timestamp: new Date(),
+                    actions: actions.length > 0 ? actions : finalActions,
+                    isKnowledgeFallback: true,
+                    source: 'local',
+                    fallbackReason,
+                    fallbackCode,
+                    upstreamNotice: response?.upstreamNotice,
+                    modelUsed: 'autonomous-agri-core'
+                };
+                setMessages(prev => [...prev, assistantMsg]);
             }
         } catch (error: any) {
             const errStr = error?.message || String(error);
@@ -726,53 +805,72 @@ DIRECTIVES & FORMATTING INSTRUCTIONS:
     };
 
     return (
-        <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[750px]">
+        <div className={compact
+            ? 'bg-white flex flex-col flex-1 min-h-0 h-full overflow-hidden'
+            : 'bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[clamp(440px,calc(100dvh-13rem),760px)] min-h-[400px]'
+        }>
             {/* CHAT HEADER */}
-            <div className="p-5 sm:p-6 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between border-b border-indigo-900/50">
-                <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-emerald-500 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-indigo-950">
-                        <Bot className="w-6 h-6" />
-                    </div>
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <h3 className="font-black text-base text-white uppercase tracking-tight">
-                                {isKa ? 'AI სისტემური ასისტენტი & გზამკვლევი' : 'AI System Navigator & Copilot'}
-                            </h3>
-                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            {!compact && (
+                <div className="p-3.5 sm:p-5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex flex-wrap items-center justify-between gap-2.5 border-b border-indigo-900/50 shrink-0">
+                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                        <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-emerald-500 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-indigo-950 shrink-0">
+                            <Bot className="w-5 h-5 sm:w-6 sm:h-6" />
                         </div>
-                        <p className="text-[11px] text-slate-300 font-medium">
-                            {isKa 
-                                ? 'სრული ტექნიკური მხარდაჭერა, ნაბიჯ-ნაბიჯ ინსტრუქციები და შემდეგი ეტაპის რეკომენდაციები' 
-                                : 'Comprehensive operational directives, step-by-step walkthroughs & platform management'}
-                        </p>
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                                <h3 className="font-black text-sm sm:text-base text-white uppercase tracking-tight truncate">
+                                    {isKa ? 'AI გზამკვლევი ასისტენტი' : 'AI Guide Assistant'}
+                                </h3>
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                            </div>
+                            <p className="text-[10px] sm:text-[11px] text-slate-300 font-medium truncate">
+                                {isKa 
+                                    ? 'ნაბიჯ-ნაბიჯ ინსტრუქციები, მოდულების გზამკვლევი და სწრაფი გადასვლები' 
+                                    : 'Step-by-step operational walkthroughs, SOP answers & direct module navigation'}
+                            </p>
+                        </div>
                     </div>
-                </div>
 
-                <div className="flex items-center gap-2">
-                    <button
-                        type="button"
-                        onClick={() => setShowKeyModal(true)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                            hasActiveCustomKey
-                                ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300 hover:bg-emerald-500/30'
-                                : 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-slate-300 hover:text-white'
-                        }`}
-                        title="Configure Gemini API Key"
-                    >
-                        <Key className="w-3.5 h-3.5 text-amber-400" />
-                        <span className="hidden sm:inline">
-                            {hasActiveCustomKey ? (isKa ? 'გასაღები აქტიურია' : 'Custom Key Active') : (isKa ? 'API გასაღები' : 'API Key')}
-                        </span>
-                    </button>
-                    <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700 text-xs font-mono text-emerald-300">
-                        <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Gemini 2.5 + Knowledge Engine</span>
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                        {isOwnerOrRoot && (
+                            <button
+                                type="button"
+                                onClick={() => setShowKeyModal(true)}
+                                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] sm:text-xs font-semibold transition-all cursor-pointer ${
+                                    hasActiveCustomKey
+                                        ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300 hover:bg-emerald-500/30'
+                                        : 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-slate-300 hover:text-white'
+                                }`}
+                                title="Configure Gemini API Key"
+                            >
+                                <Key className="w-3.5 h-3.5 text-amber-400" />
+                                <span className="hidden sm:inline">
+                                    {hasActiveCustomKey ? (isKa ? 'გასაღები აქტიურია' : 'Custom Key Active') : (isKa ? 'API გასაღები' : 'API Key')}
+                                </span>
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (onOpenSopGuide) {
+                                    onOpenSopGuide();
+                                } else if (onNavigateMode) {
+                                    onNavigateMode('guide');
+                                }
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 border border-emerald-400/50 text-[11px] sm:text-xs font-black text-white shadow-sm transition-all cursor-pointer active:scale-95"
+                            title={isKa ? 'გახსენით SOP სახელმძღვანელო სქრინშოთებით' : 'Open Visual SOP Guide with Screenshots'}
+                        >
+                            <BookOpen className="w-3.5 h-3.5 shrink-0" />
+                            <span>{isKa ? 'SOP გზამკვლევი (სქრინშოთები)' : 'SOP Guide (Screenshots)'}</span>
+                            <ArrowRight className="w-3 h-3 shrink-0" />
+                        </button>
                     </div>
                 </div>
-            </div>
+            )}
 
             {/* PRESET GUIDED QUESTIONS BAR */}
-            <div className="p-3 bg-slate-50 border-b border-slate-200/80 overflow-x-auto no-scrollbar">
+            <div className="p-2.5 sm:p-3 bg-slate-50 border-b border-slate-200/80 overflow-x-auto no-scrollbar shrink-0">
                 <div className="flex items-center gap-2 min-w-max">
                     <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1 shrink-0 px-1">
                         <Lightbulb className="w-3.5 h-3.5 text-amber-500" />
@@ -784,7 +882,7 @@ DIRECTIVES & FORMATTING INSTRUCTIONS:
                             type="button"
                             onClick={() => handleSendMessage(isKa ? q.queryKa : q.queryEn)}
                             disabled={isLoading}
-                            className="px-3 py-1.5 rounded-xl bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 border border-slate-200 hover:border-indigo-300 text-xs font-bold transition-all shadow-2xs shrink-0 cursor-pointer disabled:opacity-50"
+                            className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 border border-slate-200 hover:border-indigo-300 text-[11px] sm:text-xs font-bold transition-all shadow-2xs shrink-0 cursor-pointer disabled:opacity-50"
                         >
                             {isKa ? q.labelKa : q.labelEn}
                         </button>
@@ -793,7 +891,7 @@ DIRECTIVES & FORMATTING INSTRUCTIONS:
             </div>
 
             {/* MESSAGES SCROLL AREA */}
-            <div className="flex-1 p-5 sm:p-6 overflow-y-auto space-y-4 custom-scrollbar bg-slate-50/50">
+            <div className="flex-1 min-h-0 p-3.5 sm:p-5 overflow-y-auto space-y-4 custom-scrollbar bg-slate-50/50">
                 {messages.map((msg) => (
                     <div
                         key={msg.id}
@@ -899,13 +997,13 @@ DIRECTIVES & FORMATTING INSTRUCTIONS:
             </div>
 
             {/* INPUT COMPOSER */}
-            <div className="p-4 sm:p-5 bg-white border-t border-slate-200">
+            <div className="p-3 sm:p-4 bg-white border-t border-slate-200 shrink-0">
                 <form
                     onSubmit={(e) => {
                         e.preventDefault();
                         handleSendMessage();
                     }}
-                    className="flex items-center gap-2.5"
+                    className="flex items-center gap-2"
                 >
                     <input
                         type="text"
@@ -917,15 +1015,15 @@ DIRECTIVES & FORMATTING INSTRUCTIONS:
                                 : 'Ask anything: "What are the next steps after registration?", "How do I start weighing?"...'
                         }
                         disabled={isLoading}
-                        className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs sm:text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 font-medium transition-all"
+                        className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl px-3.5 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm leading-normal min-h-[42px] text-slate-800 placeholder-slate-400 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 font-medium transition-all"
                     />
                     <button
                         type="submit"
                         disabled={!inputText.trim() || isLoading}
-                        className="px-5 py-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2 shadow-md shadow-indigo-200 disabled:opacity-40 cursor-pointer active:scale-95 shrink-0"
+                        className="px-3.5 sm:px-5 py-2.5 sm:py-3 min-h-[42px] rounded-xl sm:rounded-2xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 sm:gap-2 shadow-md shadow-indigo-200 disabled:opacity-40 cursor-pointer active:scale-95 shrink-0"
                     >
                         <span>{isKa ? 'გაგზავნა' : 'Send'}</span>
-                        <Send className="w-4 h-4" />
+                        <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     </button>
                 </form>
             </div>
